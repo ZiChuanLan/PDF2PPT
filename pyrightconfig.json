@@ -1,0 +1,17 @@
+{
+  "include": ["api"],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "web"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["api"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "off",
+  "reportMissingImports": "none",
+  "reportImplicitRelativeImport": "none",
+  "reportUnusedCallResult": "none",
+  "reportDeprecated": "none"
+}

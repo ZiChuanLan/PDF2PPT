@@ -1,0 +1,56 @@
+"""Application configuration."""
+
+import os
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    max_file_mb: int = 100
+    max_pages: int = 200
+    job_ttl_minutes: int = 60
+    # Root directory for per-job runtime artifacts.
+    # Relative paths are resolved under the `api/` directory.
+    job_root_dir: str = "data/jobs"
+    redis_url: str = "redis://redis:6379/0"
+    log_level: str = "INFO"
+    # Rendering quality knobs for scanned PDFs.
+    #
+    # - ocr_render_dpi: higher DPI improves OCR recall/accuracy on scan-heavy decks.
+    # - scanned_render_dpi: controls the background render quality in the PPTX
+    #   output (higher DPI looks sharper but increases file size).
+    # NOTE: Higher values (250-300) can improve OCR on some documents but may
+    # degrade on others and increases CPU/memory usage. Keep conservative defaults.
+    ocr_render_dpi: int = 200
+    scanned_render_dpi: int = 200
+    siliconflow_api_key: str | None = None
+    siliconflow_base_url: str | None = "https://api.siliconflow.cn/v1"
+    siliconflow_model: str | None = "Pro/deepseek-ai/deepseek-ocr"
+    cors_allow_origins: str = "http://localhost:3000"
+    cors_allow_origin_regex: str | None = None
+
+    class Config:
+        env_file = ".env"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Get cached settings instance."""
+    return Settings()
+
+
+def parse_cors_allow_origins(raw: str | None) -> list[str]:
+    value = str(raw or "").strip()
+    if not value:
+        return ["http://localhost:3000"]
+    if value == "*":
+        return ["*"]
+    items: list[str] = []
+    for item in value.split(","):
+        origin = item.strip()
+        if origin and origin not in items:
+            items.append(origin)
+    return items or ["http://localhost:3000"]

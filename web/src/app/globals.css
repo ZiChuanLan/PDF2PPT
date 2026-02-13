@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter, ui-sans-serif), "Helvetica Neue", sans-serif;
+  --font-mono: var(--font-jetbrains-mono, ui-monospace), "Courier New", monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
+}
+
+:root {
+  --radius: 0px;
+  --background: #f9f9f7;
+  --foreground: #111111;
+  --card: #f9f9f7;
+  --card-foreground: #111111;
+  --popover: #f9f9f7;
+  --popover-foreground: #111111;
+  --primary: #111111;
+  --primary-foreground: #f9f9f7;
+  --secondary: #e5e5e0;
+  --secondary-foreground: #111111;
+  --muted: #f5f5f5;
+  --muted-foreground: #525252;
+  --accent: #e5e5e0;
+  --accent-foreground: #111111;
+  --destructive: #cc0000;
+  --border: #111111;
+  --input: #111111;
+  --ring: #111111;
+  --chart-1: #111111;
+  --chart-2: #404040;
+  --chart-3: #737373;
+  --chart-4: #a3a3a3;
+  --chart-5: #e5e5e5;
+  --sidebar: #f9f9f7;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #111111;
+  --sidebar-primary-foreground: #f9f9f7;
+  --sidebar-accent: #e5e5e0;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: #111111;
+  --sidebar-ring: #111111;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    border-radius: 0;
+  }
+  html,
+  body {
+    min-height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-lora, Georgia), Georgia, serif;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cpath fill='%23111111' fill-opacity='0.04' d='M1 3h1v1H1V3zm2-2h1v1H3V1z'%3E%3C/path%3E%3C/svg%3E");
+  }
+  ::selection {
+    background: #111111;
+    color: #f9f9f7;
+  }
+}
+
+.font-serif {
+  font-family: var(--font-playfair-display, "Times New Roman"), "Times New Roman", serif;
+}
+
+.font-body {
+  font-family: var(--font-lora, Georgia), Georgia, serif;
+}
+
+.font-sans {
+  font-family: var(--font-inter, "Helvetica Neue"), "Helvetica Neue", sans-serif;
+}
+
+.font-mono {
+  font-family: var(--font-jetbrains-mono, "Courier New"), "Courier New", monospace;
+}
+
+.sharp-corners {
+  border-radius: 0 !important;
+}
+
+.newsprint-texture {
+  position: relative;
+  isolation: isolate;
+}
+
+.newsprint-texture::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(0deg, transparent 98%, rgba(0, 0, 0, 0.02) 100%),
+    linear-gradient(90deg, transparent 98%, rgba(0, 0, 0, 0.02) 100%);
+  background-size: 3px 3px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.hard-shadow-hover {
+  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+}
+
+.hard-shadow-hover:hover {
+  box-shadow: 4px 4px 0 0 #111111;
+  transform: translate(-2px, -2px);
+}
+
+.drop-cap:first-letter {
+  float: left;
+  margin-right: 0.3rem;
+  font-family: var(--font-playfair-display, "Times New Roman"), "Times New Roman", serif;
+  font-size: 4.5rem;
+  line-height: 0.85;
+  font-weight: 700;
+}
+
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.news-ticker-track {
+  animation: ticker-scroll 24s linear infinite;
+  will-change: transform;
+}
+
+.news-ticker:hover .news-ticker-track {
+  animation-play-state: paused;
+}

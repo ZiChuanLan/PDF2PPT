@@ -1,0 +1,20 @@
+.git
+.gitignore
+.dockerignore
+
+# Node / Next build artifacts
+node_modules/
+.next/
+out/
+
+# Test/cache artifacts
+coverage/
+playwright-report/
+.turbo/
+
+# Local env / editor artifacts
+.env
+.env.*
+.vscode/
+.idea/
+*.log

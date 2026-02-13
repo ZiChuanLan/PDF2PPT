@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+*.egg
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# pytest
+.pytest_cache/
+
+# OMC state
+.omc/
+
+# Data & fixtures (large files)
+data/
+fixtures/
+
+# Test artifacts
+test/
+
+# Large files
+*.pdf

@@ -1,0 +1,22 @@
+{
+  "include": ["app", "scripts"],
+  "exclude": [
+    "**/__pycache__",
+    "../.venv",
+    "../web"
+  ],
+  "venvPath": "..",
+  "venv": ".venv",
+  "extraPaths": ["."],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "off",
+  "reportMissingImports": "none",
+  "reportImplicitRelativeImport": "none",
+  "reportAny": "none",
+  "reportExplicitAny": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnusedCallResult": "none",
+  "reportDeprecated": "none"
+}

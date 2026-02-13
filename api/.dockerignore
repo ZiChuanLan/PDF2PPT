@@ -1,0 +1,26 @@
+.git
+.gitignore
+.dockerignore
+
+# Python caches / virtualenvs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local env / editor artifacts
+.env
+.env.*
+.vscode/
+.idea/
+
+# Runtime/generated data
+data/
+tmp/
+tmp_artifacts/
+*.log

@@ -1,0 +1,70 @@
+services:
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - api
+    networks:
+      - app-network
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+    environment:
+      - MAX_FILE_MB=${MAX_FILE_MB:-100}
+      - MAX_PAGES=${MAX_PAGES:-200}
+      - JOB_TTL_MINUTES=${JOB_TTL_MINUTES:-60}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
+  worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: python -m app.worker
+    volumes:
+      - ./api:/app
+    environment:
+      - MAX_FILE_MB=${MAX_FILE_MB:-100}
+      - MAX_PAGES=${MAX_PAGES:-200}
+      - JOB_TTL_MINUTES=${JOB_TTL_MINUTES:-60}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+    depends_on:
+      - redis
+    networks:
+      - app-network
+    # TTL cleanup strategy: worker can run periodic cleanup tasks
+    # Add cron job or scheduled task here for job TTL enforcement
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    # Disable persistence - no AOF, no RDB snapshots
+    command: redis-server --save "" --appendonly no
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
