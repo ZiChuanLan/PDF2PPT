@@ -521,20 +521,31 @@ def generate_pptx_from_ir(
             )
 
             if overlay_scanned_image_crops:
-                # If icon-like crops use transparent background, clear their original
-                # background area from the base render first to avoid double-background.
-                transparent_bg_regions = [
-                    info.bbox_pt
-                    for info in image_region_infos
-                    if info.background_removed
-                ]
-                if transparent_bg_regions:
+                # Clear base-render image areas before re-overlaying editable crops.
+                # In `fill` mode we clear all overlaid image regions so the final
+                # composition doesn't keep stale image pixels under editable crops.
+                # In non-fill mode keep conservative behavior and clear only
+                # transparent/icon-like crops.
+                if is_fill_mode:
+                    clear_regions_pt = [info.bbox_pt for info in image_region_infos]
+                    clear_out_name = (
+                        f"page-{page_index:04d}.clean.images-bg-cleared.png"
+                    )
+                else:
+                    clear_regions_pt = [
+                        info.bbox_pt
+                        for info in image_region_infos
+                        if info.background_removed
+                    ]
+                    clear_out_name = (
+                        f"page-{page_index:04d}.clean.icons-bg-cleared.png"
+                    )
+
+                if clear_regions_pt:
                     cleaned_render_path = _clear_regions_for_transparent_crops(
                         cleaned_render_path=cleaned_render_path,
-                        out_path=artifacts
-                        / "page_renders"
-                        / f"page-{page_index:04d}.clean.icons-bg-cleared.png",
-                        regions_pt=transparent_bg_regions,
+                        out_path=artifacts / "page_renders" / clear_out_name,
+                        regions_pt=clear_regions_pt,
                         pix=pix,
                         page_height_pt=page_h_pt,
                         dpi=int(scanned_render_dpi),
