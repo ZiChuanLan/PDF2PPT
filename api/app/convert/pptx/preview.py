@@ -13,6 +13,7 @@ from .constants import _PTS_PER_INCH
 from .font_utils import (
     _contains_cjk,
     _fit_font_size_pt,
+    _fit_mineru_text_style,
     _fit_ocr_text_style,
     _wrap_text_to_width,
 )
@@ -261,8 +262,9 @@ def _export_final_preview_page_image(
 
         raw_text = str(el.get("text") or "")
         source_id = str(el.get("source") or "").strip().lower()
+        is_mineru_text = source_id == "mineru"
         is_scanned_ocr = bool(is_scanned_page and source_id == "ocr")
-        is_layout_text = source_id in {"mineru"} or is_scanned_ocr
+        is_layout_text = is_mineru_text or is_scanned_ocr
 
         # When we overlay a scanned crop (screenshot/diagram), we also suppress
         # OCR text inside that crop in the PPT composition. Mirror that here so
@@ -320,6 +322,22 @@ def _export_final_preview_page_image(
                 baseline_ocr_h_pt=float(baseline_ocr_h_pt),
                 is_heading=bool(is_heading),
             )
+        elif is_mineru_text:
+            bbox_w_pt = max(1.0, float(x1 - x0) * _PTS_PER_INCH / float(dpi))
+            bbox_h_pt = max(1.0, float(y1 - y0) * _PTS_PER_INCH / float(dpi))
+            y0_pt = float(y0) * _PTS_PER_INCH / float(dpi)
+            text_to_render, font_size_pt, _, _, _ = _fit_mineru_text_style(
+                text=text,
+                bbox_w_pt=bbox_w_pt,
+                bbox_h_pt=bbox_h_pt,
+                page_w_pt=float(page_w_pt),
+                page_h_pt=float(page_h_pt),
+                y0_pt=float(y0_pt),
+                mineru_block_type=el.get("mineru_block_type"),
+                mineru_text_level=el.get("mineru_text_level"),
+            )
+            if not text_to_render.strip():
+                continue
         else:
             bbox_w_pt = max(1.0, float(x1 - x0) * _PTS_PER_INCH / float(dpi))
             bbox_h_pt = max(1.0, float(y1 - y0) * _PTS_PER_INCH / float(dpi))

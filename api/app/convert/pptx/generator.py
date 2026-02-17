@@ -26,14 +26,12 @@ from .constants import _EMU_PER_INCH, _EMU_PER_PT
 from .font_utils import (
     _compact_text_length,
     _contains_cjk,
-    _fit_font_size_pt,
+    _fit_mineru_text_style,
     _fit_ocr_text_style,
     _is_inline_short_token,
     _map_font_name,
-    _measure_text_lines,
     _normalize_ocr_text_for_render,
     _prefer_wrap_for_ocr_text,
-    _wrap_text_to_width,
 )
 from .preview import _export_final_preview_page_image
 from .scanned_page import (
@@ -759,6 +757,10 @@ def generate_pptx_from_ir(
         mineru_render_pix: Any | None = None
         if has_mineru_elements and source_pdf.exists():
             try:
+                # MinerU text-page output targets visual fidelity to source PDF.
+                # Force fill-mode erasing here so the cleaned background remains
+                # deterministic and uniformly flat behind re-laid text.
+                mineru_text_erase_mode = "fill"
                 render_path = (
                     artifacts / "page_renders" / f"page-{page_index:04d}.mineru.png"
                 )
@@ -782,7 +784,7 @@ def generate_pptx_from_ir(
                     bbox_h_pt = max(1.0, y1 - y0)
                     pad_x_pt, pad_y_pt = _compute_text_erase_padding_pt(
                         bbox_h_pt=bbox_h_pt,
-                        text_erase_mode=text_erase_mode_id,
+                        text_erase_mode=mineru_text_erase_mode,
                     )
                     text_erase_bboxes_pt.append(
                         [x0 - pad_x_pt, y0 - pad_y_pt, x1 + pad_x_pt, y1 + pad_y_pt]
@@ -791,11 +793,10 @@ def generate_pptx_from_ir(
                 for el in _iter_page_elements(page, type_name="image"):
                     if str(el.get("source") or "").strip().lower() != "mineru":
                         continue
-                    try:
-                        ix0, iy0, ix1, iy1 = _coerce_bbox_pt(el.get("bbox_pt"))
-                    except Exception:
-                        continue
-                    protect_bboxes_pt.append([ix0, iy0, ix1, iy1])
+                    # Do not protect MinerU image regions while erasing text.
+                    # Image elements are overlaid again below, so this avoids
+                    # mixed background leftovers and keeps text area fill uniform.
+                    continue
 
                 cleaned_render_path = _erase_regions_in_render_image(
                     render_path,
@@ -806,7 +807,7 @@ def generate_pptx_from_ir(
                     protect_bboxes_pt=protect_bboxes_pt,
                     page_height_pt=page_h_pt,
                     dpi=int(scanned_render_dpi),
-                    text_erase_mode=text_erase_mode_id,
+                    text_erase_mode=mineru_text_erase_mode,
                 )
 
                 bg_left = int(round(transform.offset_x_emu))
@@ -959,128 +960,20 @@ def generate_pptx_from_ir(
             sampled_bg_rgb: tuple[int, int, int] | None = None
             sampled_text_rgb: tuple[int, int, int] | None = None
             if is_mineru_text:
-                mineru_block_type = (
-                    str(el.get("mineru_block_type") or "").strip().lower()
-                )
-                is_bullet_like = text.lstrip().startswith(("-", "•", "·", "●"))
-                plain_len = len(text.replace("\n", ""))
-                text_level_raw = el.get("mineru_text_level")
-                text_level: int | None = None
-                if text_level_raw is not None:
-                    try:
-                        text_level = int(text_level_raw)
-                    except Exception:
-                        text_level = None
-                is_heading = bool(
-                    mineru_block_type in {"title", "heading", "header", "h1", "h2"}
-                ) or (
-                    (text_level is not None and text_level <= 2 and plain_len <= 60)
-                    or (
-                        y0 <= 0.22 * float(page_h_pt)
-                        and bbox_h_pt >= 18.0
-                        and plain_len <= 56
-                        and not is_bullet_like
-                    )
-                )
-                # Distinguish page hero title vs card/section titles by geometry.
-                is_primary_heading = bool(
-                    is_heading
-                    and y0 <= 0.16 * float(page_h_pt)
-                    and bbox_w_pt >= 0.34 * float(page_w_pt)
-                )
-
-                # For non-heading text, always fit with wrapping. For heading text,
-                # allow wrapping when it materially improves usable size.
-                wrap_for_fit = bool(not is_heading)
-                max_body_pt = min(
-                    96.0 if is_primary_heading else 72.0,
-                    max(7.0, (0.98 if is_heading else 0.94) * float(bbox_h_pt)),
-                )
-                min_body_pt = 6.0
-                prefit_font_size_pt: float | None = None
-
-                if is_heading and (not is_primary_heading) and plain_len >= 14:
-                    single_line_pt = _fit_font_size_pt(
-                        text,
+                text_to_render, font_size_pt, wrap, is_heading, is_primary_heading = (
+                    _fit_mineru_text_style(
+                        text=text,
                         bbox_w_pt=bbox_w_pt,
                         bbox_h_pt=bbox_h_pt,
-                        wrap=False,
-                        min_pt=min_body_pt,
-                        max_pt=max_body_pt,
-                        width_fit_ratio=1.00,
-                        height_fit_ratio=0.995,
+                        page_w_pt=float(page_w_pt),
+                        page_h_pt=float(page_h_pt),
+                        y0_pt=float(y0),
+                        mineru_block_type=el.get("mineru_block_type"),
+                        mineru_text_level=el.get("mineru_text_level"),
                     )
-                    wrapped_pt = _fit_font_size_pt(
-                        text,
-                        bbox_w_pt=bbox_w_pt,
-                        bbox_h_pt=bbox_h_pt,
-                        wrap=True,
-                        min_pt=min_body_pt,
-                        max_pt=max_body_pt,
-                        width_fit_ratio=1.01,
-                        height_fit_ratio=0.96,
-                    )
-                    wrapped_lines, _ = _measure_text_lines(
-                        text,
-                        max_width_pt=max(1.0, 0.99 * bbox_w_pt),
-                        font_size_pt=float(wrapped_pt),
-                        wrap=True,
-                    )
-                    if (
-                        wrapped_lines >= 2
-                        and wrapped_lines <= 3
-                        and wrapped_pt
-                        >= max(single_line_pt + 1.2, 1.18 * single_line_pt)
-                    ):
-                        wrap_for_fit = True
-                        prefit_font_size_pt = float(wrapped_pt)
-                    else:
-                        wrap_for_fit = False
-                        prefit_font_size_pt = float(single_line_pt)
-
-                if prefit_font_size_pt is not None:
-                    font_size_pt = float(prefit_font_size_pt)
-                else:
-                    font_size_pt = _fit_font_size_pt(
-                        text,
-                        bbox_w_pt=bbox_w_pt,
-                        bbox_h_pt=bbox_h_pt,
-                        wrap=wrap_for_fit,
-                        min_pt=min_body_pt,
-                        max_pt=max_body_pt,
-                        width_fit_ratio=1.01 if wrap_for_fit else 1.00,
-                        height_fit_ratio=0.96 if wrap_for_fit else 0.995,
-                    )
-                if wrap_for_fit:
-                    # Lock explicit line breaks so Office/WPS viewers don't
-                    # reflow CJK text differently and cause overlap/shift.
-                    for _ in range(12):
-                        candidate_text = _wrap_text_to_width(
-                            text,
-                            max_width_pt=max(1.0, 1.01 * bbox_w_pt),
-                            font_size_pt=float(font_size_pt),
-                        )
-                        candidate_lines = [
-                            line for line in candidate_text.splitlines() if line.strip()
-                        ]
-                        if not candidate_lines:
-                            candidate_lines = [text]
-                            candidate_text = text
-                        line_height = 1.18 if _contains_cjk(text) else 1.15
-                        total_h = (
-                            float(len(candidate_lines))
-                            * float(font_size_pt)
-                            * line_height
-                        )
-                        if total_h <= (0.985 * bbox_h_pt):
-                            text_to_render = candidate_text
-                            break
-                        font_size_pt = max(
-                            float(min_body_pt), float(font_size_pt) - 0.35
-                        )
-                    else:
-                        text_to_render = candidate_text if candidate_text else text
-                wrap = bool(wrap_for_fit)
+                )
+                if not text_to_render.strip():
+                    continue
             elif is_ocr_text:
                 compact_len = _compact_text_length(text)
                 is_heading = bool(
@@ -1123,7 +1016,47 @@ def generate_pptx_from_ir(
                 font_size_pt = _infer_font_size_pt(el, bbox_h_pt=bbox_h_pt)
                 is_heading = False
 
-            tf.word_wrap = bool(wrap)
+            if is_mineru_text:
+                # Add right-side tolerance for MinerU text boxes to reduce
+                # last-character wrapping caused by viewer/font metric drift.
+                if is_heading and not wrap:
+                    nudge_right_pt = min(
+                        14.0,
+                        max(
+                            4.0,
+                            0.22 * float(bbox_h_pt),
+                            0.72 * float(font_size_pt),
+                        ),
+                    )
+                elif wrap:
+                    nudge_right_pt = min(
+                        10.0,
+                        max(
+                            3.0,
+                            0.16 * float(bbox_h_pt),
+                            0.50 * float(font_size_pt),
+                        ),
+                    )
+                else:
+                    nudge_right_pt = min(
+                        8.0,
+                        max(
+                            3.0,
+                            0.16 * float(bbox_h_pt),
+                            0.50 * float(font_size_pt),
+                        ),
+                    )
+                nudge_right_emu = int(
+                    round(float(nudge_right_pt) * _EMU_PER_PT * transform.scale)
+                )
+                max_box_w = max(1, int(slide_w_emu) - int(left))
+                textbox_width = max(1, min(int(width) + nudge_right_emu, max_box_w))
+                try:
+                    tx.width = Emu(textbox_width)
+                except Exception:
+                    pass
+
+            tf.word_wrap = False if is_mineru_text else bool(wrap)
             if is_mineru_text:
                 tf.auto_size = MSO_AUTO_SIZE.NONE
                 try:

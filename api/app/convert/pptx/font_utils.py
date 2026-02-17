@@ -214,6 +214,9 @@ def _measure_text_lines(
 
 
 def _tokenize_for_wrap(para: str) -> list[str]:
+    if not para:
+        return []
+
     if (not _contains_cjk(para)) and (" " in para):
         tokens: list[str] = []
         parts = [p for p in para.split(" ") if p != ""]
@@ -222,7 +225,34 @@ def _tokenize_for_wrap(para: str) -> list[str]:
                 tokens.append(" ")
             tokens.append(part)
         return tokens
-    return list(para)
+
+    # Mixed CJK/ASCII text needs token-level grouping for contiguous ASCII runs
+    # (e.g. "API", "HTTP", "A/B") so line-wrap does not split them into
+    # awkward fragments like "AP" + "I".
+    def _is_ascii_word_char(ch: str) -> bool:
+        return bool(ch) and ch.isascii() and (ch.isalnum() or ch in "_-./:+#%&@")
+
+    out: list[str] = []
+    i = 0
+    n = len(para)
+    while i < n:
+        ch = para[i]
+        if ch.isspace():
+            if not out or out[-1] != " ":
+                out.append(" ")
+            i += 1
+            continue
+        if _is_ascii_word_char(ch):
+            j = i + 1
+            while j < n and _is_ascii_word_char(para[j]):
+                j += 1
+            out.append(para[i:j])
+            i = j
+            continue
+        out.append(ch)
+        i += 1
+
+    return out
 
 
 def _token_width_pt(token: str, *, font_size_pt: float, prefer_cjk: bool) -> float:
@@ -457,6 +487,187 @@ def _normalize_ocr_text_for_render(text: str) -> str:
     if not lines:
         return ""
     return "\n".join(lines)
+
+
+def _split_heading_text_after_colon(text: str) -> str:
+    """Split heading text at the first colon when it has a meaningful tail.
+
+    This helps bilingual heading patterns like:
+    - "能力（The Abilities）：插件/工具（Plugins/Tools）"
+    - "记忆 (The Memory) : RAG & Embedding"
+    so we can keep a stable, explicit line break and avoid viewer-specific
+    trailing-character wraps.
+    """
+
+    normalized = _normalize_ocr_text_for_render(text)
+    if not normalized or "\n" in normalized:
+        return normalized
+
+    for sep in ("：", ":"):
+        split_at = normalized.find(sep)
+        if split_at < 2 or split_at >= (len(normalized) - 2):
+            continue
+        left_part = normalized[: split_at + 1].strip()
+        right_part = normalized[split_at + 1 :].strip()
+        if not left_part or not right_part:
+            continue
+        if _compact_text_length(right_part) < 2:
+            continue
+        return f"{left_part}\n{right_part}"
+
+    return normalized
+
+
+def _fit_mineru_text_style(
+    *,
+    text: str,
+    bbox_w_pt: float,
+    bbox_h_pt: float,
+    page_w_pt: float,
+    page_h_pt: float,
+    y0_pt: float,
+    mineru_block_type: str | None,
+    mineru_text_level: int | None,
+) -> tuple[str, float, bool, bool, bool]:
+    """Return (text_to_render, font_size_pt, wrap, is_heading, is_primary_heading)."""
+
+    normalized = _normalize_ocr_text_for_render(text)
+    if not normalized:
+        return ("", 6.0, False, False, False)
+
+    bbox_w_pt = max(1.0, float(bbox_w_pt))
+    bbox_h_pt = max(1.0, float(bbox_h_pt))
+    page_w_pt = max(1.0, float(page_w_pt))
+    page_h_pt = max(1.0, float(page_h_pt))
+    y0_pt = max(0.0, float(y0_pt))
+
+    text_to_fit = normalized
+    is_bullet_like = text_to_fit.lstrip().startswith(("-", "•", "·", "●"))
+    plain_len = len(text_to_fit.replace("\n", ""))
+
+    block_type = str(mineru_block_type or "").strip().lower()
+    text_level: int | None = None
+    if mineru_text_level is not None:
+        try:
+            text_level = int(mineru_text_level)
+        except Exception:
+            text_level = None
+
+    is_heading = bool(block_type in {"title", "heading", "header", "h1", "h2"}) or (
+        (text_level is not None and text_level <= 2 and plain_len <= 60)
+        or (
+            y0_pt <= 0.22 * page_h_pt
+            and bbox_h_pt >= 18.0
+            and plain_len <= 56
+            and (not is_bullet_like)
+        )
+    )
+    is_primary_heading = bool(
+        is_heading and y0_pt <= 0.16 * page_h_pt and bbox_w_pt >= 0.34 * page_w_pt
+    )
+
+    if is_heading:
+        text_to_fit = _split_heading_text_after_colon(text_to_fit)
+    plain_len = len(text_to_fit.replace("\n", ""))
+
+    wrap_for_fit = bool(not is_heading)
+    max_body_pt = min(
+        96.0 if is_primary_heading else 72.0,
+        max(7.0, (0.98 if is_heading else 0.94) * float(bbox_h_pt)),
+    )
+    min_body_pt = 6.0
+    prefit_font_size_pt: float | None = None
+
+    if is_heading and "\n" not in text_to_fit and (not is_primary_heading) and plain_len >= 14:
+        single_line_pt = _fit_font_size_pt(
+            text_to_fit,
+            bbox_w_pt=bbox_w_pt,
+            bbox_h_pt=bbox_h_pt,
+            wrap=False,
+            min_pt=min_body_pt,
+            max_pt=max_body_pt,
+            width_fit_ratio=1.00,
+            height_fit_ratio=0.995,
+        )
+        wrapped_pt = _fit_font_size_pt(
+            text_to_fit,
+            bbox_w_pt=bbox_w_pt,
+            bbox_h_pt=bbox_h_pt,
+            wrap=True,
+            min_pt=min_body_pt,
+            max_pt=max_body_pt,
+            width_fit_ratio=1.03,
+            height_fit_ratio=0.96,
+        )
+        wrapped_lines, _ = _measure_text_lines(
+            text_to_fit,
+            max_width_pt=max(1.0, 1.03 * bbox_w_pt),
+            font_size_pt=float(wrapped_pt),
+            wrap=True,
+        )
+        if (
+            wrapped_lines >= 2
+            and wrapped_lines <= 3
+            and wrapped_pt >= max(single_line_pt + 1.2, 1.18 * single_line_pt)
+        ):
+            wrap_for_fit = True
+            prefit_font_size_pt = float(wrapped_pt)
+        else:
+            wrap_for_fit = False
+            prefit_font_size_pt = float(single_line_pt)
+
+    if prefit_font_size_pt is not None:
+        font_size_pt = float(prefit_font_size_pt)
+    else:
+        font_size_pt = _fit_font_size_pt(
+            text_to_fit,
+            bbox_w_pt=bbox_w_pt,
+            bbox_h_pt=bbox_h_pt,
+            wrap=wrap_for_fit,
+            min_pt=min_body_pt,
+            max_pt=max_body_pt,
+            width_fit_ratio=1.03 if wrap_for_fit else 1.00,
+            height_fit_ratio=0.96 if wrap_for_fit else 0.995,
+        )
+
+    text_to_render = text_to_fit
+    if wrap_for_fit:
+        candidate_text = text_to_fit
+        for _ in range(12):
+            wrap_width_pt = max(
+                1.0,
+                float(bbox_w_pt)
+                + max(
+                    2.4,
+                    0.20 * float(bbox_h_pt),
+                    0.42 * float(font_size_pt),
+                ),
+            )
+            candidate_text = _wrap_text_to_width(
+                text_to_fit,
+                max_width_pt=wrap_width_pt,
+                font_size_pt=float(font_size_pt),
+            )
+            candidate_lines = [line for line in candidate_text.splitlines() if line.strip()]
+            if not candidate_lines:
+                candidate_lines = [text_to_fit]
+                candidate_text = text_to_fit
+            line_height = 1.18 if _contains_cjk(text_to_fit) else 1.15
+            total_h = float(len(candidate_lines)) * float(font_size_pt) * line_height
+            if total_h <= (0.985 * bbox_h_pt):
+                text_to_render = candidate_text
+                break
+            font_size_pt = max(float(min_body_pt), float(font_size_pt) - 0.35)
+        else:
+            text_to_render = candidate_text if candidate_text else text_to_fit
+
+    return (
+        text_to_render,
+        float(font_size_pt),
+        bool(wrap_for_fit),
+        bool(is_heading),
+        bool(is_primary_heading),
+    )
 
 
 def _prefer_wrap_for_ocr_text(
