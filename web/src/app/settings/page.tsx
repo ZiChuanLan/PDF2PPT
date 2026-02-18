@@ -474,6 +474,19 @@ export default function SettingsPage() {
     toast.success("设置已保存")
   }, [settings])
 
+  const onResetScannedImageTuning = React.useCallback(() => {
+    setSettings((s) => ({
+      ...s,
+      imageBgClearExpandMinPt: defaultSettings.imageBgClearExpandMinPt,
+      imageBgClearExpandMaxPt: defaultSettings.imageBgClearExpandMaxPt,
+      imageBgClearExpandRatio: defaultSettings.imageBgClearExpandRatio,
+      scannedImageRegionMinAreaRatio: defaultSettings.scannedImageRegionMinAreaRatio,
+      scannedImageRegionMaxAreaRatio: defaultSettings.scannedImageRegionMaxAreaRatio,
+      scannedImageRegionMaxAspectRatio: defaultSettings.scannedImageRegionMaxAspectRatio,
+    }))
+    toast.success("图片阈值已恢复为后端默认值")
+  }, [])
+
   const onClear = React.useCallback(() => {
     localStorage.removeItem(SETTINGS_STORAGE_KEY)
     skipNextAutoSaveRef.current = true
@@ -1139,8 +1152,19 @@ export default function SettingsPage() {
 
               {showAdvanced ? (
                 <div className="grid gap-3 rounded-md border border-border/70 p-3">
-                  <div className="font-sans text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    图片底图清除与图块阈值
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-sans text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      图片底图清除与图块阈值
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[11px]"
+                      onClick={onResetScannedImageTuning}
+                    >
+                      恢复默认阈值
+                    </Button>
                   </div>
                   <div className="grid gap-3 md:grid-cols-3">
                     <div className="grid gap-1.5">
@@ -1157,6 +1181,9 @@ export default function SettingsPage() {
                           setSettings((s) => ({ ...s, imageBgClearExpandMinPt: e.target.value }))
                         }
                       />
+                      <div className="text-muted-foreground text-[11px]">
+                        后端默认：{defaultSettings.imageBgClearExpandMinPt}
+                      </div>
                     </div>
 
                     <div className="grid gap-1.5">
@@ -1173,6 +1200,9 @@ export default function SettingsPage() {
                           setSettings((s) => ({ ...s, imageBgClearExpandMaxPt: e.target.value }))
                         }
                       />
+                      <div className="text-muted-foreground text-[11px]">
+                        后端默认：{defaultSettings.imageBgClearExpandMaxPt}
+                      </div>
                     </div>
 
                     <div className="grid gap-1.5">
@@ -1189,6 +1219,9 @@ export default function SettingsPage() {
                           setSettings((s) => ({ ...s, imageBgClearExpandRatio: e.target.value }))
                         }
                       />
+                      <div className="text-muted-foreground text-[11px]">
+                        后端默认：{defaultSettings.imageBgClearExpandRatio}
+                      </div>
                     </div>
                   </div>
 
@@ -1210,6 +1243,9 @@ export default function SettingsPage() {
                           }))
                         }
                       />
+                      <div className="text-muted-foreground text-[11px]">
+                        后端默认：{defaultSettings.scannedImageRegionMinAreaRatio}
+                      </div>
                     </div>
 
                     <div className="grid gap-1.5">
@@ -1229,6 +1265,9 @@ export default function SettingsPage() {
                           }))
                         }
                       />
+                      <div className="text-muted-foreground text-[11px]">
+                        后端默认：{defaultSettings.scannedImageRegionMaxAreaRatio}
+                      </div>
                     </div>
 
                     <div className="grid gap-1.5">
@@ -1248,6 +1287,9 @@ export default function SettingsPage() {
                           }))
                         }
                       />
+                      <div className="text-muted-foreground text-[11px]">
+                        后端默认：{defaultSettings.scannedImageRegionMaxAspectRatio}
+                      </div>
                     </div>
                   </div>
 
