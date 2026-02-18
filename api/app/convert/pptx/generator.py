@@ -784,6 +784,7 @@ def generate_pptx_from_ir(
 
                 text_erase_bboxes_pt: list[list[float]] = []
                 protect_bboxes_pt: list[list[float]] = []
+                mineru_image_regions_pt: list[list[float]] = []
 
                 for el in _iter_page_elements(page, type_name="text"):
                     if str(el.get("source") or "").strip().lower() != "mineru":
@@ -804,10 +805,15 @@ def generate_pptx_from_ir(
                 for el in _iter_page_elements(page, type_name="image"):
                     if str(el.get("source") or "").strip().lower() != "mineru":
                         continue
-                    # Do not protect MinerU image regions while erasing text.
-                    # Image elements are overlaid again below, so this avoids
-                    # mixed background leftovers and keeps text area fill uniform.
-                    continue
+                    if not str(el.get("image_path") or "").strip():
+                        continue
+                    try:
+                        ix0, iy0, ix1, iy1 = _coerce_bbox_pt(el.get("bbox_pt"))
+                    except Exception:
+                        continue
+                    if ix1 <= ix0 or iy1 <= iy0:
+                        continue
+                    mineru_image_regions_pt.append([ix0, iy0, ix1, iy1])
 
                 cleaned_render_path = _erase_regions_in_render_image(
                     render_path,
@@ -820,6 +826,17 @@ def generate_pptx_from_ir(
                     dpi=int(scanned_render_dpi),
                     text_erase_mode=mineru_text_erase_mode,
                 )
+                if mineru_image_regions_pt and mineru_render_pix is not None:
+                    cleaned_render_path = _clear_regions_for_transparent_crops(
+                        cleaned_render_path=cleaned_render_path,
+                        out_path=artifacts
+                        / "page_renders"
+                        / f"page-{page_index:04d}.mineru.clean.images-bg-cleared.png",
+                        regions_pt=mineru_image_regions_pt,
+                        pix=mineru_render_pix,
+                        page_height_pt=page_h_pt,
+                        dpi=int(scanned_render_dpi),
+                    )
 
                 bg_left = int(round(transform.offset_x_emu))
                 bg_top = int(round(transform.offset_y_emu))
