@@ -343,7 +343,7 @@ flowchart LR
 
 - 前端设置页填写的 OCR 配置，会随每次任务提交到后端，worker 按这次任务的参数执行
 - `.env` 里的 `SILICONFLOW_*` 是服务端默认值，主要用于“你前端这次没填”或者“你想给整台服务一个默认 OCR 配置”
-- `OCR_PADDLE_VL_PREWARM` 这类启动项只能读环境变量，因为容器启动时还没有用户前端表单
+- `OCR_PADDLE_LAYOUT_PREWARM` 和 `OCR_PADDLE_VL_PREWARM` 这类启动项只能读环境变量，因为容器启动时还没有用户前端表单
 
 所以如果你是自己部署、自己使用，通常可以这样理解：
 
