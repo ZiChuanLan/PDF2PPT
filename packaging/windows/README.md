@@ -1,6 +1,8 @@
-# Windows EXE 与 GitHub Release
+# PDF2PPT Windows 发布
 
-本目录提供 Windows 发行流程，目标是产出可直接上传到 GitHub Releases 的两个资产：
+本目录提供 Windows 发行流程，目标是产出可直接上传到 GitHub Releases 的两个资产。
+
+当前打包产物文件名仍沿用历史名字：
 
 - `release/windows/PPT-OpenCode-Launcher.exe`
 - `release/windows/ppt-opencode-win-x64.zip`
@@ -13,6 +15,10 @@ zip 内包含：
 - 基础说明文档
 
 推荐用户下载 zip 解压后，双击其中 EXE 启动完整服务栈（web + api + worker + redis）。
+
+说明：
+- 文档品牌统一为 `PDF2PPT`
+- 为了不影响现有打包脚本、Release 资源名和启动器逻辑，文件名暂时没有一起重命名
 
 ## 前提
 

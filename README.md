@@ -1,11 +1,11 @@
 # PDF2PPT
 
-将 PDF（尤其是扫描版/图片版）转换为**高保真、可编辑**的 PPTX。
+`PDF2PPT` 用来把 PDF，尤其是扫描版、图片版和课件截图类文档，转换成**尽量高保真、尽量可编辑**的 PPTX。
 
-核心目标：
-- 生成后的 PPT（文字位置/字号/换行/图片区域）尽量与原图一致
-- OCR 可切换不同远程/本地引擎，但统一走同一条合成管线
-- 前端默认保持简单，高级选项折叠
+项目重点：
+- 尽量保留原稿的文字位置、字号、换行和图片区块
+- OCR 可切换远程或本地引擎，但统一走同一条合成管线
+- 部署配置尽量收敛，默认值尽量放在代码里而不是堆在 compose 里
 
 ## 快速启动（本地开发）
 
@@ -23,15 +23,33 @@ make dev-local
 bash scripts/dev/local_dev.sh
 ```
 
+## VPS / Docker 最小配置
+
+常规部署只需要关心下面几项：
+
+```env
+SILICONFLOW_API_KEY=你的key
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+SILICONFLOW_MODEL=PaddlePaddle/PaddleOCR-VL-1.5
+OCR_PADDLE_VL_PREWARM=1
+OCR_PADDLE_VL_PREWARM_TARGET=worker
+OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX=2200
+```
+
+说明：
+- `OCR_PADDLE_VL_PREWARM=1` 用于容器启动时预热 PaddleOCR-VL，避免第一个请求承担冷启动
+- `OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX` 是目前仍建议保留的公开调节项
+- 其他 PaddleOCR-VL 超时、重试、并发等细粒度参数默认走代码内置值，除非你在排障，否则不需要管
+
 ## Windows 可下载版（EXE + Release 包）
 
-如果你希望用户在 GitHub 上下载后直接运行，请使用 Windows 打包流程：
+如果你希望用户在 GitHub 上下载后直接运行，可以使用 Windows 打包流程：
 
 - 文档：`packaging/windows/README.md`
 - 构建脚本：`packaging/windows/build_exe.ps1` / `packaging/windows/build_exe.bat`
 - 自动化工作流：`.github/workflows/windows-release.yml`
 
-构建后会得到：
+当前打包链路输出的文件名仍沿用历史名字：
 
 - `release/windows/PPT-OpenCode-Launcher.exe`
 - `release/windows/ppt-opencode-win-x64.zip`
@@ -39,6 +57,7 @@ bash scripts/dev/local_dev.sh
 说明：
 - `PPT-OpenCode-Launcher.exe` 是启动器
 - 对最终用户分发，优先使用 `ppt-opencode-win-x64.zip`（包含 EXE + 运行所需目录）
+- Markdown 文档品牌已经统一为 `PDF2PPT`，但打包产物文件名暂未跟着改动，避免影响现有发布链路
 
 ## 远程 OCR（推荐）
 
