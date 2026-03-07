@@ -43,25 +43,11 @@ services:
       - api-data:/app/data
       - paddlex-cache:/root/.paddlex
       - paddle-cache:/root/.cache/paddle
+    env_file:
+      - .env
     environment:
-      MAX_FILE_MB: ${MAX_FILE_MB:-100}
-      MAX_PAGES: ${MAX_PAGES:-200}
-      JOB_TTL_MINUTES: ${JOB_TTL_MINUTES:-60}
-      JOB_KEEPALIVE_INTERVAL_S: ${JOB_KEEPALIVE_INTERVAL_S:-15}
-      JOB_ROOT_DIR: ${JOB_ROOT_DIR:-/app/data/jobs}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      CORS_ALLOW_ORIGIN_REGEX: ${CORS_ALLOW_ORIGIN_REGEX:-}
-      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
-      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
-      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-Pro/deepseek-ai/deepseek-ocr}
       OCR_PADDLE_LAYOUT_PREWARM: ${OCR_PADDLE_LAYOUT_PREWARM:-1}
       OCR_PADDLE_LAYOUT_PREWARM_TARGET: ${OCR_PADDLE_LAYOUT_PREWARM_TARGET:-worker}
-      OCR_PADDLE_VL_PREWARM: ${OCR_PADDLE_VL_PREWARM:-0}
-      OCR_PADDLE_VL_PREWARM_TARGET: ${OCR_PADDLE_VL_PREWARM_TARGET:-worker}
-      OCR_PADDLE_VL_DOCPARSER_USE_QUEUES: ${OCR_PADDLE_VL_DOCPARSER_USE_QUEUES:-}
-      OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX: ${OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX:-}
       APP_SERVICE_ROLE: api
     depends_on:
       redis:
@@ -85,24 +71,11 @@ services:
       - api-data:/app/data
       - paddlex-cache:/root/.paddlex
       - paddle-cache:/root/.cache/paddle
+    env_file:
+      - .env
     environment:
-      MAX_FILE_MB: ${MAX_FILE_MB:-100}
-      MAX_PAGES: ${MAX_PAGES:-200}
-      JOB_TTL_MINUTES: ${JOB_TTL_MINUTES:-60}
-      JOB_KEEPALIVE_INTERVAL_S: ${JOB_KEEPALIVE_INTERVAL_S:-15}
-      JOB_ROOT_DIR: ${JOB_ROOT_DIR:-/app/data/jobs}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
-      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
-      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
-      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-Pro/deepseek-ai/deepseek-ocr}
       OCR_PADDLE_LAYOUT_PREWARM: ${OCR_PADDLE_LAYOUT_PREWARM:-1}
       OCR_PADDLE_LAYOUT_PREWARM_TARGET: ${OCR_PADDLE_LAYOUT_PREWARM_TARGET:-worker}
-      OCR_PADDLE_VL_PREWARM: ${OCR_PADDLE_VL_PREWARM:-0}
-      OCR_PADDLE_VL_PREWARM_TARGET: ${OCR_PADDLE_VL_PREWARM_TARGET:-worker}
-      OCR_PADDLE_VL_DOCPARSER_USE_QUEUES: ${OCR_PADDLE_VL_DOCPARSER_USE_QUEUES:-}
-      OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX: ${OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX:-}
       APP_SERVICE_ROLE: worker
     depends_on:
       redis:
