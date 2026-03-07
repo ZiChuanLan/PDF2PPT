@@ -91,34 +91,14 @@ bash scripts/dev/local_dev.sh
 cp .env.example .env
 ```
 
-2. 这一步分两种情况
 
-如果你打算在前端设置页里逐项填写 OCR 配置，那 `.env` 不需要补这几项也能正常跑任务。
-
-如果你希望容器启动后就自带一套服务端默认 OCR 配置，或者要启用 PaddleOCR-VL 启动预热，再补下面这些：
-
-```env
-SILICONFLOW_API_KEY=你的key
-SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
-SILICONFLOW_MODEL=PaddlePaddle/PaddleOCR-VL-1.5
-OCR_PADDLE_VL_PREWARM=1
-OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX=2200
-```
-
-更直白一点：
-
-- 前端设置页填写 `OCR API Key / Base URL / Model`：足够跑正常 OCR 任务
-- `.env` 里的 `SILICONFLOW_*`：是服务端默认值，不是前端模式下的硬性必填
-- `OCR_PADDLE_VL_PREWARM=1`：只影响容器启动时预热，不影响任务是否能跑
-- `OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX=2200`：不是必填；代码本身默认就是 `2200`，只有你想覆盖默认值时才需要配
-
-3. 启动
+2. 启动
 
 ```bash
 docker compose up -d --build
 ```
 
-4. 检查状态
+3. 检查状态
 
 ```bash
 docker compose ps
