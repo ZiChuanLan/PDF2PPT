@@ -1,20 +1,78 @@
 # PDF2PPT
 
-`PDF2PPT` 用来把 PDF，尤其是扫描版、图片版和课件截图类文档，转换成**尽量高保真、尽量可编辑**的 PPTX。
+`PDF2PPT` 用来把 PDF，尤其是扫描版、图片版、课件截图类文档，转换成尽量高保真、尽量可编辑的 PPTX。
 
-项目重点：
-- 尽量保留原稿的文字位置、字号、换行和图片区块
-- OCR 可切换远程或本地引擎，但统一走同一条合成管线
-- 部署配置尽量收敛，默认值尽量放在代码里而不是堆在 compose 里
+它不是单纯把 PDF 截成一张背景图，而是尽量把页面拆成这些层再重组：
 
-## 快速启动（本地开发）
+- 可编辑文本
+- 独立图片块
+- 清理过的页面底图
+- 最终 PPTX 导出结果
+
+项目目前重点解决三类问题：
+
+- 扫描页怎么尽量保留原始视觉效果，同时把文字变成可编辑对象
+- OCR 怎么在本地引擎、AIOCR、文档解析链路之间切换
+- Docker 部署怎么尽量简单，默认直接 `docker compose up -d --build`
+
+## 一图看懂
+
+如果你的 Markdown 查看器支持 Mermaid，下面两张图就是最核心的架构和处理流程。
+
+### 部署架构图
+
+```mermaid
+flowchart LR
+    User[Browser User] --> Web[Next.js Web]
+    Web -->|/api/v1/*| API[FastAPI API]
+    API --> Redis[(Redis / RQ Queue)]
+    Redis --> Worker[RQ Worker]
+    API --> Jobs[(api-data volume)]
+    Worker --> Jobs
+    Worker --> PaddleCache[(paddlex-cache / paddle-cache)]
+    Worker --> OCR[Remote OCR Provider]
+    Worker --> Parse[Optional Cloud Parser]
+    Web -->|track / download| API
+```
+
+### 转换流程图
+
+```mermaid
+flowchart TD
+    A[上传 PDF] --> B[API 校验参数并创建 job]
+    B --> C[写入 input.pdf 与 job metadata]
+    C --> D[入 Redis 队列]
+    D --> E[Worker 拉取任务]
+    E --> F[解析 PDF 基础结构]
+    F --> G{是否需要 OCR}
+    G -- 否 --> J[直接进入 PPT 生成]
+    G -- 是 --> H[执行 OCR / 文档解析]
+    H --> I[生成文本元素与 image_regions]
+    I --> J
+    J --> K[扫描页重组: 底图 擦字 图片块 可编辑文本]
+    K --> L[导出 output.pptx 与调试产物]
+    L --> M[前端跟踪进度并提供下载]
+```
+
+## 核心能力
+
+- 统一上传与任务跟踪：前端上传 PDF，后端返回 `job_id`，再通过轮询/SSE 获取阶段进度
+- 多种解析链路：本地 OCR、AIOCR、百度文档解析、MinerU 云解析
+- 扫描页重组：支持整页背景保留或图片块拆分
+- 调试产物保留：任务目录里会保留 `ir.json`、`ir.ocr.json`、`artifacts/` 等排障材料
+- Docker 生产部署：默认编排就是部署版，不需要另外维护一套复杂脚本
+
+## 快速启动
+
+### 本地开发
 
 ```bash
 make dev-local
 ```
 
 会自动启动：
-- API: `http://127.0.0.1:8000`（若端口占用会自动换 8001）
+
+- API: `http://127.0.0.1:8000`，若占用会自动换 `8001`
 - Web: `http://localhost:3000`
 
 也可以直接运行：
@@ -23,118 +81,357 @@ make dev-local
 bash scripts/dev/local_dev.sh
 ```
 
-## VPS / Docker 最小配置
+### 生产部署
 
-常规部署只需要关心下面几项：
+默认的 `docker-compose.yml` 就是部署版。
+
+1. 复制环境变量模板
+
+```bash
+cp .env.example .env
+```
+
+2. 至少补齐这些值
 
 ```env
 SILICONFLOW_API_KEY=你的key
 SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
 SILICONFLOW_MODEL=PaddlePaddle/PaddleOCR-VL-1.5
 OCR_PADDLE_VL_PREWARM=1
-OCR_PADDLE_VL_PREWARM_TARGET=worker
 OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX=2200
 ```
 
-说明：
-- 本地部署现在默认只会在容器启动时预拉 `PP-DocLayoutV3` 到缓存卷里：`OCR_PADDLE_LAYOUT_PREWARM=1`。这样首个 PaddleOCR-VL 相关任务不会再承担这个本地 layout 模型下载。
-- `OCR_PADDLE_VL_PREWARM=1` 用于容器启动时预热 PaddleOCR-VL，避免第一个请求承担冷启动
-- `OCR_PADDLE_VL_PREWARM` 仍然需要启动阶段已经有可用的远程 API key；如果 key 只在 Web 提交任务时才提供，这一项会跳过，但本地模型预热仍可执行
-- `OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX` 是目前仍建议保留的公开调节项
-- 其他 PaddleOCR-VL 超时、重试、并发等细粒度参数默认走代码内置值，除非你在排障，否则不需要管
-
-### 生产部署命令
-
-默认的 `docker-compose.yml` 就是部署版，可以直接走标准命令。
-
-1. 复制环境变量模板：
-
-```bash
-cp .env.example .env
-```
-
-2. 至少补齐 `.env` 里的这些值：
-
-```env
-SILICONFLOW_API_KEY=你的key
-SILICONFLOW_MODEL=PaddlePaddle/PaddleOCR-VL-1.5
-OCR_PADDLE_VL_PREWARM=1
-OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX=2200
-```
-
-3. 直接启动：
+3. 启动
 
 ```bash
 docker compose up -d --build
 ```
 
-生产编排默认行为：
-- `web` 对外暴露 `${WEB_PORT}`，默认 `3000`
-- `api` 只绑定到宿主机 `127.0.0.1:${API_PORT}`，默认 `8000`
-- `redis` 不对外暴露
-- 任务结果和模型缓存走 named volume：`api-data`、`paddlex-cache`、`paddle-cache`
-- 前端默认走同源 `/health` 和 `/api/*`，再由 Next 反代到容器内 `api:8000`
-
-如果你有自己的域名反代，直接把外部流量转到 `WEB_PORT` 即可，不需要单独公开 `api`。
-
-### 同源与跨域配置
-
-默认推荐：
-- 保持 `NEXT_PUBLIC_API_URL=` 为空
-- 保持 `INTERNAL_API_ORIGIN=http://api:8000`
-- 让浏览器只访问 Web，同源 `/health` 和 `/api/v1/*` 由 Next 转发到后端
-
-只有在你明确要把 API 暴露为另一个公网地址时，才需要：
-- 设置 `NEXT_PUBLIC_API_URL=https://你的-api-域名`
-- 更新 `CORS_ALLOW_ORIGINS`
-- 重新构建 Web 镜像，因为 `NEXT_PUBLIC_*` 变量会进入前端构建产物
-
-### 常用运维命令
+4. 检查状态
 
 ```bash
 docker compose ps
 docker compose logs -f
-docker compose down
 curl http://127.0.0.1:8000/health
 ```
 
-### 开发态 Compose
+默认生产编排行为：
 
-如果你还想保留源码挂载和 `next dev` 那套开发容器，改用：
+- `web` 对外暴露 `${WEB_PORT}`，默认 `3000`
+- `api` 只绑定宿主机 `127.0.0.1:${API_PORT}`，默认 `8000`
+- `redis` 不对外暴露
+- 任务结果和缓存使用 named volume：`api-data`、`paddlex-cache`、`paddle-cache`
+- 浏览器默认只访问 Web，同源 `/api/*` 由 Next 反代到容器内 `api:8000`
 
-```bash
-docker compose -f docker-compose.dev.yml up -d --build
+如果你有自己的域名反代，通常只需要把外部流量转到 `WEB_PORT`，不需要额外公开 `api`。
+
+## 服务说明
+
+| 服务 | 作用 | 关键数据 |
+| --- | --- | --- |
+| `web` | Next.js 前端，负责上传、设置页、任务跟踪、结果下载 | 前端构建产物 |
+| `api` | FastAPI 接口，负责创建 job、参数校验、状态查询、下载产物 | Redis job metadata、`api-data` |
+| `worker` | 真正执行 PDF 解析、OCR、PPT 生成 | `input.pdf`、`ir.json`、`output.pptx` |
+| `redis` | job metadata、队列状态、取消标记 | `job:*`、RQ queue |
+
+## 实际任务流转
+
+### API 层做什么
+
+- 接收上传文件与表单配置
+- 规范化 parse engine / OCR provider / AIOCR chain 参数
+- 创建 `job_id`
+- 把 `input.pdf` 写入 `JOB_ROOT_DIR/<job_id>/`
+- 写入 Redis job metadata
+- 把任务入 RQ 队列
+
+### Worker 层做什么
+
+Worker 拿到任务后，会在任务目录中写出这些典型文件：
+
+- `input.pdf`
+- `ir.parsed.json`
+- `ir.ocr.json`
+- `ir.json`
+- `output.pptx`
+- `artifacts/`
+
+默认目录是：
+
+- `api/data/jobs` 本地开发默认落盘位置
+- 容器部署时默认是 `/app/data/jobs`
+
+### 任务目录示意
+
+```text
+api/data/jobs/<job_id>/
+├── input.pdf
+├── ir.parsed.json
+├── ir.ocr.json
+├── ir.json
+├── output.pptx
+└── artifacts/
+    ├── ocr/
+    ├── image_regions/
+    ├── page_renders/
+    ├── image_crops/
+    └── final_preview/
 ```
 
-## 远程 OCR（推荐）
+## OCR 与解析链路
 
-远程 OCR 走 OpenAI-Compatible 接口（例如 SiliconFlow / PPIO / Novita / OpenAI / DeepSeek 网关）。
+这个项目现在要先区分两层概念：
 
-建议通过以下方式之一配置：
-- 在前端“设置页”填写 OCR 的 `API Key / Base URL / Model`
-- 或在后端环境变量 / `.env` 中设置（示例见 `.env.example`）
+- Parse Engine：整份文档主链路怎么跑
+- OCR Provider / OCR Chain：识字与页面理解具体走哪条 OCR 路
 
-注意：不要把真实 Key 提交到仓库或发到公开渠道。
+### Parse Engine 语义
 
-### 常用模型示例
+| 前端模式 | 含义 | 适合场景 |
+| --- | --- | --- |
+| `local_ocr` | 本地解析 PDF，再按需要执行本地或 OCR 链路 | 通用默认模式 |
+| `remote_ocr` | 以 AIOCR 为主，适合需要远程视觉模型能力的场景 | OCR 质量优先 |
+| `baidu_doc` | 百度文档解析链路 | 需要结构化文档解析时 |
+| `mineru_cloud` | MinerU 云解析链路 | 适合表格、公式、结构化内容 |
 
-- DeepSeek 专用 OCR：`Pro/deepseek-ai/deepseek-ocr`
-- PaddleOCR-VL：`PaddlePaddle/PaddleOCR-VL-1.5`
-- 通用 VL 也可尝试 OCR：`Qwen/Qwen2.5-VL-72B-Instruct`（效果取决于模型与 prompt）
+### AIOCR 三条链路
 
-## 扫描页图片处理方式（关键）
+| Chain Mode | 实际路径 | 特点 | 典型模型 |
+| --- | --- | --- | --- |
+| `direct` | 整页直接送视觉模型 | 最简单，配置最少 | DeepSeek OCR、通用 VL |
+| `layout_block` | 本地版面切块，再逐块送视觉模型识别 | 适合小字密集、图文混排 | Qwen VL、GLM、通用 VL |
+| `doc_parser` | 走 PaddleOCR-VL 专用结构化通道 | 结构信息更完整，但链路更专用 | `PaddlePaddle/PaddleOCR-VL-1.5` |
+
+### 常见 OCR Provider
+
+| Provider | 含义 | 备注 |
+| --- | --- | --- |
+| `aiocr` | 远程 OpenAI-Compatible OCR | 推荐用于高质量 OCR |
+| `tesseract` | 本地 Tesseract | 最稳定、本地依赖少 |
+| `paddle_local` | 本地 PaddleOCR | 纯本地方案 |
+| `baidu` | 百度 OCR | 独立 provider |
+
+### 文档解析与 OCR 的关系
+
+不要把所有链路都理解成“只是在换一个 OCR 模型”。
+
+- `AIOCR direct` 更接近整页视觉识别
+- `AIOCR layout_block` 是本地先出 bbox，再把切片发给视觉模型识字
+- `PaddleOCR-VL doc_parser` 是专用结构化文档识别通道
+- `Baidu Doc` 和 `MinerU` 更接近整份文档解析，而不是单纯 OCR
+
+## 扫描页重组逻辑
+
+扫描页最终导出的 PPT，不只是 OCR 结果，还包含一次页面重组。
+
+### 扫描页输出模式
 
 设置项：`scanned_page_mode`
 
-- `segmented`（图片拆出来）：尽量把截图/图表等区域裁为独立图片对象，方便在 PPT 里单独编辑
-- `fullpage`（留在整页背景里）：整页作为背景图，仅覆盖可编辑文字，通常最接近原图
+| 模式 | 含义 | 结果特点 |
+| --- | --- | --- |
+| `segmented` | 尽量把截图、图表、图标裁成独立图片对象 | 方便在 PPT 里单独编辑图片 |
+| `fullpage` | 整页保留为背景图，只把识别出来的文字覆盖为可编辑文本 | 最接近原图，风险更低 |
+
+### 文本擦除模式
+
+设置项：`text_erase_mode`
+
+| 模式 | 含义 |
+| --- | --- |
+| `fill` | 直接擦除文字区域，速度快，当前默认更稳 |
+| `smart` | 更保守的清理策略，适合少数特殊页面 |
+
+### 哪些参数影响 OCR，哪些影响最终合成
+
+这点很容易混淆，尤其在 AIOCR 场景里。
+
+#### 直接影响 OCR 识别请求的参数
+
+- OCR provider
+- AIOCR provider / base URL / model
+- `ocr_ai_chain_mode`
+- `ocr_ai_layout_model`
+- AIOCR 并发、RPM、TPM、重试次数
+- `OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX`
+
+#### 不直接影响 OCR 识字，但会影响最终 PPT 合成结果的参数
+
+- `scanned_page_mode`
+- `text_erase_mode`
+- `image_bg_clear_expand_min_pt`
+- `image_bg_clear_expand_max_pt`
+- `image_bg_clear_expand_ratio`
+- `scanned_image_region_min_area_ratio`
+- `scanned_image_region_max_area_ratio`
+- `scanned_image_region_max_aspect_ratio`
+
+可以把它们理解成：
+
+- OCR 参数决定“识别出什么文字、什么 bbox”
+- 扫描页重组参数决定“哪些区域留作图片块、底图怎么擦、文字最终怎么叠回 PPT”
+
+### 扫描页合成图
+
+```mermaid
+flowchart LR
+    Render[Render PDF Page] --> OCR[OCR Text Elements]
+    OCR --> Regions[Detect image_regions]
+    Regions --> Mode{scanned_page_mode}
+    Mode -- segmented --> Bg[Clean Background]
+    Mode -- segmented --> Crops[Export Image Crops]
+    Mode -- fullpage --> Full[Keep Whole Page Background]
+    Bg --> Overlay[Overlay Editable Text + Image Crops]
+    Crops --> Overlay
+    Full --> Overlay2[Overlay Editable Text]
+    Overlay --> PPT[PPTX]
+    Overlay2 --> PPT
+```
+
+## 推荐配置
+
+### 1. 最省事的线上配置
+
+- Parse Engine: `remote_ocr`
+- OCR Provider: `aiocr`
+- Model: `PaddlePaddle/PaddleOCR-VL-1.5` 或 `DeepSeek OCR`
+- `scanned_page_mode=fullpage`
+
+适合先求稳，再逐步打开更多可编辑能力。
+
+### 2. 想把截图/图表拆成独立图片
+
+- `scanned_page_mode=segmented`
+- 保持默认图块阈值
+- 如果发现小图标没被拆出来，再微调 `scanned_image_region_*`
+
+### 3. 图文混排很多，小字密
+
+- AIOCR chain 试 `layout_block`
+- 视觉模型用更强的通用 VL
+- 适度开启 block/page 并发，但先小文档验证
+
+## 环境变量说明
+
+### 最小必填
+
+| 变量 | 说明 |
+| --- | --- |
+| `SILICONFLOW_API_KEY` | 远程 OCR API key |
+| `SILICONFLOW_BASE_URL` | OCR 网关地址 |
+| `SILICONFLOW_MODEL` | 默认远程 OCR 模型 |
+
+### 常用可选
+
+| 变量 | 说明 |
+| --- | --- |
+| `WEB_PORT` | Web 暴露端口，默认 `3000` |
+| `API_PORT` | API 暴露端口，默认 `8000` |
+| `JOB_ROOT_DIR` | job 目录根路径 |
+| `WORKER_CONCURRENCY` | worker 进程数 |
+| `OCR_PADDLE_LAYOUT_PREWARM` | 预热 `PP-DocLayoutV3` |
+| `OCR_PADDLE_VL_PREWARM` | 启动时预热 PaddleOCR-VL |
+| `OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX` | doc_parser 输入长边压缩阈值 |
+| `NEXT_PUBLIC_API_URL` | 浏览器直接访问的 API 地址，默认留空走同源 |
+| `INTERNAL_API_ORIGIN` | Next 容器内访问 API 的地址 |
+
+### 同源部署建议
+
+默认推荐：
+
+```env
+NEXT_PUBLIC_API_URL=
+INTERNAL_API_ORIGIN=http://api:8000
+```
+
+这样浏览器只访问 Web，最省心，也最不容易遇到跨域问题。
+
+## 排障入口
+
+### 常见问题 1：任务卡在 OCR 阶段
+
+先看这些：
+
+- `docker compose logs -f worker`
+- 任务状态页 debug events
+- `artifacts/ocr/ocr_debug.json`
+
+如果是 AIOCR：
+
+- 看有没有卡在整页请求
+- 看有没有卡在 `layout_block` 的某个 block
+- 看是否出现 `Retrying request to /chat/completions`
+
+### 常见问题 2：文字识别没问题，但 PPT 里某块变成图片了
+
+先查：
+
+- `artifacts/image_regions/*.regions.json`
+- `artifacts/image_regions/*.crops.json`
+- `artifacts/image_crops/`
+
+这通常不是 OCR 模型本身问题，而是扫描页图片块识别和后续合成策略的问题。
+
+### 常见问题 3：PaddleOCR-VL 首次很慢
+
+先区分：
+
+- 是不是首次拉 `PP-DocLayoutV3`
+- 是不是首次远程 PaddleOCR-VL 冷启动
+- 是否启用了 `OCR_PADDLE_VL_PREWARM=1`
+
+### 常见问题 4：前端能开，API 不通
+
+优先检查：
+
+- `docker compose ps`
+- Web 容器健康检查
+- API 健康检查
+- `NEXT_PUBLIC_API_URL`
+- `INTERNAL_API_ORIGIN`
+
+## 测试与验证
+
+当前仓库里保留了后端回归测试，主要在 `api/tests/`。
+
+这台机器上更可靠的跑法是：
+
+```bash
+docker compose run --rm --no-deps -v "$PWD/api:/app" api sh -lc \
+"python -m pip install --no-cache-dir pytest >/tmp/pytest-install.log && \
+ python -m pytest"
+```
+
+如果只跑核心 OCR 路由相关测试，可以缩小到具体文件。
 
 ## 项目结构
 
-- `api/`：FastAPI 接口、任务队列、PDF 解析、OCR 和 PPTX 生成
-- `web/`：Next.js 前端，负责上传、运行配置、结果跟踪和设置页
-- `scripts/dev/`：本地开发辅助脚本
+```text
+.
+├── api/
+│   ├── app/                    # FastAPI、worker、OCR、PPT 生成
+│   ├── scripts/                # 后端辅助脚本
+│   ├── tests/                  # 后端测试
+│   └── data/                   # 本地开发时的 job/experiment 产物
+├── web/
+│   ├── src/app/                # 页面与路由
+│   └── src/lib/                # 设置、API、运行配置
+├── scripts/
+│   ├── dev/                    # 本地开发脚本
+│   └── qa/                     # 简单 QA 辅助脚本
+├── docker-compose.yml          # 生产部署编排
+├── docker-compose.dev.yml      # 开发态编排
+└── README.md
+```
 
-说明：
-- 公开仓库默认不保留测试样本、截图对比产物和临时基准脚本
-- OCR 的真实密钥、样本 PDF、运行缓存也不应提交
+## 开发建议
+
+- 不要把真实 API key 提交到仓库
+- 不要把样本 PDF、截图、任务产物目录直接提交
+- 线上部署优先走 `docker compose up -d --build`
+- 调 OCR 之前先确认自己当前到底走的是哪条链路
+
+如果你后面想继续补文档，最值得再加的是两类内容：
+
+- 真实截图版的“设置页字段说明”
+- 几种典型 PDF 的转换前后对比图
