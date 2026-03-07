@@ -411,7 +411,7 @@ INTERNAL_API_ORIGIN=http://api:8000
 
 当前仓库里保留了后端回归测试，主要在 `api/tests/`。
 
-这台机器上更可靠的跑法是：
+更可靠的跑法是：
 
 ```bash
 docker compose run --rm --no-deps -v "$PWD/api:/app" api sh -lc \
@@ -441,14 +441,3 @@ docker compose run --rm --no-deps -v "$PWD/api:/app" api sh -lc \
 └── README.md
 ```
 
-## 开发建议
-
-- 不要把真实 API key 提交到仓库
-- 不要把样本 PDF、截图、任务产物目录直接提交
-- 线上部署优先走 `docker compose up -d --build`
-- 调 OCR 之前先确认自己当前到底走的是哪条链路
-
-如果你后面想继续补文档，最值得再加的是两类内容：
-
-- 真实截图版的“设置页字段说明”
-- 几种典型 PDF 的转换前后对比图
