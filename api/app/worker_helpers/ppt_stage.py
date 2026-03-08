@@ -66,6 +66,7 @@ def run_ppt_stage(
     remove_footer_notebooklm: bool,
     normalized_text_erase_mode: str,
     normalized_scanned_page_mode: str,
+    normalized_ppt_generation_mode: str,
     normalized_image_bg_clear_expand_min_pt: float,
     normalized_image_bg_clear_expand_max_pt: float,
     normalized_image_bg_clear_expand_ratio: float,
@@ -81,10 +82,15 @@ def run_ppt_stage(
     ppt_page_total = sum(
         1 for page in (ir.get("pages") or []) if isinstance(page, dict)
     )
+    fast_mode = str(normalized_ppt_generation_mode or "").strip().lower() == "fast"
     set_processing_progress(
         JobStage.pptx_generating,
         84,
-        f"开始生成 PPT（共 {ppt_page_total} 页）",
+        (
+            f"开始生成 PPT（快速模式，共 {ppt_page_total} 页）"
+            if fast_mode
+            else f"开始生成 PPT（共 {ppt_page_total} 页）"
+        ),
     )
     abort_if_cancelled(stage=JobStage.pptx_generating, message="Job cancelled")
 
@@ -92,7 +98,11 @@ def run_ppt_stage(
         set_processing_progress(
             JobStage.pptx_generating,
             _progress_in_span(done, max(1, total), start=85, end=97),
-            f"正在生成 PPT 页面（{done}/{max(1, total)}）",
+            (
+                f"正在生成 PPT 页面（快速模式，{done}/{max(1, total)}）"
+                if fast_mode
+                else f"正在生成 PPT 页面（{done}/{max(1, total)}）"
+            ),
         )
         abort_if_cancelled(stage=JobStage.pptx_generating, message="Job cancelled")
 
@@ -107,6 +117,7 @@ def run_ppt_stage(
             "remove_footer_notebooklm": bool(remove_footer_notebooklm),
             "text_erase_mode": normalized_text_erase_mode,
             "scanned_page_mode": normalized_scanned_page_mode,
+            "ppt_generation_mode": normalized_ppt_generation_mode,
             "image_bg_clear_expand_min_pt": normalized_image_bg_clear_expand_min_pt,
             "image_bg_clear_expand_max_pt": normalized_image_bg_clear_expand_max_pt,
             "image_bg_clear_expand_ratio": normalized_image_bg_clear_expand_ratio,

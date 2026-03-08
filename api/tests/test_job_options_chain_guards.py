@@ -30,6 +30,7 @@ def _base_kwargs() -> dict:
         "ocr_geometry_mode": "auto",
         "text_erase_mode": "fill",
         "scanned_page_mode": "segmented",
+        "ppt_generation_mode": "standard",
         "page_start": None,
         "page_end": None,
         "mineru_api_token": "mineru-token",
@@ -88,3 +89,33 @@ def test_local_aiocr_layout_block_chain_is_normalized() -> None:
     assert normalized.ocr_provider == "aiocr"
     assert normalized.ocr_ai_chain_mode == "layout_block"
     assert normalized.ocr_ai_layout_model == "pp_doclayout_v3"
+
+
+def test_ppt_generation_mode_normalizes_speed_alias() -> None:
+    kwargs = _base_kwargs()
+    kwargs["ppt_generation_mode"] = "speed"
+    kwargs["ocr_ai_api_key"] = "ocr-key"
+    kwargs["ocr_ai_model"] = "Pro/deepseek-ai/deepseek-ocr"
+    normalized = validate_and_normalize_job_options(
+        parse_provider="local",
+        ocr_provider="aiocr",
+        **kwargs,
+    )
+
+    assert normalized.ppt_generation_mode == "fast"
+
+
+def test_direct_chain_rejects_paddleocr_vl_model() -> None:
+    kwargs = _base_kwargs()
+    kwargs["ocr_ai_api_key"] = "ocr-key"
+    kwargs["ocr_ai_model"] = "PaddlePaddle/PaddleOCR-VL-1.5"
+    kwargs["ocr_ai_chain_mode"] = "direct"
+
+    with pytest.raises(AppException) as exc_info:
+        validate_and_normalize_job_options(
+            parse_provider="local",
+            ocr_provider="aiocr",
+            **kwargs,
+        )
+
+    assert exc_info.value.message == "direct chain does not support PaddleOCR-VL models"

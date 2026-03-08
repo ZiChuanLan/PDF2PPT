@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 
 API_ROOT = Path(__file__).resolve().parents[1]
 if str(API_ROOT) not in sys.path:
@@ -151,3 +153,163 @@ def test_generate_pptx_keeps_final_preview_export_when_enabled(
     )
 
     assert preview_calls == [1]
+
+
+def test_merge_text_erase_bboxes_fast_path_keeps_transitive_line_merge() -> None:
+    boxes = []
+    x = 10.0
+    for _ in range(260):
+        boxes.append([x, 20.0, x + 8.0, 30.0])
+        x += 9.0
+
+    merged = generator._merge_text_erase_bboxes(boxes, gap_pt=2.0)
+
+    assert merged == [[10.0, 20.0, 2349.0, 30.0]]
+
+
+def test_merge_text_erase_bboxes_fast_path_keeps_separate_rows() -> None:
+    boxes: list[list[float]] = []
+    for y in (20.0, 44.0):
+        x = 10.0
+        for _ in range(130):
+            boxes.append([x, y, x + 8.0, y + 10.0])
+            x += 9.0
+
+    merged = generator._merge_text_erase_bboxes(boxes, gap_pt=2.0)
+
+    assert merged == [
+        [10.0, 20.0, 1179.0, 30.0],
+        [10.0, 44.0, 1179.0, 54.0],
+    ]
+
+
+def test_generate_pptx_reports_progress_for_scanned_pages(
+    monkeypatch, tmp_path: Path
+) -> None:
+    def _fake_render_pdf_page_png(
+        _source_pdf: Path,
+        *,
+        page_index: int,
+        dpi: int,
+        out_path: Path,
+    ):
+        del page_index, dpi
+        img = Image.new("RGB", (800, 450), color=(255, 255, 255))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        img.save(out_path)
+        return img
+
+    monkeypatch.setattr(generator, "_render_pdf_page_png", _fake_render_pdf_page_png)
+    monkeypatch.setattr(
+        generator,
+        "_build_scanned_image_region_infos",
+        lambda **_kwargs: [],
+    )
+
+    source_pdf = tmp_path / "input.pdf"
+    source_pdf.write_bytes(b"%PDF-1.4\n%stub\n")
+
+    progress_events: list[tuple[int, int]] = []
+    out_path = generator.generate_pptx_from_ir(
+        {
+            "source_pdf": str(source_pdf),
+            "pages": [
+                {
+                    "page_index": 0,
+                    "page_width_pt": 720.0,
+                    "page_height_pt": 405.0,
+                    "has_text_layer": False,
+                    "elements": [
+                        {
+                            "type": "text",
+                            "source": "ocr",
+                            "text": "Fire and Ice",
+                            "bbox_pt": [36.0, 48.0, 220.0, 84.0],
+                            "color": "#111111",
+                        }
+                    ],
+                }
+            ],
+        },
+        tmp_path / "scanned-progress.pptx",
+        artifacts_dir=tmp_path / "scanned-artifacts",
+        export_final_preview_images=False,
+        progress_callback=lambda done, total: progress_events.append((done, total)),
+    )
+
+    assert out_path.exists()
+    assert progress_events == [(1, 1)]
+
+
+def test_generate_pptx_fast_mode_skips_image_region_analysis_and_preview_export(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured_dpis: list[int] = []
+    image_region_calls = {"count": 0}
+    preview_calls = {"count": 0}
+
+    def _fake_render_pdf_page_png(
+        _source_pdf: Path,
+        *,
+        page_index: int,
+        dpi: int,
+        out_path: Path,
+    ):
+        del page_index
+        captured_dpis.append(int(dpi))
+        img = Image.new("RGB", (800, 450), color=(255, 255, 255))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        img.save(out_path)
+        return img
+
+    def _fake_build_scanned_image_region_infos(**_kwargs):
+        image_region_calls["count"] += 1
+        return []
+
+    monkeypatch.setattr(generator, "_render_pdf_page_png", _fake_render_pdf_page_png)
+    monkeypatch.setattr(
+        generator,
+        "_build_scanned_image_region_infos",
+        _fake_build_scanned_image_region_infos,
+    )
+    monkeypatch.setattr(
+        generator,
+        "_export_final_preview_page_image",
+        lambda **_kwargs: preview_calls.__setitem__("count", preview_calls["count"] + 1),
+    )
+
+    source_pdf = tmp_path / "input-fast.pdf"
+    source_pdf.write_bytes(b"%PDF-1.4\n%stub\n")
+
+    out_path = generator.generate_pptx_from_ir(
+        {
+            "source_pdf": str(source_pdf),
+            "pages": [
+                {
+                    "page_index": 0,
+                    "page_width_pt": 720.0,
+                    "page_height_pt": 405.0,
+                    "has_text_layer": False,
+                    "elements": [
+                        {
+                            "type": "text",
+                            "source": "ocr",
+                            "text": "Speed first experimental mode",
+                            "bbox_pt": [36.0, 48.0, 280.0, 84.0],
+                            "color": "#111111",
+                        }
+                    ],
+                }
+            ],
+        },
+        tmp_path / "scanned-fast.pptx",
+        artifacts_dir=tmp_path / "scanned-fast-artifacts",
+        scanned_render_dpi=200,
+        export_final_preview_images=True,
+        ppt_generation_mode="fast",
+    )
+
+    assert out_path.exists()
+    assert captured_dpis == [120]
+    assert image_region_calls["count"] == 0
+    assert preview_calls["count"] == 0

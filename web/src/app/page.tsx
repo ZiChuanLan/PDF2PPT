@@ -20,6 +20,8 @@ import { apiFetch, normalizeFetchError } from "@/lib/api"
 import {
   defaultSettings,
   loadStoredSettings,
+  PPT_GENERATION_MODE_LABELS,
+  SETTINGS_STORAGE_KEY,
   type Settings,
 } from "@/lib/settings"
 import {
@@ -59,6 +61,7 @@ import { JobDebugPanel } from "@/components/job-debug-panel"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { PdfCanvasPreview } from "@/components/pdf-canvas-preview"
+import { Select } from "@/components/ui/select"
 import { useUploadSession } from "@/components/upload-session-provider"
 
 type JobApiErrorBody = {
@@ -184,6 +187,19 @@ export default function Home() {
   const refreshSettingsSnapshot = React.useCallback(() => {
     setSettingsSnapshot(loadStoredSettings())
   }, [])
+
+  const updateSettingsSnapshot = React.useCallback(
+    (updater: (previous: Settings) => Settings) => {
+      setSettingsSnapshot((previous) => {
+        const next = updater(previous)
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next))
+        }
+        return next
+      })
+    },
+    []
+  )
 
   const fetchJobs = React.useCallback(async (silent = true) => {
     if (!silent) setJobsLoading(true)
@@ -836,23 +852,50 @@ export default function Home() {
                     </p>
                   )}
 
-                  <div className="grid gap-2 border border-border/70 bg-muted/20 px-3 py-3">
-                    <label className="flex items-start gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 h-4 w-4 accent-[#111111]"
-                        checked={retainProcessArtifacts}
-                        onChange={(e) => setRetainProcessArtifacts(e.target.checked)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-medium text-foreground">
-                          保留过程对比图（调试）
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_260px]">
+                    <div className="grid gap-2 border border-border/70 bg-muted/20 px-3 py-3">
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 accent-[#111111]"
+                          checked={retainProcessArtifacts}
+                          onChange={(e) => setRetainProcessArtifacts(e.target.checked)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-medium text-foreground">
+                            保留过程对比图（调试）
+                          </span>
+                          <span className="mt-1 block text-xs leading-6 text-muted-foreground">
+                            默认关闭。关闭时只保留 PDF、PPTX 和必要元数据；开启后，跟踪页才会显示渲染前后图与过程图，适合临时排查问题。
+                          </span>
                         </span>
-                        <span className="mt-1 block text-xs leading-6 text-muted-foreground">
-                          默认关闭。关闭时只保留 PDF、PPTX 和必要元数据；开启后，跟踪页才会显示渲染前后图与过程图，适合临时排查问题。
-                        </span>
-                      </span>
-                    </label>
+                      </label>
+                    </div>
+
+                    <div className="grid gap-2 border border-border/70 bg-muted/20 px-3 py-3">
+                      <label
+                        className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground"
+                        htmlFor="home-ppt-generation-mode"
+                      >
+                        PPT 生成模式
+                      </label>
+                      <Select
+                        id="home-ppt-generation-mode"
+                        value={settingsSnapshot.pptGenerationMode}
+                        onChange={(e) =>
+                          updateSettingsSnapshot((previous) => ({
+                            ...previous,
+                            pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
+                          }))
+                        }
+                      >
+                        <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}（默认）</option>
+                        <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
+                      </Select>
+                      <p className="text-xs leading-6 text-muted-foreground">
+                        快速默认开启；精准保留原生成链路，适合质量优先的精细对比。
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
@@ -888,6 +931,7 @@ export default function Home() {
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge variant="outline">解析：{runParseEngineLabel}</Badge>
                   <Badge variant="outline">OCR：{runOcrSummaryLabel}</Badge>
+                  <Badge variant="outline">PPT：{PPT_GENERATION_MODE_LABELS[settingsSnapshot.pptGenerationMode]}</Badge>
                   <Badge variant="outline">
                     过程图：{retainProcessArtifacts ? "保留" : "不保留"}
                   </Badge>

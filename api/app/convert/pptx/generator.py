@@ -210,6 +210,126 @@ def _page_needs_ocr_sampling_render(
     return False
 
 
+def _merge_text_erase_bboxes(
+    boxes: list[list[float]],
+    *,
+    gap_pt: float,
+    fast_path_threshold: int = 240,
+) -> list[list[float]]:
+    """Merge nearby same-line erase boxes.
+
+    Small/medium pages still use the existing iterative merge for maximal
+    compatibility. When AI OCR returns hundreds of fragmented boxes (for
+    example some DeepSeek-OCR grounding outputs), the quadratic repeated-merge
+    loop can dominate the whole PPT stage. For those pages switch to a sweep
+    + union-find fast path that preserves transitive same-line connectivity.
+    """
+
+    merged = [
+        list(_coerce_bbox_pt(bb))
+        for bb in boxes
+        if isinstance(bb, list) and len(bb) == 4
+    ]
+    if len(merged) <= 1:
+        return merged
+
+    gap_pt = max(0.0, float(gap_pt))
+
+    if len(merged) > int(fast_path_threshold):
+        indexed = [
+            (idx, bb)
+            for idx, bb in enumerate(
+                sorted(merged, key=lambda b: (float(b[0]), float(b[1]), float(b[2]), float(b[3])))
+            )
+        ]
+        parent = list(range(len(indexed)))
+
+        def _find(index: int) -> int:
+            while parent[index] != index:
+                parent[index] = parent[parent[index]]
+                index = parent[index]
+            return index
+
+        def _union(a: int, b: int) -> None:
+            root_a = _find(a)
+            root_b = _find(b)
+            if root_a != root_b:
+                parent[root_b] = root_a
+
+        active: list[int] = []
+        for current_idx, (_, current) in enumerate(indexed):
+            x0, y0, x1, y1 = current
+            next_active: list[int] = []
+            for prev_idx in active:
+                _, prev = indexed[prev_idx]
+                px0, py0, px1, py1 = prev
+                if float(px1) < (float(x0) - gap_pt):
+                    continue
+                next_active.append(prev_idx)
+
+                y_overlap = min(float(y1), float(py1)) - max(float(y0), float(py0))
+                min_h = max(1.0, min(float(y1) - float(y0), float(py1) - float(py0)))
+                if y_overlap < (0.40 * min_h):
+                    continue
+                x_gap = max(0.0, float(x0) - float(px1))
+                if x_gap <= gap_pt:
+                    _union(current_idx, prev_idx)
+
+            next_active.append(current_idx)
+            active = next_active
+
+        grouped: dict[int, list[list[float]]] = {}
+        for idx, (_, bb) in enumerate(indexed):
+            grouped.setdefault(_find(idx), []).append(bb)
+
+        out: list[list[float]] = []
+        for component in grouped.values():
+            xs0 = [float(bb[0]) for bb in component]
+            ys0 = [float(bb[1]) for bb in component]
+            xs1 = [float(bb[2]) for bb in component]
+            ys1 = [float(bb[3]) for bb in component]
+            out.append([min(xs0), min(ys0), max(xs1), max(ys1)])
+        out.sort(key=lambda b: (float(b[1]), float(b[0])))
+        return out
+
+    changed = True
+    while changed:
+        changed = False
+        merged.sort(key=lambda b: (b[1], b[0]))
+        out: list[list[float]] = []
+        for bb in merged:
+            x0, y0, x1, y1 = _coerce_bbox_pt(bb)
+            did_merge = False
+            for i, ub in enumerate(out):
+                ux0, uy0, ux1, uy1 = _coerce_bbox_pt(ub)
+                y_overlap = min(y1, uy1) - max(y0, uy0)
+                min_h = max(1.0, min(y1 - y0, uy1 - uy0))
+                if y_overlap < (0.40 * min_h):
+                    continue
+                if x0 > ux1:
+                    x_gap = float(x0 - ux1)
+                elif ux0 > x1:
+                    x_gap = float(ux0 - x1)
+                else:
+                    x_gap = 0.0
+                if x_gap > gap_pt:
+                    continue
+                out[i] = [
+                    min(x0, ux0),
+                    min(y0, uy0),
+                    max(x1, ux1),
+                    max(y1, uy1),
+                ]
+                did_merge = True
+                changed = True
+                break
+            if not did_merge:
+                out.append([x0, y0, x1, y1])
+        merged = out
+
+    return merged
+
+
 def _sanitize_markdown_text(text: str) -> str:
     """Remove common markdown markers while preserving readable content."""
 
@@ -295,6 +415,7 @@ def generate_pptx_from_ir(
     remove_footer_notebooklm: bool = False,
     scanned_page_mode: str = "fullpage",
     text_erase_mode: str = "fill",
+    ppt_generation_mode: str = "standard",
     image_bg_clear_expand_min_pt: float = 0.35,
     image_bg_clear_expand_max_pt: float = 1.5,
     image_bg_clear_expand_ratio: float = 0.012,
@@ -315,6 +436,8 @@ def generate_pptx_from_ir(
         remove_footer_notebooklm: Whether to drop detected bottom-right
             NotebookLM footer branding text from the exported PPT.
         text_erase_mode: Erase strategy for background cleanup (smart, fill).
+        ppt_generation_mode: PPT generation mode (standard, fast). Fast mode is
+            experimental and prioritizes speed over visual fidelity.
         image_bg_clear_expand_min_pt: Min outward expansion (pt) when clearing
             background under overlaid image crops.
         image_bg_clear_expand_max_pt: Max outward expansion (pt) when clearing
@@ -379,6 +502,27 @@ def generate_pptx_from_ir(
         scanned_page_mode_id = "fullpage"
     if scanned_page_mode_id not in {"segmented", "fullpage"}:
         scanned_page_mode_id = "segmented"
+
+    ppt_generation_mode_id = str(ppt_generation_mode or "standard").strip().lower()
+    if ppt_generation_mode_id in {"default", "normal", "balanced", "quality"}:
+        ppt_generation_mode_id = "standard"
+    if ppt_generation_mode_id in {"speed", "speed_first", "speed-first", "fast_experimental", "experimental_fast"}:
+        ppt_generation_mode_id = "fast"
+    if ppt_generation_mode_id not in {"standard", "fast"}:
+        ppt_generation_mode_id = "standard"
+
+    is_fast_ppt_generation = ppt_generation_mode_id == "fast"
+    if is_fast_ppt_generation:
+        text_erase_mode_id = "fill"
+        scanned_page_mode_id = "fullpage"
+    try:
+        scanned_render_dpi = int(scanned_render_dpi)
+    except Exception:
+        scanned_render_dpi = 200
+    if scanned_render_dpi <= 0:
+        scanned_render_dpi = 200
+    if is_fast_ppt_generation:
+        scanned_render_dpi = min(scanned_render_dpi, 120)
 
     def _clamp_float(value: Any, *, default: float, low: float, high: float) -> float:
         try:
@@ -480,8 +624,19 @@ def generate_pptx_from_ir(
     blank_layout = prs.slide_layouts[6]
     source_pdf = _as_path(str(ir.get("source_pdf") or ""))
     total_pages = sum(1 for page in pages if isinstance(page, dict))
-    should_export_final_previews = bool(export_final_preview_images)
+    should_export_final_previews = bool(export_final_preview_images) and (
+        not is_fast_ppt_generation
+    )
     done_pages = 0
+
+    def _notify_page_done() -> None:
+        nonlocal done_pages
+        done_pages += 1
+        if progress_callback:
+            try:
+                progress_callback(done_pages, max(1, total_pages))
+            except Exception:
+                pass
 
     for page in pages:
         if not isinstance(page, dict):
@@ -543,7 +698,9 @@ def generate_pptx_from_ir(
         has_mineru_elements = any(_is_layout_parse_source(el.get("source")) for el in page_elements)
 
         if not has_text_layer:
-            overlay_scanned_image_crops = scanned_page_mode_id != "fullpage"
+            overlay_scanned_image_crops = (
+                (not is_fast_ppt_generation) and scanned_page_mode_id != "fullpage"
+            )
             # Scanned page strategy: render page image, erase OCR/image areas
             # in the render, then overlay cropped images + editable text.
             render_path = artifacts / "page_renders" / f"page-{page_index:04d}.png"
@@ -674,22 +831,26 @@ def generate_pptx_from_ir(
                 for el in _iter_page_elements(page, type_name="image")
             )
 
-            image_region_infos = _build_scanned_image_region_infos(
-                page=page,
-                render_path=render_path,
-                artifacts_dir=artifacts,
-                page_index=page_index,
-                page_w_pt=page_w_pt,
-                page_h_pt=page_h_pt,
-                scanned_render_dpi=int(scanned_render_dpi),
-                baseline_ocr_h_pt=float(baseline_ocr_h_pt),
-                ocr_text_elements=ocr_text_elements,
-                has_full_page_bg_image=has_full_page_bg_image,
-                text_coverage_ratio_fn=_text_coverage_ratio,
-                text_inside_counts_fn=_text_inside_counts,
-                min_area_ratio=scanned_image_region_min_area_ratio_id,
-                max_area_ratio=scanned_image_region_max_area_ratio_id,
-                max_aspect_ratio=scanned_image_region_max_aspect_ratio_id,
+            image_region_infos = (
+                []
+                if is_fast_ppt_generation
+                else _build_scanned_image_region_infos(
+                    page=page,
+                    render_path=render_path,
+                    artifacts_dir=artifacts,
+                    page_index=page_index,
+                    page_w_pt=page_w_pt,
+                    page_h_pt=page_h_pt,
+                    scanned_render_dpi=int(scanned_render_dpi),
+                    baseline_ocr_h_pt=float(baseline_ocr_h_pt),
+                    ocr_text_elements=ocr_text_elements,
+                    has_full_page_bg_image=has_full_page_bg_image,
+                    text_coverage_ratio_fn=_text_coverage_ratio,
+                    text_inside_counts_fn=_text_inside_counts,
+                    min_area_ratio=scanned_image_region_min_area_ratio_id,
+                    max_area_ratio=scanned_image_region_max_area_ratio_id,
+                    max_aspect_ratio=scanned_image_region_max_aspect_ratio_id,
+                )
             )
             overlay_image_region_infos = list(image_region_infos)
             overlay_scanned_image_crops = bool(overlay_image_region_infos) and (
@@ -749,11 +910,15 @@ def generate_pptx_from_ir(
                 bbox_h_pt = max(1.0, y1 - y0)
 
                 # Sample the local background for masking.
-                bg_rgb = _sample_bbox_background_rgb(
-                    pix,
-                    bbox_pt=[x0, y0, x1, y1],
-                    page_height_pt=page_h_pt,
-                    dpi=int(scanned_render_dpi),
+                bg_rgb = (
+                    (255, 255, 255)
+                    if is_fast_ppt_generation
+                    else _sample_bbox_background_rgb(
+                        pix,
+                        bbox_pt=[x0, y0, x1, y1],
+                        page_height_pt=page_h_pt,
+                        dpi=int(scanned_render_dpi),
+                    )
                 )
 
                 # Expand erase region to remove anti-aliased glyph halos.
@@ -767,57 +932,6 @@ def generate_pptx_from_ir(
                 )
 
                 text_items.append((el, [x0, y0, x1, y1], text, bg_rgb))
-
-            def _merge_text_erase_bboxes(
-                boxes: list[list[float]], *, gap_pt: float
-            ) -> list[list[float]]:
-                """Merge nearby same-line erase boxes to improve wipe completeness."""
-
-                merged = [
-                    list(_coerce_bbox_pt(bb))
-                    for bb in boxes
-                    if isinstance(bb, list) and len(bb) == 4
-                ]
-                if len(merged) <= 1:
-                    return merged
-
-                gap_pt = max(0.0, float(gap_pt))
-                changed = True
-                while changed:
-                    changed = False
-                    merged.sort(key=lambda b: (b[1], b[0]))
-                    out: list[list[float]] = []
-                    for bb in merged:
-                        x0, y0, x1, y1 = _coerce_bbox_pt(bb)
-                        did_merge = False
-                        for i, ub in enumerate(out):
-                            ux0, uy0, ux1, uy1 = _coerce_bbox_pt(ub)
-                            y_overlap = min(y1, uy1) - max(y0, uy0)
-                            min_h = max(1.0, min(y1 - y0, uy1 - uy0))
-                            if y_overlap < (0.40 * min_h):
-                                continue
-                            if x0 > ux1:
-                                x_gap = float(x0 - ux1)
-                            elif ux0 > x1:
-                                x_gap = float(ux0 - x1)
-                            else:
-                                x_gap = 0.0
-                            if x_gap > gap_pt:
-                                continue
-                            out[i] = [
-                                min(x0, ux0),
-                                min(y0, uy0),
-                                max(x1, ux1),
-                                max(y1, uy1),
-                            ]
-                            did_merge = True
-                            changed = True
-                            break
-                        if not did_merge:
-                            out.append([x0, y0, x1, y1])
-                    merged = out
-
-                return merged
 
             if is_fill_mode:
                 # For fill mode, prefer local boxes so color fill remains local,
@@ -999,7 +1113,7 @@ def generate_pptx_from_ir(
                     baseline_ocr_h_pt=float(baseline_ocr_h_pt),
                 )
                 visual_wrap_override: bool | None = None
-                if _should_probe_visual_wrap_for_ocr_text(
+                if (not is_fast_ppt_generation) and _should_probe_visual_wrap_for_ocr_text(
                     text=text,
                     bbox_w_pt=bbox_w_pt,
                     bbox_h_pt=bbox_h_pt,
@@ -1035,7 +1149,7 @@ def generate_pptx_from_ir(
 
                 sampled_bg_rgb: tuple[int, int, int] | None = None
                 sampled_text_rgb: tuple[int, int, int] | None = None
-                if _should_sample_local_text_colors(
+                if (not is_fast_ppt_generation) and _should_sample_local_text_colors(
                     source_id="ocr",
                     element_color=el.get("color"),
                 ):
@@ -1209,6 +1323,7 @@ def generate_pptx_from_ir(
                 if overlay_scanned_image_crops
                 else [],
             )
+            _notify_page_done()
             continue
 
         # Text-based page: place elements directly.
@@ -1307,7 +1422,7 @@ def generate_pptx_from_ir(
             except Exception:
                 mineru_background_placed = False
 
-        if ocr_sampling_pix is None and source_pdf.exists():
+        if (not is_fast_ppt_generation) and ocr_sampling_pix is None and source_pdf.exists():
             if _page_needs_ocr_sampling_render(
                 page_elements=page_text_elements_render,
                 page_h_pt=float(page_h_pt),
@@ -1753,12 +1868,7 @@ def generate_pptx_from_ir(
             artifacts_dir=artifacts,
             dpi=int(scanned_render_dpi),
         )
-        done_pages += 1
-        if progress_callback:
-            try:
-                progress_callback(done_pages, max(1, total_pages))
-            except Exception:
-                pass
+        _notify_page_done()
 
     prs.save(str(out_path))
     return out_path

@@ -136,6 +136,58 @@ def _format_parallel_ocr_progress_message(
     )
 
 
+def _detect_page_image_regions(
+    *,
+    enabled: bool,
+    image_path: Path,
+    ocr_manager: Any,
+    page_index: int,
+    ocr_image_region_timeout: int,
+    page_w_pt: float,
+    page_h_pt: float,
+    skip_reason: str | None = None,
+) -> tuple[list[list[float]], str | None, str | None]:
+    if not enabled:
+        return [], None, (skip_reason or "disabled")
+
+    detected_image_regions_pt: list[list[float]] = []
+    image_region_error: str | None = None
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as img_probe:
+            image_width_px, image_height_px = img_probe.size
+
+        detected_image_regions_px = run_in_daemon_thread_with_timeout(
+            lambda: ocr_manager.detect_image_regions(str(image_path)),
+            timeout_s=float(max(1, ocr_image_region_timeout)),
+            label=f"worker:ocr_image_regions:{page_index}",
+        )
+        for bbox in detected_image_regions_px or []:
+            if not isinstance(bbox, list) or len(bbox) != 4:
+                continue
+            try:
+                bbox_pt = ocr_manager.convert_bbox_to_pdf_coords(
+                    bbox=bbox,
+                    image_width=int(image_width_px),
+                    image_height=int(image_height_px),
+                    page_width_pt=page_w_pt,
+                    page_height_pt=page_h_pt,
+                )
+            except Exception:
+                continue
+            detected_image_regions_pt.append(list(bbox_pt))
+    except TimeoutError:
+        image_region_error = (
+            "image_region_detection_timeout:"
+            f"{int(max(1, ocr_image_region_timeout))}s"
+        )
+    except Exception as e:
+        image_region_error = str(e)
+
+    return detected_image_regions_pt, image_region_error, None
+
+
 def _process_parallel_ai_ocr_page(
     *,
     page: dict[str, Any],
@@ -146,6 +198,7 @@ def _process_parallel_ai_ocr_page(
     ocr_render_dpi: int,
     ocr_page_timeout: int,
     ocr_image_region_timeout: int,
+    skip_image_region_detection: bool,
     export_overlay_images: bool,
     abort_if_cancelled: Callable[..., None],
 ) -> dict[str, Any]:
@@ -364,40 +417,18 @@ def _process_parallel_ai_ocr_page(
     page_warnings = list(quality_notes)
     ir_warnings = [f"{note}:page={page_index + 1}" for note in quality_notes]
 
-    detected_image_regions_pt: list[list[float]] = []
-    image_region_error: str | None = None
-    try:
-        from PIL import Image
-
-        with Image.open(image_path) as img_probe:
-            image_width_px, image_height_px = img_probe.size
-
-        detected_image_regions_px = run_in_daemon_thread_with_timeout(
-            lambda: ocr_manager.detect_image_regions(str(image_path)),
-            timeout_s=float(max(1, ocr_image_region_timeout)),
-            label=f"worker:ocr_image_regions:{page_index}",
+    detected_image_regions_pt, image_region_error, image_region_skip_reason = (
+        _detect_page_image_regions(
+            enabled=not bool(skip_image_region_detection),
+            image_path=image_path,
+            ocr_manager=ocr_manager,
+            page_index=page_index,
+            ocr_image_region_timeout=int(ocr_image_region_timeout),
+            page_w_pt=page_w_pt,
+            page_h_pt=page_h_pt,
+            skip_reason="fast_ppt_generation_mode",
         )
-        for bbox in detected_image_regions_px or []:
-            if not isinstance(bbox, list) or len(bbox) != 4:
-                continue
-            try:
-                bbox_pt = ocr_manager.convert_bbox_to_pdf_coords(
-                    bbox=bbox,
-                    image_width=int(image_width_px),
-                    image_height=int(image_height_px),
-                    page_width_pt=page_w_pt,
-                    page_height_pt=page_h_pt,
-                )
-            except Exception:
-                continue
-            detected_image_regions_pt.append(list(bbox_pt))
-    except TimeoutError:
-        image_region_error = (
-            "image_region_detection_timeout:"
-            f"{int(max(1, ocr_image_region_timeout))}s"
-        )
-    except Exception as e:
-        image_region_error = str(e)
+    )
 
     overlay_path, bbox_stats = _maybe_export_ocr_overlay_image(
         enabled=export_overlay_images,
@@ -420,6 +451,8 @@ def _process_parallel_ai_ocr_page(
             "elements": len(ocr_elements or []),
             "image_regions": len(detected_image_regions_pt),
             "image_region_detection_error": image_region_error,
+            "image_region_detection_skipped": bool(image_region_skip_reason),
+            "image_region_detection_skip_reason": image_region_skip_reason,
             "used_provider": used_provider,
             "fallback_reason": fallback_reason,
             "quality_notes": quality_notes,
@@ -533,6 +566,7 @@ def run_ocr_stage(
     ocr_render_dpi: int,
     ocr_debug: dict[str, Any],
     export_overlay_images: bool,
+    skip_image_region_detection: bool = False,
     set_processing_progress: Callable[[JobStage, int, str], None],
     abort_if_cancelled: Callable[..., None],
     ocr_setup: Any | None = None,
@@ -544,6 +578,15 @@ def run_ocr_stage(
     ocr_debug["runtime"] = _build_ocr_effective_runtime_debug(
         ocr_manager=ocr_manager,
         fallback_provider=ocr_debug.get("provider_effective"),
+    )
+    image_region_detection_skip_reason = (
+        "fast_ppt_generation_mode" if bool(skip_image_region_detection) else None
+    )
+    ocr_debug["runtime"]["image_region_detection_enabled"] = bool(
+        not skip_image_region_detection
+    )
+    ocr_debug["runtime"]["image_region_detection_skip_reason"] = (
+        image_region_detection_skip_reason
     )
     try:
         import shutil
@@ -644,6 +687,7 @@ def run_ocr_stage(
                         ocr_render_dpi=int(ocr_render_dpi),
                         ocr_page_timeout=int(ocr_page_timeout),
                         ocr_image_region_timeout=int(ocr_image_region_timeout),
+                        skip_image_region_detection=bool(skip_image_region_detection),
                         export_overlay_images=bool(export_overlay_images),
                         abort_if_cancelled=abort_if_cancelled,
                     )
@@ -718,6 +762,7 @@ def run_ocr_stage(
                                 ocr_render_dpi=int(ocr_render_dpi),
                                 ocr_page_timeout=int(ocr_page_timeout),
                                 ocr_image_region_timeout=int(ocr_image_region_timeout),
+                                skip_image_region_detection=bool(skip_image_region_detection),
                                 export_overlay_images=bool(export_overlay_images),
                                 abort_if_cancelled=abort_if_cancelled,
                             )
@@ -1014,40 +1059,18 @@ def run_ocr_stage(
                     f"{note}:page={page_index + 1}"
                 )
 
-            detected_image_regions_pt: list[list[float]] = []
-            image_region_error: str | None = None
-            try:
-                from PIL import Image
-
-                with Image.open(image_path) as img_probe:
-                    image_width_px, image_height_px = img_probe.size
-
-                detected_image_regions_px = run_in_daemon_thread_with_timeout(
-                    lambda: ocr_manager.detect_image_regions(str(image_path)),
-                    timeout_s=float(max(1, ocr_image_region_timeout)),
-                    label=f"worker:ocr_image_regions:{page_index}",
+            detected_image_regions_pt, image_region_error, image_region_skip_reason = (
+                _detect_page_image_regions(
+                    enabled=not bool(skip_image_region_detection),
+                    image_path=image_path,
+                    ocr_manager=ocr_manager,
+                    page_index=page_index,
+                    ocr_image_region_timeout=int(ocr_image_region_timeout),
+                    page_w_pt=page_w_pt,
+                    page_h_pt=page_h_pt,
+                    skip_reason=image_region_detection_skip_reason,
                 )
-                for bbox in detected_image_regions_px or []:
-                    if not isinstance(bbox, list) or len(bbox) != 4:
-                        continue
-                    try:
-                        bbox_pt = ocr_manager.convert_bbox_to_pdf_coords(
-                            bbox=bbox,
-                            image_width=int(image_width_px),
-                            image_height=int(image_height_px),
-                            page_width_pt=page_w_pt,
-                            page_height_pt=page_h_pt,
-                        )
-                    except Exception:
-                        continue
-                    detected_image_regions_pt.append(list(bbox_pt))
-            except TimeoutError:
-                image_region_error = (
-                    "image_region_detection_timeout:"
-                    f"{int(max(1, ocr_image_region_timeout))}s"
-                )
-            except Exception as e:
-                image_region_error = str(e)
+            )
 
             if detected_image_regions_pt:
                 page["image_regions"] = detected_image_regions_pt
@@ -1080,6 +1103,8 @@ def run_ocr_stage(
                     "elements": len(ocr_elements or []),
                     "image_regions": len(detected_image_regions_pt),
                     "image_region_detection_error": image_region_error,
+                    "image_region_detection_skipped": bool(image_region_skip_reason),
+                    "image_region_detection_skip_reason": image_region_skip_reason,
                     "used_provider": used_provider,
                     "fallback_reason": fallback_reason,
                     "quality_notes": quality_notes,

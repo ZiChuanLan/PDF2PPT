@@ -100,3 +100,89 @@ def test_layout_assist_no_longer_forces_ocr_stage(monkeypatch, tmp_path) -> None
     assert setup_calls == []
     assert layout_assist_flags == [False]
     assert (job_dir / "output.pptx").exists()
+
+
+def test_fast_ppt_generation_forwards_ocr_image_region_skip(
+    monkeypatch, tmp_path
+) -> None:
+    job_dir = tmp_path / "job-fast-ocr"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / "input.pdf").write_bytes(b"%PDF-1.4\n")
+
+    redis_service = _FakeRedisService()
+    captured_ocr_kwargs: dict[str, object] = {}
+
+    monkeypatch.setattr(worker, "_job_dir", lambda job_id: job_dir)
+    monkeypatch.setattr(worker, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(worker, "get_redis_service", lambda: redis_service)
+    monkeypatch.setattr(
+        worker,
+        "parse_pdf_to_ir",
+        lambda *args, **kwargs: {
+            "source_pdf": str(job_dir / "input.pdf"),
+            "warnings": [],
+            "pages": [
+                {
+                    "page_index": 0,
+                    "page_width_pt": 100.0,
+                    "page_height_pt": 100.0,
+                    "has_text_layer": False,
+                    "ocr_used": False,
+                    "elements": [],
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        worker,
+        "setup_ocr_runtime",
+        lambda **kwargs: SimpleNamespace(
+            ocr_manager=object(),
+            text_refiner=None,
+            linebreak_refiner=None,
+            effective_ocr_provider="aiocr",
+            effective_ocr_ai_provider="siliconflow",
+            effective_ocr_ai_base_url="https://example.test/v1",
+            effective_ocr_ai_model="deepseek-ocr",
+            effective_tesseract_language="chi_sim+eng",
+            effective_tesseract_min_conf=0.0,
+            strict_ocr_mode=True,
+            linebreak_enabled=False,
+            auto_linebreak_enabled=False,
+            setup_warning=None,
+            linebreak_mode="disabled",
+            linebreak_unavailable_reason=None,
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "build_ocr_debug_payload",
+        lambda **kwargs: {"provider_effective": "aiocr", "pages": []},
+    )
+    monkeypatch.setattr(
+        worker,
+        "run_ocr_stage",
+        lambda **kwargs: captured_ocr_kwargs.update(kwargs),
+    )
+    monkeypatch.setattr(
+        worker,
+        "run_layout_assist_stage",
+        lambda **kwargs: SimpleNamespace(ir=kwargs["ir"]),
+    )
+
+    def _fake_run_ppt_stage(**kwargs):
+        kwargs["output_pptx"].write_bytes(b"pptx")
+        return SimpleNamespace(worker_compat_mode=False)
+
+    monkeypatch.setattr(worker, "run_ppt_stage", _fake_run_ppt_stage)
+
+    worker.process_pdf_job(
+        "job-fast-ocr",
+        parse_provider="local",
+        enable_ocr=True,
+        ocr_provider="aiocr",
+        ppt_generation_mode="fast",
+    )
+
+    assert captured_ocr_kwargs["skip_image_region_detection"] is True
+    assert (job_dir / "output.pptx").exists()

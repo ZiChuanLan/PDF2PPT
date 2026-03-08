@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select"
 
 import {
   BAIDU_DOC_PARSE_TYPE_LABELS,
+  isPaddleOcrVlModelName,
   type BaiduDocParseType,
   SETTINGS_STORAGE_KEY,
   defaultSettings,
@@ -302,6 +303,15 @@ export default function SettingsPage() {
   const ocrModelsApiKey = ocrState.ocrModelsApiKey
   const ocrModelsBaseUrl = ocrState.ocrModelsBaseUrl
   const ocrModelCapability = isOcrAiChainLayoutBlock ? "vision" : "ocr"
+  const visibleOcrModelOptions = React.useMemo(() => {
+    if (isOcrAiChainDocParser) {
+      return ocrModelOptions.filter((model) => isPaddleOcrVlModelName(model))
+    }
+    if (isOcrAiChainDirect) {
+      return ocrModelOptions.filter((model) => !isPaddleOcrVlModelName(model))
+    }
+    return ocrModelOptions
+  }, [isOcrAiChainDirect, isOcrAiChainDocParser, ocrModelOptions])
 
   const canLoadOcrModels =
     canUseAiOcr &&
@@ -445,9 +455,6 @@ export default function SettingsPage() {
 
         if (!mounted) return
         setOcrModelOptions(models)
-        if (models.length && !models.includes(settings.ocrAiModel)) {
-          setSettings((prev) => ({ ...prev, ocrAiModel: "" }))
-        }
       } catch (e) {
         if (!mounted || controller.signal.aborted) return
         setOcrModelError(normalizeFetchError(e, "OCR 模型列表加载失败"))
@@ -471,6 +478,14 @@ export default function SettingsPage() {
     selectedOcrProvider,
     isOcrEnabledForCurrentEngine,
   ])
+
+  React.useEffect(() => {
+    if (ocrModelLoading || !canLoadOcrModels) return
+    if (!settings.ocrAiModel.trim()) return
+    if (!visibleOcrModelOptions.length) return
+    if (visibleOcrModelOptions.includes(settings.ocrAiModel)) return
+    setSettings((prev) => ({ ...prev, ocrAiModel: "" }))
+  }, [canLoadOcrModels, ocrModelLoading, settings.ocrAiModel, visibleOcrModelOptions])
 
   React.useEffect(() => {
     if (!settingsHydrated) return
@@ -1162,7 +1177,11 @@ export default function SettingsPage() {
               <div className="grid gap-2">
                 <FieldLabel
                   htmlFor="scanned-page-mode"
-                  hint="控制扫描页里的截图、图表和插图，是作为独立图片放进 PPT，还是直接留在整页背景里。"
+                  hint={
+                    settings.pptGenerationMode === "fast"
+                      ? "快速模式下会强制走整页背景，不再拆图块；这个开关仅在精准模式下生效。"
+                      : "控制扫描页里的截图、图表和插图，是作为独立图片放进 PPT，还是直接留在整页背景里。"
+                  }
                 >
                   扫描页图片处理方式
                 </FieldLabel>
@@ -1548,7 +1567,16 @@ export default function SettingsPage() {
                   ) : null}
 
                   <div className="grid gap-2">
-                    <FieldLabel htmlFor="ocr-ai-model">
+                    <FieldLabel
+                      htmlFor="ocr-ai-model"
+                      hint={
+                        isOcrAiChainDocParser
+                          ? "内置文档解析只允许选择 PaddleOCR-VL 模型。"
+                          : isOcrAiChainDirect
+                            ? "模型直出默认走 DeepSeek OCR 这类整页 OCR 模型，不提供 PaddleOCR-VL。"
+                            : "本地切块识别优先搭配通用视觉模型；如需试 PaddleOCR-VL，请切回内置文档解析评估。"
+                      }
+                    >
                       {isOcrAiChainLayoutBlock ? "AI 视觉识别模型（必填）" : "专用 OCR 模型（必填）"}
                     </FieldLabel>
                     <Select
@@ -1564,12 +1592,12 @@ export default function SettingsPage() {
                         <option value="__loading__" disabled>
                           正在加载模型...
                         </option>
-                      ) : ocrModelOptions.length ? null : (
+                      ) : visibleOcrModelOptions.length ? null : (
                         <option value="__none__" disabled>
                           暂无可用 OCR 模型
                         </option>
                       )}
-                      {ocrModelOptions.map((model) => (
+                      {visibleOcrModelOptions.map((model) => (
                         <option key={model} value={model}>
                           {model}
                         </option>

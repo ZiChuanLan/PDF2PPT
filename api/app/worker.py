@@ -25,6 +25,7 @@ from .job_options import (
     normalize_ai_ocr_provider,
     normalize_layout_provider,
     normalize_parse_provider,
+    normalize_ppt_generation_mode,
     normalize_requested_ocr_provider,
     normalize_scanned_page_mode,
     normalize_text_erase_mode,
@@ -160,6 +161,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
     ocr_ai_max_retries: int | None = None,
     ocr_geometry_mode: str | None = None,
     scanned_page_mode: str | None = None,
+    ppt_generation_mode: str | None = None,
     image_bg_clear_expand_min_pt: float | None = None,
     image_bg_clear_expand_max_pt: float | None = None,
     image_bg_clear_expand_ratio: float | None = None,
@@ -215,6 +217,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
         ocr_ai_max_retries,
         ocr_geometry_mode,
         scanned_page_mode,
+        ppt_generation_mode,
         image_bg_clear_expand_min_pt,
         image_bg_clear_expand_max_pt,
         image_bg_clear_expand_ratio,
@@ -279,6 +282,8 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
 
     normalized_text_erase_mode = normalize_text_erase_mode(text_erase_mode)
     normalized_scanned_page_mode = normalize_scanned_page_mode(scanned_page_mode)
+    normalized_ppt_generation_mode = normalize_ppt_generation_mode(ppt_generation_mode)
+    fast_ppt_generation = normalized_ppt_generation_mode == "fast"
 
     def _normalize_float(
         value: float | None,
@@ -815,6 +820,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                 ocr_render_dpi=int(ocr_render_dpi),
                 ocr_debug=ocr_debug_payload,
                 export_overlay_images=export_ocr_overlay_images_effective,
+                skip_image_region_detection=bool(fast_ppt_generation),
                 ocr_setup=ocr_setup,
                 ocr_runtime_factory=_build_page_ocr_runtime,
                 set_processing_progress=_set_processing_progress,
@@ -846,6 +852,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             "remove_footer_notebooklm": bool(remove_footer_notebooklm),
             "normalized_text_erase_mode": normalized_text_erase_mode,
             "normalized_scanned_page_mode": normalized_scanned_page_mode,
+            "normalized_ppt_generation_mode": normalized_ppt_generation_mode,
             "normalized_image_bg_clear_expand_min_pt": normalized_image_bg_clear_expand_min_pt,
             "normalized_image_bg_clear_expand_max_pt": normalized_image_bg_clear_expand_max_pt,
             "normalized_image_bg_clear_expand_ratio": normalized_image_bg_clear_expand_ratio,

@@ -153,6 +153,7 @@ def test_run_ppt_stage_forwards_final_preview_flag(
         remove_footer_notebooklm: bool,
         text_erase_mode: str,
         scanned_page_mode: str,
+        ppt_generation_mode: str,
         image_bg_clear_expand_min_pt: float,
         image_bg_clear_expand_max_pt: float,
         image_bg_clear_expand_ratio: float,
@@ -171,6 +172,7 @@ def test_run_ppt_stage_forwards_final_preview_flag(
                 "remove_footer_notebooklm": remove_footer_notebooklm,
                 "text_erase_mode": text_erase_mode,
                 "scanned_page_mode": scanned_page_mode,
+                "ppt_generation_mode": ppt_generation_mode,
                 "image_bg_clear_expand_min_pt": image_bg_clear_expand_min_pt,
                 "image_bg_clear_expand_max_pt": image_bg_clear_expand_max_pt,
                 "image_bg_clear_expand_ratio": image_bg_clear_expand_ratio,
@@ -198,6 +200,7 @@ def test_run_ppt_stage_forwards_final_preview_flag(
         remove_footer_notebooklm=False,
         normalized_text_erase_mode="fill",
         normalized_scanned_page_mode="fullpage",
+        normalized_ppt_generation_mode="fast",
         normalized_image_bg_clear_expand_min_pt=0.35,
         normalized_image_bg_clear_expand_max_pt=1.5,
         normalized_image_bg_clear_expand_ratio=0.012,
@@ -211,6 +214,7 @@ def test_run_ppt_stage_forwards_final_preview_flag(
 
     assert result.worker_compat_mode is False
     assert captured["export_final_preview_images"] is False
+    assert captured["ppt_generation_mode"] == "fast"
 
 
 def test_run_ppt_stage_marks_compat_mode_when_preview_flag_not_supported(
@@ -250,6 +254,7 @@ def test_run_ppt_stage_marks_compat_mode_when_preview_flag_not_supported(
         remove_footer_notebooklm=False,
         normalized_text_erase_mode="fill",
         normalized_scanned_page_mode="fullpage",
+        normalized_ppt_generation_mode="standard",
         normalized_image_bg_clear_expand_min_pt=0.35,
         normalized_image_bg_clear_expand_max_pt=1.5,
         normalized_image_bg_clear_expand_ratio=0.012,

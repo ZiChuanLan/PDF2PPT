@@ -625,6 +625,13 @@ async def create_job(
         "segmented",
         description="Scanned page rendering mode (segmented, fullpage). Controls whether scanned pages are split into editable image blocks.",
     ),
+    ppt_generation_mode: str | None = Form(
+        "standard",
+        description=(
+            "PPT generation mode (standard, fast). "
+            "Fast mode is experimental and prioritizes speed over fidelity."
+        ),
+    ),
     image_bg_clear_expand_min_pt: float | None = Form(
         None,
         description="Optional min expansion (pt) when clearing background under image overlays",
@@ -689,6 +696,7 @@ async def create_job(
         ocr_geometry_mode=ocr_geometry_mode,
         text_erase_mode=text_erase_mode,
         scanned_page_mode=scanned_page_mode,
+        ppt_generation_mode=ppt_generation_mode,
         page_start=page_start,
         page_end=page_end,
     )
@@ -798,6 +806,7 @@ async def create_job(
                     "ocr_geometry_mode": normalized_options.ocr_geometry_mode,
                     "text_erase_mode": normalized_options.text_erase_mode,
                     "scanned_page_mode": normalized_options.scanned_page_mode,
+                    "ppt_generation_mode": normalized_options.ppt_generation_mode,
                     "image_bg_clear_expand_min_pt": image_bg_clear_expand_min_pt,
                     "image_bg_clear_expand_max_pt": image_bg_clear_expand_max_pt,
                     "image_bg_clear_expand_ratio": image_bg_clear_expand_ratio,
@@ -862,6 +871,7 @@ async def create_job(
                 ocr_geometry_mode=normalized_options.ocr_geometry_mode,
                 text_erase_mode=normalized_options.text_erase_mode,
                 scanned_page_mode=normalized_options.scanned_page_mode,
+                ppt_generation_mode=normalized_options.ppt_generation_mode,
                 image_bg_clear_expand_min_pt=image_bg_clear_expand_min_pt,
                 image_bg_clear_expand_max_pt=image_bg_clear_expand_max_pt,
                 image_bg_clear_expand_ratio=image_bg_clear_expand_ratio,

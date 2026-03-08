@@ -23,6 +23,7 @@ VALID_OCR_AI_LAYOUT_MODELS = {"pp_doclayout_v3"}
 VALID_OCR_GEOMETRY_MODES = {"auto", "local_tesseract", "direct_ai"}
 VALID_TEXT_ERASE_MODES = {"smart", "fill"}
 VALID_SCANNED_PAGE_MODES = {"segmented", "fullpage"}
+VALID_PPT_GENERATION_MODES = {"standard", "fast"}
 OCR_GEOMETRY_ALIASES = {
     "auto",
     "direct",
@@ -78,6 +79,17 @@ OCR_AI_LAYOUT_MODEL_ALIASES = VALID_OCR_AI_LAYOUT_MODELS | {
     "pp_doclayout",
     "pp-doclayout-v3",
 }
+PPT_GENERATION_MODE_ALIASES = VALID_PPT_GENERATION_MODES | {
+    "default",
+    "normal",
+    "balanced",
+    "quality",
+    "speed",
+    "speed_first",
+    "speed-first",
+    "fast_experimental",
+    "experimental_fast",
+}
 
 
 @dataclass(frozen=True)
@@ -92,6 +104,7 @@ class NormalizedJobOptions:
     ocr_geometry_mode: str
     text_erase_mode: str
     scanned_page_mode: str
+    ppt_generation_mode: str
 
 
 def _unwrap_form_default(value):
@@ -179,6 +192,15 @@ def normalize_scanned_page_mode(value: str | None) -> str:
     return mode if mode in VALID_SCANNED_PAGE_MODES else "segmented"
 
 
+def normalize_ppt_generation_mode(value: str | None) -> str:
+    mode = (clean_str(_unwrap_form_default(value)) or "standard").lower()
+    if mode in {"default", "normal", "balanced", "quality"}:
+        return "standard"
+    if mode in {"speed", "speed_first", "speed-first", "fast_experimental", "experimental_fast"}:
+        return "fast"
+    return mode if mode in VALID_PPT_GENERATION_MODES else "standard"
+
+
 def validate_page_range(*, page_start: int | None, page_end: int | None) -> None:
     page_start = _unwrap_form_default(page_start)
     page_end = _unwrap_form_default(page_end)
@@ -227,6 +249,7 @@ def validate_and_normalize_job_options(
     ocr_geometry_mode: str | None,
     text_erase_mode: str | None,
     scanned_page_mode: str | None,
+    ppt_generation_mode: str | None,
     page_start: int | None,
     page_end: int | None,
 ) -> NormalizedJobOptions:
@@ -245,6 +268,7 @@ def validate_and_normalize_job_options(
     ocr_geometry_mode = _unwrap_form_default(ocr_geometry_mode)
     text_erase_mode = _unwrap_form_default(text_erase_mode)
     scanned_page_mode = _unwrap_form_default(scanned_page_mode)
+    ppt_generation_mode = _unwrap_form_default(ppt_generation_mode)
     page_start = _unwrap_form_default(page_start)
     page_end = _unwrap_form_default(page_end)
 
@@ -364,6 +388,16 @@ def validate_and_normalize_job_options(
             status_code=400,
         )
 
+    normalized_ppt_generation_mode = normalize_ppt_generation_mode(ppt_generation_mode)
+    raw_ppt_generation_mode = (clean_str(ppt_generation_mode) or "").lower()
+    if raw_ppt_generation_mode and raw_ppt_generation_mode not in PPT_GENERATION_MODE_ALIASES:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Unsupported PPT generation mode",
+            details={"ppt_generation_mode": ppt_generation_mode},
+            status_code=400,
+        )
+
     if normalized_geometry_mode != "auto" and normalized_ocr_provider != "aiocr":
         raise AppException(
             code=ErrorCode.VALIDATION_ERROR,
@@ -421,6 +455,21 @@ def validate_and_normalize_job_options(
                 },
                 status_code=400,
             )
+        if (
+            normalized_ocr_provider == "aiocr"
+            and normalized_ocr_ai_chain_mode == "direct"
+            and "paddleocr-vl" in str(ocr_ai_model or "").strip().lower()
+        ):
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="direct chain does not support PaddleOCR-VL models",
+                details={
+                    "ocr_provider": normalized_ocr_provider,
+                    "ocr_ai_chain_mode": normalized_ocr_ai_chain_mode,
+                    "ocr_ai_model": ocr_ai_model,
+                },
+                status_code=400,
+            )
         if not (ocr_ai_model or "").strip():
             raise AppException(
                 code=ErrorCode.VALIDATION_ERROR,
@@ -466,4 +515,5 @@ def validate_and_normalize_job_options(
         ocr_geometry_mode=normalized_geometry_mode,
         text_erase_mode=normalize_text_erase_mode(text_erase_mode),
         scanned_page_mode=normalize_scanned_page_mode(scanned_page_mode),
+        ppt_generation_mode=normalized_ppt_generation_mode,
     )

@@ -1,5 +1,9 @@
 import {
   BAIDU_DOC_PARSE_TYPE_LABELS,
+  DEFAULT_AIOCR_CHAIN_MODE,
+  DEFAULT_AIOCR_MODEL,
+  DEFAULT_AIOCR_PROVIDER,
+  isPaddleOcrVlModelName,
   PARSE_ENGINE_MODE_LABELS as SETTINGS_PARSE_ENGINE_MODE_LABELS,
   SILICONFLOW_BASE_URL,
   type OcrAiChainMode,
@@ -8,6 +12,7 @@ import {
   type LayoutAssistMode,
   type MainProvider,
   type OcrProvider,
+  type PptGenerationMode,
   type ParseEngineMode,
   type Settings,
 } from "./settings.ts"
@@ -40,6 +45,7 @@ export type RunConfig = {
   layoutAssistMode: LayoutAssistMode
   layoutAssistEnabled: boolean
   shouldAttachOcrAiParams: boolean
+  pptGenerationMode: PptGenerationMode
 }
 
 export type ValidationResult = {
@@ -329,6 +335,7 @@ export function resolveRunConfig(settings: Settings): RunConfig {
     layoutAssistMode,
     layoutAssistEnabled,
     shouldAttachOcrAiParams,
+    pptGenerationMode: settings.pptGenerationMode,
   }
 }
 
@@ -484,6 +491,12 @@ export function validateRunConfig(settings: Settings): ValidationResult {
     ) {
       return { ok: false, message: "内置文档解析链路仅支持 PaddleOCR-VL 模型。" }
     }
+    if (
+      run.ocrAiChainMode === "direct" &&
+      isPaddleOcrVlModelName(settings.ocrAiModel)
+    ) {
+      return { ok: false, message: "模型直出链路不支持 PaddleOCR-VL，请切换到内置文档解析。" }
+    }
   }
 
   return { ok: true }
@@ -516,6 +529,7 @@ export function createJobFormData(
   form.append("remove_footer_notebooklm", String(Boolean(settings.removeFooterNotebooklm)))
   form.append("text_erase_mode", settings.textEraseMode)
   form.append("scanned_page_mode", settings.scannedPageMode)
+  form.append("ppt_generation_mode", settings.pptGenerationMode)
   const imageBgClearExpandMinPt = toFiniteFloatStringOrUndefined(settings.imageBgClearExpandMinPt)
   const imageBgClearExpandMaxPt = toFiniteFloatStringOrUndefined(settings.imageBgClearExpandMaxPt)
   const imageBgClearExpandRatio = toFiniteFloatStringOrUndefined(settings.imageBgClearExpandRatio)
@@ -636,11 +650,26 @@ export function applyParseEngineMode(
   }
 
   if (nextMode === "remote_ocr") {
+    const nextProvider =
+      settings.ocrAiProvider === "auto"
+        ? DEFAULT_AIOCR_PROVIDER
+        : settings.ocrAiProvider
+    const nextChainMode =
+      settings.ocrAiChainMode || DEFAULT_AIOCR_CHAIN_MODE
+    const needsDefaultModel =
+      !settings.ocrAiModel.trim() ||
+      (nextChainMode === "direct" && isPaddleOcrVlModelName(settings.ocrAiModel))
     return {
       ...settings,
       parseEngineMode: nextMode,
       provider: mainProvider,
       preferredMainProvider: mainProvider,
+      ocrAiProvider: nextProvider,
+      ocrAiBaseUrl:
+        settings.ocrAiBaseUrl.trim() ||
+        (nextProvider === "siliconflow" ? SILICONFLOW_BASE_URL : ""),
+      ocrAiChainMode: nextChainMode,
+      ocrAiModel: needsDefaultModel ? DEFAULT_AIOCR_MODEL : settings.ocrAiModel,
     }
   }
 

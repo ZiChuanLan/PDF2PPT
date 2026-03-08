@@ -14,6 +14,7 @@ export type OcrAiLayoutModel = "pp_doclayout_v3"
 export type LayoutAssistMode = "off" | "on" | "auto"
 export type VisionAssistMode = LayoutAssistMode
 export type ScannedPageMode = "segmented" | "fullpage"
+export type PptGenerationMode = "standard" | "fast"
 export type MineruModelVersion = "pipeline" | "vlm" | "MinerU-HTML"
 export type TextEraseMode = "smart" | "fill"
 
@@ -46,6 +47,7 @@ export type Settings = {
   removeFooterNotebooklm: boolean
   textEraseMode: TextEraseMode
   scannedPageMode: ScannedPageMode
+  pptGenerationMode: PptGenerationMode
   imageBgClearExpandMinPt: string
   imageBgClearExpandMaxPt: string
   imageBgClearExpandRatio: string
@@ -75,11 +77,23 @@ export type Settings = {
 }
 
 export const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
+export const DEFAULT_AIOCR_PROVIDER: OcrAiProvider = "siliconflow"
+export const DEFAULT_AIOCR_MODEL = "Pro/deepseek-ai/deepseek-ocr"
+export const DEFAULT_AIOCR_CHAIN_MODE: OcrAiChainMode = "direct"
 
 export const SETTINGS_STORAGE_KEY = "pdf-to-ppt.settings.v1"
 export const BAIDU_DOC_PARSE_TYPE_LABELS: Record<BaiduDocParseType, string> = {
   general: "普通文档解析",
   paddle_vl: "PaddleOCR-VL",
+}
+
+export const PPT_GENERATION_MODE_LABELS: Record<PptGenerationMode, string> = {
+  standard: "精准",
+  fast: "快速",
+}
+
+export function isPaddleOcrVlModelName(value: string | null | undefined): boolean {
+  return String(value || "").trim().toLowerCase().includes("paddleocr-vl")
 }
 
 export const PARSE_ENGINE_MODE_LABELS: Record<ParseEngineMode, string> = {
@@ -125,6 +139,8 @@ export const defaultSettings: Settings = {
   textEraseMode: "fill",
   // segmented: keep some images as editable blocks; fullpage: keep a single page background.
   scannedPageMode: "segmented",
+  // standard: current fidelity-first generator. fast: experiment for speed-first runs.
+  pptGenerationMode: "fast",
   // Tunables for image-underlay cleanup and scanned image-region filtering.
   imageBgClearExpandMinPt: "0.35",
   imageBgClearExpandMaxPt: "1.5",
@@ -145,10 +161,10 @@ export const defaultSettings: Settings = {
   ocrTesseractMinConfidence: "35",
   ocrTesseractLanguage: "chi_sim+eng",
   ocrAiApiKey: "",
-  ocrAiProvider: "auto",
-  ocrAiBaseUrl: "",
-  ocrAiModel: "",
-  ocrAiChainMode: "direct",
+  ocrAiProvider: DEFAULT_AIOCR_PROVIDER,
+  ocrAiBaseUrl: SILICONFLOW_BASE_URL,
+  ocrAiModel: DEFAULT_AIOCR_MODEL,
+  ocrAiChainMode: DEFAULT_AIOCR_CHAIN_MODE,
   ocrAiLayoutModel: "pp_doclayout_v3",
   ocrPaddleVlDocparserMaxSidePx: "2200",
   ocrAiPageConcurrency: "1",
@@ -343,11 +359,11 @@ export function loadStoredSettings(): Settings {
     "novita",
   ]
   if (!validOcrAiProviders.includes(merged.ocrAiProvider)) {
-    merged.ocrAiProvider = "auto"
+    merged.ocrAiProvider = DEFAULT_AIOCR_PROVIDER
   }
   const validOcrAiChainModes: OcrAiChainMode[] = ["direct", "doc_parser", "layout_block"]
   if (!validOcrAiChainModes.includes(merged.ocrAiChainMode)) {
-    merged.ocrAiChainMode = "direct"
+    merged.ocrAiChainMode = DEFAULT_AIOCR_CHAIN_MODE
   }
   const validOcrAiLayoutModels: OcrAiLayoutModel[] = ["pp_doclayout_v3"]
   if (!validOcrAiLayoutModels.includes(merged.ocrAiLayoutModel)) {
@@ -360,6 +376,27 @@ export function loadStoredSettings(): Settings {
   const validScannedPageModes: ScannedPageMode[] = ["segmented", "fullpage"]
   if (!validScannedPageModes.includes(merged.scannedPageMode)) {
     merged.scannedPageMode = "segmented"
+  }
+  const validPptGenerationModes: PptGenerationMode[] = ["standard", "fast"]
+  if (!validPptGenerationModes.includes(merged.pptGenerationMode)) {
+    merged.pptGenerationMode = "fast"
+  }
+  if (merged.parseEngineMode === "remote_ocr") {
+    if (merged.ocrAiProvider === "auto") {
+      merged.ocrAiProvider = DEFAULT_AIOCR_PROVIDER
+    }
+    if (!merged.ocrAiBaseUrl.trim() && merged.ocrAiProvider === "siliconflow") {
+      merged.ocrAiBaseUrl = SILICONFLOW_BASE_URL
+    }
+    if (!merged.ocrAiModel.trim()) {
+      merged.ocrAiModel = DEFAULT_AIOCR_MODEL
+    }
+    if (
+      merged.ocrAiChainMode === "direct" &&
+      isPaddleOcrVlModelName(merged.ocrAiModel)
+    ) {
+      merged.ocrAiModel = DEFAULT_AIOCR_MODEL
+    }
   }
   const toNumberLikeString = (value: unknown, fallback: string): string => {
     if (typeof value === "string") {
