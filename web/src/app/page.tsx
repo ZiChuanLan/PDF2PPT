@@ -619,8 +619,8 @@ export default function Home() {
             <h1 className="mt-3 max-w-4xl font-serif text-4xl leading-[0.92] tracking-tight md:text-6xl">
               PDF 处理工作台
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground md:text-[15px]">
-              上传文件后直接预览、设定范围并开始处理。复杂参数放在设置页，结果核对放在跟踪页，首页只保留最常用的操作。
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground md:text-[15px] xl:max-w-none xl:whitespace-nowrap">
+              上传后即可预览、设定范围并开始处理；复杂参数在设置页，结果核对在跟踪页。
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -642,7 +642,7 @@ export default function Home() {
         </p>
 
         <main className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-stretch">
-          <Card className="home-card page-enter page-enter-delay-1 border-border xl:h-full">
+          <Card className="home-card editorial-panel page-enter page-enter-delay-1 border-border xl:h-full">
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -899,7 +899,7 @@ export default function Home() {
             </Card>
 
           <div className="grid min-w-0 gap-5 xl:h-full xl:grid-rows-[auto_minmax(0,1fr)]">
-            <Card className="home-card-muted page-enter page-enter-delay-2 min-w-0 border border-border">
+            <Card className="home-card-muted editorial-panel page-enter page-enter-delay-2 min-w-0 border border-border">
               <CardHeader className="pb-3">
                 <div className="home-section-kicker">当前配置</div>
                 <CardTitle className="mt-2 text-xl">处理参数</CardTitle>
@@ -925,7 +925,7 @@ export default function Home() {
               </CardContent>
             </Card>
 
-            <Card className="home-card-muted page-enter page-enter-delay-2 min-w-0 border border-border xl:flex xl:min-h-0 xl:flex-col">
+            <Card className="home-card-muted editorial-panel page-enter page-enter-delay-2 min-w-0 border border-border xl:flex xl:min-h-0 xl:flex-col">
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -1026,7 +1026,13 @@ export default function Home() {
                         {showHomeLog ? "收起处理日志" : "查看处理日志"}
                       </Button>
                     </div>
-                    {showHomeLog ? <JobDebugPanel events={activeJob?.debug_events || []} compact /> : null}
+                    {showHomeLog ? (
+                      <JobDebugPanel
+                        events={activeJob?.debug_events || []}
+                        compact
+                        className="animate-in fade-in slide-in-from-top-2 duration-300"
+                      />
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -1056,7 +1062,7 @@ export default function Home() {
           </div>
         </main>
 
-        <Card className="home-card page-enter page-enter-delay-2 mt-6 border-border">
+        <Card className="home-card editorial-panel page-enter page-enter-delay-2 mt-6 border-border">
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -1098,7 +1104,7 @@ export default function Home() {
                         <tr
                           key={row.job_id}
                           className={cn(
-                            "border-t border-border/80 transition-colors hover:bg-muted/20",
+                            "motion-row border-t border-border/80 transition-colors hover:bg-muted/20",
                             row.job_id === jobId && "bg-muted/35"
                           )}
                         >

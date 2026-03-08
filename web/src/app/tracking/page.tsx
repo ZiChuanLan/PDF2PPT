@@ -504,7 +504,7 @@ function TrackingPageContent() {
         </header>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[23rem_minmax(0,1fr)]">
-          <Card className="page-enter page-enter-delay-1 py-0 hard-shadow-hover">
+          <Card className="editorial-panel page-enter page-enter-delay-1 py-0">
             <CardHeader className="border-b border-border pt-5 md:pt-6">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle>任务列表</CardTitle>
@@ -561,7 +561,7 @@ function TrackingPageContent() {
                       <div
                         key={record.job_id}
                         className={cn(
-                          "border-b px-3 py-2 transition-colors duration-200 last:border-b-0",
+                          "motion-row border-b px-3 py-2 transition-colors duration-200 last:border-b-0",
                           isCurrent
                             ? "bg-secondary/80 shadow-[inset_4px_0_0_0_#111111]"
                             : "hover:bg-muted/40"
@@ -643,7 +643,7 @@ function TrackingPageContent() {
             </CardContent>
           </Card>
 
-          <Card className="page-enter page-enter-delay-2 py-0 hard-shadow-hover">
+          <Card className="editorial-panel page-enter page-enter-delay-2 py-0">
             <CardHeader className="border-b border-border pt-5 md:pt-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -726,6 +726,7 @@ function TrackingPageContent() {
                       events={trackedJobStatus?.debug_events || []}
                       emptyLabel="任务开始后会在这里显示处理记录"
                       compact
+                      className="animate-in fade-in slide-in-from-top-2 duration-300"
                     />
                   ) : null}
                 </div>
@@ -845,7 +846,7 @@ function TrackingPageContent() {
                         <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                           原始 PDF（悬停显示识别框）
                         </div>
-                        <div className="panel-contrast group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
+                        <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
                           {trackedOriginal ? (
                             <TrackingArtifactImage
                               src={`${apiOrigin}${trackedOriginal.url}`}
@@ -872,7 +873,7 @@ function TrackingPageContent() {
                         <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                           转换完成图（悬停显示后处理框）
                         </div>
-                        <div className="panel-contrast group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
+                        <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
                           {trackedAfterOverlay ? (
                             <TrackingArtifactImage
                               src={`${apiOrigin}${trackedAfterOverlay.url}`}
@@ -913,7 +914,7 @@ function TrackingPageContent() {
                         <Badge variant="outline">分割线 {compareSplitPercent}%</Badge>
                       </div>
                       <div
-                        className="panel-contrast-strong group relative min-h-[24rem] overflow-hidden border sm:min-h-[30rem]"
+                        className="panel-contrast-strong tracking-stage group relative min-h-[24rem] overflow-hidden border sm:min-h-[30rem]"
                         onMouseMove={handleComparePointerMove}
                         onTouchStart={handleCompareTouchMove}
                         onTouchMove={handleCompareTouchMove}
