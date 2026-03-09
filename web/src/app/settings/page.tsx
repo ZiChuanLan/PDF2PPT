@@ -33,6 +33,7 @@ import {
   getOcrConfigSourceLabel,
   PARSE_ENGINE_MODE_LABELS,
   PARSE_ENGINE_OPTIONS,
+  resolveAutoOcrAiPageConcurrency,
   resolveOcrSettingsState,
 } from "@/lib/run-config"
 import {
@@ -278,6 +279,7 @@ export default function SettingsPage() {
   const parseEngineMode = ocrState.parseEngineMode
   const currentOcrAiChainMode = ocrState.runConfig.ocrAiChainMode
   const currentOcrAiLayoutModel = ocrState.runConfig.ocrAiLayoutModel
+  const autoOcrAiPageConcurrency = resolveAutoOcrAiPageConcurrency(settings)
   const isOcrProviderPaddleLocal = ocrState.isOcrProviderPaddleLocal
   const isOcrProviderBaidu = ocrState.isOcrProviderBaidu
   const isOcrProviderTesseract = ocrState.isOcrProviderTesseract
@@ -315,11 +317,11 @@ export default function SettingsPage() {
     if (isOcrAiChainDocParser) {
       return ocrModelOptions.filter((model) => isPaddleOcrVlModelName(model))
     }
-    if (isOcrAiChainDirect) {
+    if (isOcrAiChainDirect || isOcrAiChainLayoutBlock) {
       return ocrModelOptions.filter((model) => !isPaddleOcrVlModelName(model))
     }
     return ocrModelOptions
-  }, [isOcrAiChainDirect, isOcrAiChainDocParser, ocrModelOptions])
+  }, [isOcrAiChainDirect, isOcrAiChainDocParser, isOcrAiChainLayoutBlock, ocrModelOptions])
 
   const canLoadOcrModels =
     canUseAiOcr &&
@@ -1197,9 +1199,9 @@ export default function SettingsPage() {
                 <FieldLabel
                   htmlFor="scanned-page-mode"
                   hint={
-                    settings.pptGenerationMode === "fast"
-                      ? "快速模式固定保留整页背景；此项仅在精准模式下生效。"
-                      : "决定图片是拆成可编辑元素，还是保留在整页背景中。"
+                    settings.pptGenerationMode === "standard"
+                      ? "决定图片是拆成可编辑元素，还是保留在整页背景中。"
+                      : "快速/极速模式下也可以单独控制；若选择拆图，速度会比整页背景略慢。"
                   }
                 >
                   扫描页图片处理方式
@@ -1218,6 +1220,38 @@ export default function SettingsPage() {
                   <option value="fullpage">图片留在整页背景里（更像原图）</option>
                 </Select>
               </div>
+
+              <AdvancedReveal show={showAdvanced && !isMineruProvider}>
+                <div className="grid gap-2">
+                  <FieldLabel
+                    htmlFor="ocr-render-dpi"
+                    hint={
+                      settings.pptGenerationMode === "turbo"
+                        ? "默认 200。仅影响 OCR 输入图；极速模式会自动把它上限压到 120。"
+                        : settings.pptGenerationMode === "fast"
+                          ? "默认 200。仅影响 OCR 输入图；快速模式会自动把它上限压到 160。"
+                          : "默认 200。数值越高越利于识别小字，但会增加耗时和内存。"
+                    }
+                  >
+                    OCR 渲染 DPI
+                  </FieldLabel>
+                  <Input
+                    id="ocr-render-dpi"
+                    type="number"
+                    min={72}
+                    max={400}
+                    step={10}
+                    value={settings.ocrRenderDpi}
+                    onChange={(e) =>
+                      setSettings((s) => ({
+                        ...s,
+                        ocrRenderDpi: e.target.value,
+                      }))
+                    }
+                    placeholder={defaultSettings.ocrRenderDpi}
+                  />
+                </div>
+              </AdvancedReveal>
 
               <div className="flex items-center gap-1.5">
                 <label className="flex items-center gap-2 text-sm">
@@ -1535,7 +1569,7 @@ export default function SettingsPage() {
                   <div className="grid gap-2">
                     <FieldLabel
                       htmlFor="ocr-ai-chain-mode"
-                      hint="模型直出适合整页识别；内置文档解析适合 PaddleOCR-VL；本地切块识别会先分块再识别。"
+                      hint="模型直出适合整页识别；内置文档解析适合 PaddleOCR-VL；本地切块识别暂不支持 PaddleOCR-VL。"
                     >
                       AIOCR 识别链路
                     </FieldLabel>
@@ -1620,7 +1654,7 @@ export default function SettingsPage() {
                           ? "此链路只显示 PaddleOCR-VL 模型。"
                           : isOcrAiChainDirect
                             ? "适合整页 OCR 模型。"
-                            : "适合通用视觉模型。"
+                            : "适合通用视觉模型；当前不支持 PaddleOCR-VL。"
                       }
                     >
                       {isOcrAiChainLayoutBlock ? "AI 视觉识别模型（必填）" : "专用 OCR 模型（必填）"}
@@ -1665,7 +1699,7 @@ export default function SettingsPage() {
                         <div className="grid gap-2">
                           <FieldLabel
                             htmlFor="ocr-ai-page-concurrency"
-                            hint="仅对模型直出和本地切块识别生效。1 表示串行。"
+                            hint="仅对模型直出和本地切块识别生效。留空恢复自动；极速 + 模型直出默认 4，快速/极速 + 本地切块默认 2，PaddleOCR-VL 始终保持 1。"
                           >
                             多页并发数
                           </FieldLabel>
@@ -1675,16 +1709,28 @@ export default function SettingsPage() {
                             min={1}
                             max={8}
                             step={1}
-                            value={settings.ocrAiPageConcurrency}
+                            value={
+                              settings.ocrAiPageConcurrencyAuto
+                                ? String(autoOcrAiPageConcurrency)
+                                : settings.ocrAiPageConcurrency
+                            }
                             disabled={!isOcrAiChainDirect && !isOcrAiChainLayoutBlock}
                             onChange={(e) =>
                               setSettings((s) => ({
                                 ...s,
-                                ocrAiPageConcurrency: e.target.value,
+                                ocrAiPageConcurrency: e.target.value.trim()
+                                  ? e.target.value
+                                  : defaultSettings.ocrAiPageConcurrency,
+                                ocrAiPageConcurrencyAuto: !e.target.value.trim(),
                               }))
                             }
-                            placeholder="1"
+                            placeholder="自动"
                           />
+                          <div className="text-[11px] text-muted-foreground">
+                            {settings.ocrAiPageConcurrencyAuto
+                              ? `当前自动值：${autoOcrAiPageConcurrency}`
+                              : "已切换为手动值；清空可恢复自动。"}
+                          </div>
                         </div>
 
                         <div className="grid gap-2">

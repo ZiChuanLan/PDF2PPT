@@ -159,6 +159,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
     ocr_ai_requests_per_minute: int | None = None,
     ocr_ai_tokens_per_minute: int | None = None,
     ocr_ai_max_retries: int | None = None,
+    ocr_render_dpi: int | None = None,
     ocr_geometry_mode: str | None = None,
     scanned_page_mode: str | None = None,
     ppt_generation_mode: str | None = None,
@@ -215,6 +216,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
         ocr_ai_requests_per_minute,
         ocr_ai_tokens_per_minute,
         ocr_ai_max_retries,
+        ocr_render_dpi,
         ocr_geometry_mode,
         scanned_page_mode,
         ppt_generation_mode,
@@ -236,7 +238,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
     set_job_stage(None)
     settings = get_settings()
     perf_settings = RuntimePerformanceSettings.from_settings(settings)
-    ocr_render_dpi = int(perf_settings.ocr_render_dpi)
+    default_ocr_render_dpi = int(perf_settings.ocr_render_dpi)
     scanned_render_dpi = int(perf_settings.scanned_render_dpi)
     keepalive_interval_s = float(perf_settings.keepalive_interval_s)
 
@@ -284,6 +286,8 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
     normalized_scanned_page_mode = normalize_scanned_page_mode(scanned_page_mode)
     normalized_ppt_generation_mode = normalize_ppt_generation_mode(ppt_generation_mode)
     fast_ppt_generation = normalized_ppt_generation_mode == "fast"
+    turbo_ppt_generation = normalized_ppt_generation_mode == "turbo"
+    speed_ppt_generation = fast_ppt_generation or turbo_ppt_generation
 
     def _normalize_float(
         value: float | None,
@@ -318,6 +322,20 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
         if num > high:
             num = int(high)
         return int(num)
+
+    effective_ocr_render_dpi = _normalize_int(
+        ocr_render_dpi,
+        default=default_ocr_render_dpi,
+        low=72,
+        high=400,
+    )
+    fast_skip_image_region_detection = (
+        speed_ppt_generation and normalized_scanned_page_mode == "fullpage"
+    )
+    if turbo_ppt_generation:
+        effective_ocr_render_dpi = min(int(effective_ocr_render_dpi), 120)
+    elif fast_ppt_generation:
+        effective_ocr_render_dpi = min(int(effective_ocr_render_dpi), 160)
 
     normalized_image_bg_clear_expand_min_pt = _normalize_float(
         image_bg_clear_expand_min_pt,
@@ -718,7 +736,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             auto_linebreak_enabled = ocr_setup.auto_linebreak_enabled
             ocr_debug_payload = build_ocr_debug_payload(
                 provider_requested=(ocr_provider or "auto"),
-                ocr_render_dpi=int(ocr_render_dpi),
+                ocr_render_dpi=int(effective_ocr_render_dpi),
                 scanned_render_dpi=int(scanned_render_dpi),
                 ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
                 setup=ocr_setup,
@@ -817,10 +835,10 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                 linebreak_assist_effective=linebreak_assist_effective,
                 strict_no_fallback=bool(strict_ocr_mode),
                 effective_ocr_provider=effective_ocr_provider,
-                ocr_render_dpi=int(ocr_render_dpi),
+                ocr_render_dpi=int(effective_ocr_render_dpi),
                 ocr_debug=ocr_debug_payload,
                 export_overlay_images=export_ocr_overlay_images_effective,
-                skip_image_region_detection=bool(fast_ppt_generation),
+                skip_image_region_detection=bool(fast_skip_image_region_detection),
                 ocr_setup=ocr_setup,
                 ocr_runtime_factory=_build_page_ocr_runtime,
                 set_processing_progress=_set_processing_progress,

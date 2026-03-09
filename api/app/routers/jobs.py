@@ -614,6 +614,12 @@ async def create_job(
         le=8,
         description="Experimental retry count for retryable AI OCR chat/completions failures",
     ),
+    ocr_render_dpi: int | None = Form(
+        None,
+        ge=72,
+        le=400,
+        description="Optional OCR render DPI for scanned-page rasterization before OCR",
+    ),
     ocr_geometry_mode: str | None = Form(
         "auto",
         description=(
@@ -628,8 +634,8 @@ async def create_job(
     ppt_generation_mode: str | None = Form(
         "standard",
         description=(
-            "PPT generation mode (standard, fast). "
-            "Fast mode is experimental and prioritizes speed over fidelity."
+            "PPT generation mode (standard, fast, turbo). "
+            "Fast and turbo prioritize speed over fidelity, with turbo being the most aggressive."
         ),
     ),
     image_bg_clear_expand_min_pt: float | None = Form(
@@ -803,6 +809,7 @@ async def create_job(
                     "ocr_ai_requests_per_minute": ocr_ai_requests_per_minute,
                     "ocr_ai_tokens_per_minute": ocr_ai_tokens_per_minute,
                     "ocr_ai_max_retries": ocr_ai_max_retries,
+                    "ocr_render_dpi": ocr_render_dpi,
                     "ocr_geometry_mode": normalized_options.ocr_geometry_mode,
                     "text_erase_mode": normalized_options.text_erase_mode,
                     "scanned_page_mode": normalized_options.scanned_page_mode,
@@ -868,6 +875,7 @@ async def create_job(
                 ocr_ai_requests_per_minute=ocr_ai_requests_per_minute,
                 ocr_ai_tokens_per_minute=ocr_ai_tokens_per_minute,
                 ocr_ai_max_retries=ocr_ai_max_retries,
+                ocr_render_dpi=ocr_render_dpi,
                 ocr_geometry_mode=normalized_options.ocr_geometry_mode,
                 text_erase_mode=normalized_options.text_erase_mode,
                 scanned_page_mode=normalized_options.scanned_page_mode,

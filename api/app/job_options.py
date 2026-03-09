@@ -23,7 +23,7 @@ VALID_OCR_AI_LAYOUT_MODELS = {"pp_doclayout_v3"}
 VALID_OCR_GEOMETRY_MODES = {"auto", "local_tesseract", "direct_ai"}
 VALID_TEXT_ERASE_MODES = {"smart", "fill"}
 VALID_SCANNED_PAGE_MODES = {"segmented", "fullpage"}
-VALID_PPT_GENERATION_MODES = {"standard", "fast"}
+VALID_PPT_GENERATION_MODES = {"standard", "fast", "turbo"}
 OCR_GEOMETRY_ALIASES = {
     "auto",
     "direct",
@@ -89,6 +89,10 @@ PPT_GENERATION_MODE_ALIASES = VALID_PPT_GENERATION_MODES | {
     "speed-first",
     "fast_experimental",
     "experimental_fast",
+    "ultra",
+    "extreme",
+    "turbo_fast",
+    "turbo-fast",
 }
 
 
@@ -198,6 +202,8 @@ def normalize_ppt_generation_mode(value: str | None) -> str:
         return "standard"
     if mode in {"speed", "speed_first", "speed-first", "fast_experimental", "experimental_fast"}:
         return "fast"
+    if mode in {"ultra", "extreme", "turbo_fast", "turbo-fast"}:
+        return "turbo"
     return mode if mode in VALID_PPT_GENERATION_MODES else "standard"
 
 
@@ -448,6 +454,21 @@ def validate_and_normalize_job_options(
             raise AppException(
                 code=ErrorCode.VALIDATION_ERROR,
                 message="doc_parser chain requires a PaddleOCR-VL model",
+                details={
+                    "ocr_provider": normalized_ocr_provider,
+                    "ocr_ai_chain_mode": normalized_ocr_ai_chain_mode,
+                    "ocr_ai_model": ocr_ai_model,
+                },
+                status_code=400,
+            )
+        if (
+            normalized_ocr_provider == "aiocr"
+            and normalized_ocr_ai_chain_mode == "layout_block"
+            and "paddleocr-vl" in str(ocr_ai_model or "").strip().lower()
+        ):
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="layout_block chain does not support PaddleOCR-VL models",
                 details={
                     "ocr_provider": normalized_ocr_provider,
                     "ocr_ai_chain_mode": normalized_ocr_ai_chain_mode,

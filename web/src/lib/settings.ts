@@ -14,7 +14,7 @@ export type OcrAiLayoutModel = "pp_doclayout_v3"
 export type LayoutAssistMode = "off" | "on" | "auto"
 export type VisionAssistMode = LayoutAssistMode
 export type ScannedPageMode = "segmented" | "fullpage"
-export type PptGenerationMode = "standard" | "fast"
+export type PptGenerationMode = "standard" | "fast" | "turbo"
 export type MineruModelVersion = "pipeline" | "vlm" | "MinerU-HTML"
 export type TextEraseMode = "smart" | "fill"
 
@@ -54,6 +54,7 @@ export type Settings = {
   scannedImageRegionMinAreaRatio: string
   scannedImageRegionMaxAreaRatio: string
   scannedImageRegionMaxAspectRatio: string
+  ocrRenderDpi: string
   ocrStrictMode: boolean
   ocrProvider: OcrProvider
   baiduDocParseType: BaiduDocParseType
@@ -69,6 +70,7 @@ export type Settings = {
   ocrAiChainMode: OcrAiChainMode
   ocrAiLayoutModel: OcrAiLayoutModel
   ocrPaddleVlDocparserMaxSidePx: string
+  ocrAiPageConcurrencyAuto: boolean
   ocrAiPageConcurrency: string
   ocrAiBlockConcurrency: string
   ocrAiRequestsPerMinute: string
@@ -90,6 +92,7 @@ export const BAIDU_DOC_PARSE_TYPE_LABELS: Record<BaiduDocParseType, string> = {
 export const PPT_GENERATION_MODE_LABELS: Record<PptGenerationMode, string> = {
   standard: "精准",
   fast: "快速",
+  turbo: "极速",
 }
 
 export function isPaddleOcrVlModelName(value: string | null | undefined): boolean {
@@ -148,6 +151,7 @@ export const defaultSettings: Settings = {
   scannedImageRegionMinAreaRatio: "0.0025",
   scannedImageRegionMaxAreaRatio: "0.72",
   scannedImageRegionMaxAspectRatio: "4.8",
+  ocrRenderDpi: "200",
   // Default on. Strict mode keeps OCR benchmarking and production runs honest
   // by surfacing provider/setup failures instead of silently downgrading.
   ocrStrictMode: true,
@@ -167,6 +171,7 @@ export const defaultSettings: Settings = {
   ocrAiChainMode: DEFAULT_AIOCR_CHAIN_MODE,
   ocrAiLayoutModel: "pp_doclayout_v3",
   ocrPaddleVlDocparserMaxSidePx: "2200",
+  ocrAiPageConcurrencyAuto: true,
   ocrAiPageConcurrency: "1",
   ocrAiBlockConcurrency: "",
   ocrAiRequestsPerMinute: "",
@@ -198,6 +203,12 @@ export function loadStoredSettings(): Settings {
     ocrAiLinebreakAssist?: unknown
     ocrAiLinebreakAssistMode?: unknown
   }
+  const parsedOcrAiPageConcurrencyAuto = (
+    parsed as { ocrAiPageConcurrencyAuto?: unknown } | null
+  )?.ocrAiPageConcurrencyAuto
+  const parsedOcrAiPageConcurrency = (
+    parsed as { ocrAiPageConcurrency?: unknown } | null
+  )?.ocrAiPageConcurrency
   const parsedProvider = (parsed as { provider?: string } | null)?.provider
   const parsedPreferredMainProvider = (
     parsed as { preferredMainProvider?: string } | null
@@ -377,7 +388,7 @@ export function loadStoredSettings(): Settings {
   if (!validScannedPageModes.includes(merged.scannedPageMode)) {
     merged.scannedPageMode = "segmented"
   }
-  const validPptGenerationModes: PptGenerationMode[] = ["standard", "fast"]
+  const validPptGenerationModes: PptGenerationMode[] = ["standard", "fast", "turbo"]
   if (!validPptGenerationModes.includes(merged.pptGenerationMode)) {
     merged.pptGenerationMode = "fast"
   }
@@ -396,6 +407,12 @@ export function loadStoredSettings(): Settings {
       isPaddleOcrVlModelName(merged.ocrAiModel)
     ) {
       merged.ocrAiModel = DEFAULT_AIOCR_MODEL
+    }
+    if (
+      merged.ocrAiChainMode === "layout_block" &&
+      isPaddleOcrVlModelName(merged.ocrAiModel)
+    ) {
+      merged.ocrAiChainMode = "doc_parser"
     }
   }
   const toNumberLikeString = (value: unknown, fallback: string): string => {
@@ -431,6 +448,10 @@ export function loadStoredSettings(): Settings {
     merged.scannedImageRegionMaxAspectRatio,
     defaultSettings.scannedImageRegionMaxAspectRatio
   )
+  merged.ocrRenderDpi = toNumberLikeString(
+    merged.ocrRenderDpi,
+    defaultSettings.ocrRenderDpi
+  )
   merged.ocrPaddleVlDocparserMaxSidePx = toNumberLikeString(
     merged.ocrPaddleVlDocparserMaxSidePx,
     defaultSettings.ocrPaddleVlDocparserMaxSidePx
@@ -455,6 +476,12 @@ export function loadStoredSettings(): Settings {
     merged.ocrAiMaxRetries,
     defaultSettings.ocrAiMaxRetries
   )
+  const ocrRenderDpi = Number(merged.ocrRenderDpi)
+  if (!Number.isFinite(ocrRenderDpi) || ocrRenderDpi < 72) {
+    merged.ocrRenderDpi = defaultSettings.ocrRenderDpi
+  } else {
+    merged.ocrRenderDpi = String(Math.min(400, Math.round(ocrRenderDpi)))
+  }
   const paddleDocMaxSidePx = Number(merged.ocrPaddleVlDocparserMaxSidePx)
   if (!Number.isFinite(paddleDocMaxSidePx) || paddleDocMaxSidePx < 0) {
     merged.ocrPaddleVlDocparserMaxSidePx = defaultSettings.ocrPaddleVlDocparserMaxSidePx
@@ -466,6 +493,20 @@ export function loadStoredSettings(): Settings {
     merged.ocrAiPageConcurrency = defaultSettings.ocrAiPageConcurrency
   } else {
     merged.ocrAiPageConcurrency = String(Math.min(8, Math.round(pageConcurrency)))
+  }
+  if (typeof parsedOcrAiPageConcurrencyAuto === "boolean") {
+    merged.ocrAiPageConcurrencyAuto = parsedOcrAiPageConcurrencyAuto
+  } else {
+    const normalizedParsedPageConcurrency =
+      typeof parsedOcrAiPageConcurrency === "number" &&
+      Number.isFinite(parsedOcrAiPageConcurrency)
+        ? String(parsedOcrAiPageConcurrency)
+        : typeof parsedOcrAiPageConcurrency === "string"
+          ? parsedOcrAiPageConcurrency.trim()
+          : ""
+    merged.ocrAiPageConcurrencyAuto =
+      !normalizedParsedPageConcurrency ||
+      normalizedParsedPageConcurrency === defaultSettings.ocrAiPageConcurrency
   }
   const normalizeOptionalPositiveIntString = (value: string): string => {
     const trimmed = value.trim()
@@ -491,6 +532,9 @@ export function loadStoredSettings(): Settings {
   }
   merged.enableLayoutAssist = false
   merged.layoutAssistApplyImageRegions = false
+  if (typeof merged.ocrAiPageConcurrencyAuto !== "boolean") {
+    merged.ocrAiPageConcurrencyAuto = true
+  }
   if (typeof merged.ocrStrictMode !== "boolean") {
     merged.ocrStrictMode = true
   }

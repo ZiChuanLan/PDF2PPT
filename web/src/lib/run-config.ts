@@ -116,6 +116,35 @@ export function getOcrConfigSourceLabel(source: OcrConfigSource): string {
   return OCR_CONFIG_SOURCE_LABELS[source]
 }
 
+export function resolveAutoOcrAiPageConcurrency(
+  settings: Pick<
+    Settings,
+    "parseEngineMode" | "pptGenerationMode" | "ocrAiChainMode" | "ocrAiModel"
+  >
+): number {
+  if (settings.parseEngineMode !== "remote_ocr") {
+    return 1
+  }
+  if (isPaddleOcrVlModelName(settings.ocrAiModel)) {
+    return 1
+  }
+  if (settings.pptGenerationMode === "turbo") {
+    if (settings.ocrAiChainMode === "direct") {
+      return 4
+    }
+    if (settings.ocrAiChainMode === "layout_block") {
+      return 2
+    }
+  }
+  if (
+    settings.pptGenerationMode === "fast" &&
+    settings.ocrAiChainMode === "layout_block"
+  ) {
+    return 2
+  }
+  return 1
+}
+
 function getResolvedMainProvider(settings: Settings): MainProvider {
   return settings.parseEngineMode === "mineru_cloud" || settings.provider === "mineru"
     ? settings.preferredMainProvider
@@ -226,6 +255,14 @@ function toFiniteIntStringOrUndefined(value: string): string | undefined {
   return String(Math.round(n))
 }
 
+function toFinitePositiveIntStringOrUndefined(value: string): string | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const n = Number(trimmed)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return String(Math.round(n))
+}
+
 function toFinitePositiveIntOrNull(value: string): number | null {
   const trimmed = value.trim()
   if (!trimmed) return null
@@ -296,10 +333,18 @@ export function resolveRunConfig(settings: Settings): RunConfig {
   const ocrAiLayoutModel: OcrAiLayoutModel = explicitAiOcrSelected
     ? settings.ocrAiLayoutModel
     : "pp_doclayout_v3"
-  const ocrAiPageConcurrency = Math.min(
+  const explicitOcrAiPageConcurrency = Math.min(
     8,
     Math.max(1, Number(settings.ocrAiPageConcurrency) || 1)
   )
+  const ocrAiPageConcurrency = settings.ocrAiPageConcurrencyAuto
+    ? resolveAutoOcrAiPageConcurrency({
+        parseEngineMode,
+        pptGenerationMode: settings.pptGenerationMode,
+        ocrAiChainMode,
+        ocrAiModel: settings.ocrAiModel,
+      })
+    : explicitOcrAiPageConcurrency
   const ocrAiBlockConcurrency = toFinitePositiveIntOrNull(settings.ocrAiBlockConcurrency)
   const ocrAiRequestsPerMinute = toFinitePositiveIntOrNull(settings.ocrAiRequestsPerMinute)
   const ocrAiTokensPerMinute = toFinitePositiveIntOrNull(settings.ocrAiTokensPerMinute)
@@ -497,6 +542,12 @@ export function validateRunConfig(settings: Settings): ValidationResult {
     ) {
       return { ok: false, message: "模型直出链路不支持 PaddleOCR-VL，请切换到内置文档解析。" }
     }
+    if (
+      run.ocrAiChainMode === "layout_block" &&
+      isPaddleOcrVlModelName(settings.ocrAiModel)
+    ) {
+      return { ok: false, message: "本地切块识别暂不支持 PaddleOCR-VL，请切换到内置文档解析。" }
+    }
   }
 
   return { ok: true }
@@ -559,6 +610,10 @@ export function createJobFormData(
   }
   if (scannedImageRegionMaxAspectRatio) {
     form.append("scanned_image_region_max_aspect_ratio", scannedImageRegionMaxAspectRatio)
+  }
+  const ocrRenderDpi = toFinitePositiveIntStringOrUndefined(settings.ocrRenderDpi)
+  if (ocrRenderDpi !== undefined) {
+    form.append("ocr_render_dpi", ocrRenderDpi)
   }
   form.append("ocr_strict_mode", String(Boolean(settings.ocrStrictMode)))
 

@@ -860,7 +860,7 @@ export default function Home() {
                     <div className="grid gap-2 border border-border/70 bg-muted/20 px-3 py-3">
                       <div className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
                         <label htmlFor="home-ppt-generation-mode">PPT 生成模式</label>
-                        <HoverHint text="快速适合日常转换，精准适合效果优先。" />
+                        <HoverHint text="极速优先抢时间；快速适合日常转换；精准适合效果优先。" />
                       </div>
                       <Select
                         id="home-ppt-generation-mode"
@@ -872,6 +872,7 @@ export default function Home() {
                           }))
                         }
                       >
+                        <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
                         <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
                         <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
                       </Select>

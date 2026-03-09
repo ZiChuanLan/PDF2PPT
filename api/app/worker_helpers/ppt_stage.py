@@ -82,13 +82,18 @@ def run_ppt_stage(
     ppt_page_total = sum(
         1 for page in (ir.get("pages") or []) if isinstance(page, dict)
     )
-    fast_mode = str(normalized_ppt_generation_mode or "").strip().lower() == "fast"
+    mode_id = str(normalized_ppt_generation_mode or "").strip().lower()
+    mode_label = (
+        "极速模式"
+        if mode_id == "turbo"
+        else ("快速模式" if mode_id == "fast" else None)
+    )
     set_processing_progress(
         JobStage.pptx_generating,
         84,
         (
-            f"开始生成 PPT（快速模式，共 {ppt_page_total} 页）"
-            if fast_mode
+            f"开始生成 PPT（{mode_label}，共 {ppt_page_total} 页）"
+            if mode_label
             else f"开始生成 PPT（共 {ppt_page_total} 页）"
         ),
     )
@@ -99,8 +104,8 @@ def run_ppt_stage(
             JobStage.pptx_generating,
             _progress_in_span(done, max(1, total), start=85, end=97),
             (
-                f"正在生成 PPT 页面（快速模式，{done}/{max(1, total)}）"
-                if fast_mode
+                f"正在生成 PPT 页面（{mode_label}，{done}/{max(1, total)}）"
+                if mode_label
                 else f"正在生成 PPT 页面（{done}/{max(1, total)}）"
             ),
         )

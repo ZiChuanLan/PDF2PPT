@@ -436,8 +436,9 @@ def generate_pptx_from_ir(
         remove_footer_notebooklm: Whether to drop detected bottom-right
             NotebookLM footer branding text from the exported PPT.
         text_erase_mode: Erase strategy for background cleanup (smart, fill).
-        ppt_generation_mode: PPT generation mode (standard, fast). Fast mode is
-            experimental and prioritizes speed over visual fidelity.
+        ppt_generation_mode: PPT generation mode (standard, fast, turbo). Fast
+            and turbo prioritize speed over visual fidelity, with turbo being
+            the most aggressive.
         image_bg_clear_expand_min_pt: Min outward expansion (pt) when clearing
             background under overlaid image crops.
         image_bg_clear_expand_max_pt: Max outward expansion (pt) when clearing
@@ -508,20 +509,23 @@ def generate_pptx_from_ir(
         ppt_generation_mode_id = "standard"
     if ppt_generation_mode_id in {"speed", "speed_first", "speed-first", "fast_experimental", "experimental_fast"}:
         ppt_generation_mode_id = "fast"
-    if ppt_generation_mode_id not in {"standard", "fast"}:
+    if ppt_generation_mode_id in {"ultra", "extreme", "turbo_fast", "turbo-fast"}:
+        ppt_generation_mode_id = "turbo"
+    if ppt_generation_mode_id not in {"standard", "fast", "turbo"}:
         ppt_generation_mode_id = "standard"
 
     is_fast_ppt_generation = ppt_generation_mode_id == "fast"
-    if is_fast_ppt_generation:
+    is_turbo_ppt_generation = ppt_generation_mode_id == "turbo"
+    is_speed_ppt_generation = is_fast_ppt_generation or is_turbo_ppt_generation
+    if is_speed_ppt_generation:
         text_erase_mode_id = "fill"
-        scanned_page_mode_id = "fullpage"
     try:
         scanned_render_dpi = int(scanned_render_dpi)
     except Exception:
         scanned_render_dpi = 200
     if scanned_render_dpi <= 0:
         scanned_render_dpi = 200
-    if is_fast_ppt_generation:
+    if is_speed_ppt_generation:
         scanned_render_dpi = min(scanned_render_dpi, 120)
 
     def _clamp_float(value: Any, *, default: float, low: float, high: float) -> float:
@@ -625,7 +629,7 @@ def generate_pptx_from_ir(
     source_pdf = _as_path(str(ir.get("source_pdf") or ""))
     total_pages = sum(1 for page in pages if isinstance(page, dict))
     should_export_final_previews = bool(export_final_preview_images) and (
-        not is_fast_ppt_generation
+        not is_speed_ppt_generation
     )
     done_pages = 0
 
@@ -698,9 +702,11 @@ def generate_pptx_from_ir(
         has_mineru_elements = any(_is_layout_parse_source(el.get("source")) for el in page_elements)
 
         if not has_text_layer:
-            overlay_scanned_image_crops = (
-                (not is_fast_ppt_generation) and scanned_page_mode_id != "fullpage"
+            should_split_scanned_image_regions = scanned_page_mode_id != "fullpage"
+            skip_scanned_image_region_analysis = (
+                is_speed_ppt_generation and not should_split_scanned_image_regions
             )
+            overlay_scanned_image_crops = bool(should_split_scanned_image_regions)
             # Scanned page strategy: render page image, erase OCR/image areas
             # in the render, then overlay cropped images + editable text.
             render_path = artifacts / "page_renders" / f"page-{page_index:04d}.png"
@@ -833,7 +839,7 @@ def generate_pptx_from_ir(
 
             image_region_infos = (
                 []
-                if is_fast_ppt_generation
+                if skip_scanned_image_region_analysis
                 else _build_scanned_image_region_infos(
                     page=page,
                     render_path=render_path,
@@ -912,7 +918,7 @@ def generate_pptx_from_ir(
                 # Sample the local background for masking.
                 bg_rgb = (
                     (255, 255, 255)
-                    if is_fast_ppt_generation
+                    if is_speed_ppt_generation
                     else _sample_bbox_background_rgb(
                         pix,
                         bbox_pt=[x0, y0, x1, y1],
@@ -1113,7 +1119,7 @@ def generate_pptx_from_ir(
                     baseline_ocr_h_pt=float(baseline_ocr_h_pt),
                 )
                 visual_wrap_override: bool | None = None
-                if (not is_fast_ppt_generation) and _should_probe_visual_wrap_for_ocr_text(
+                if (not is_speed_ppt_generation) and _should_probe_visual_wrap_for_ocr_text(
                     text=text,
                     bbox_w_pt=bbox_w_pt,
                     bbox_h_pt=bbox_h_pt,
@@ -1149,7 +1155,7 @@ def generate_pptx_from_ir(
 
                 sampled_bg_rgb: tuple[int, int, int] | None = None
                 sampled_text_rgb: tuple[int, int, int] | None = None
-                if (not is_fast_ppt_generation) and _should_sample_local_text_colors(
+                if (not is_speed_ppt_generation) and _should_sample_local_text_colors(
                     source_id="ocr",
                     element_color=el.get("color"),
                 ):
@@ -1422,7 +1428,7 @@ def generate_pptx_from_ir(
             except Exception:
                 mineru_background_placed = False
 
-        if (not is_fast_ppt_generation) and ocr_sampling_pix is None and source_pdf.exists():
+        if (not is_speed_ppt_generation) and ocr_sampling_pix is None and source_pdf.exists():
             if _page_needs_ocr_sampling_render(
                 page_elements=page_text_elements_render,
                 page_h_pt=float(page_h_pt),
