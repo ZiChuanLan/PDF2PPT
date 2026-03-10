@@ -111,6 +111,10 @@ def create_remote_ocr_client(
     request_rpm_limit: int | None = None,
     request_tpm_limit: int | None = None,
     request_max_retries: int | None = None,
+    prompt_preset: str | None = None,
+    direct_prompt_override: str | None = None,
+    layout_block_prompt_override: str | None = None,
+    image_region_prompt_override: str | None = None,
     allow_paddle_model_downgrade: bool = False,
 ) -> AiOcrClient:
     spec = resolve_remote_ocr_client_spec(
@@ -130,6 +134,10 @@ def create_remote_ocr_client(
         request_rpm_limit=request_rpm_limit,
         request_tpm_limit=request_tpm_limit,
         request_max_retries=request_max_retries,
+        prompt_preset=prompt_preset,
+        direct_prompt_override=direct_prompt_override,
+        layout_block_prompt_override=layout_block_prompt_override,
+        image_region_prompt_override=image_region_prompt_override,
         allow_paddle_model_downgrade=allow_paddle_model_downgrade,
     )
 
@@ -145,6 +153,10 @@ def _build_remote_ocr_client_from_spec(
     request_rpm_limit: int | None,
     request_tpm_limit: int | None,
     request_max_retries: int | None,
+    prompt_preset: str | None,
+    direct_prompt_override: str | None,
+    layout_block_prompt_override: str | None,
+    image_region_prompt_override: str | None,
     allow_paddle_model_downgrade: bool,
 ) -> AiOcrClient:
     client = AiOcrClient(
@@ -159,6 +171,10 @@ def _build_remote_ocr_client_from_spec(
         request_tpm_limit=request_tpm_limit,
         request_max_retries=request_max_retries,
         route_kind=spec.route_kind,
+        prompt_preset=prompt_preset,
+        direct_prompt_override=direct_prompt_override,
+        layout_block_prompt_override=layout_block_prompt_override,
+        image_region_prompt_override=image_region_prompt_override,
     )
     client.allow_model_downgrade = bool(allow_paddle_model_downgrade)
     return client
@@ -1091,6 +1107,10 @@ class OcrManager:
         request_rpm_limit: int | None = None,
         request_tpm_limit: int | None = None,
         request_max_retries: int | None = None,
+        prompt_preset: str | None = None,
+        direct_prompt_override: str | None = None,
+        layout_block_prompt_override: str | None = None,
+        image_region_prompt_override: str | None = None,
         baidu_app_id: str | None = None,
         baidu_api_key: str | None = None,
         baidu_secret_key: str | None = None,
@@ -1234,6 +1254,10 @@ class OcrManager:
                 request_rpm_limit=request_rpm_limit,
                 request_tpm_limit=request_tpm_limit,
                 request_max_retries=request_max_retries,
+                prompt_preset=prompt_preset,
+                direct_prompt_override=direct_prompt_override,
+                layout_block_prompt_override=layout_block_prompt_override,
+                image_region_prompt_override=image_region_prompt_override,
                 allow_paddle_model_downgrade=self.allow_paddle_model_downgrade,
             )
             self.providers.append(self.ai_provider)
@@ -1293,6 +1317,10 @@ class OcrManager:
                 request_rpm_limit=request_rpm_limit,
                 request_tpm_limit=request_tpm_limit,
                 request_max_retries=request_max_retries,
+                prompt_preset=prompt_preset,
+                direct_prompt_override=direct_prompt_override,
+                layout_block_prompt_override=layout_block_prompt_override,
+                image_region_prompt_override=image_region_prompt_override,
                 allow_paddle_model_downgrade=self.allow_paddle_model_downgrade,
             )
             self.providers.append(self.paddle_provider)
@@ -1335,6 +1363,10 @@ class OcrManager:
                     request_rpm_limit=request_rpm_limit,
                     request_tpm_limit=request_tpm_limit,
                     request_max_retries=request_max_retries,
+                    prompt_preset=prompt_preset,
+                    direct_prompt_override=direct_prompt_override,
+                    layout_block_prompt_override=layout_block_prompt_override,
+                    image_region_prompt_override=image_region_prompt_override,
                     allow_paddle_model_downgrade=self.allow_paddle_model_downgrade,
                 )
                 self.providers.append(self.ai_provider)
@@ -1396,6 +1428,10 @@ class OcrManager:
                             ai_model=ai_model,
                             ai_layout_model=ai_layout_model,
                             paddle_doc_max_side_px=paddle_doc_max_side_px,
+                            prompt_preset=prompt_preset,
+                            direct_prompt_override=direct_prompt_override,
+                            layout_block_prompt_override=layout_block_prompt_override,
+                            image_region_prompt_override=image_region_prompt_override,
                             allow_paddle_model_downgrade=self.allow_paddle_model_downgrade,
                         )
                         self.providers.append(self.ai_provider)
@@ -1897,6 +1933,10 @@ def create_ocr_manager(
     request_rpm_limit: int | None = None,
     request_tpm_limit: int | None = None,
     request_max_retries: int | None = None,
+    prompt_preset: str | None = None,
+    direct_prompt_override: str | None = None,
+    layout_block_prompt_override: str | None = None,
+    image_region_prompt_override: str | None = None,
     baidu_app_id: str | None = None,
     baidu_api_key: str | None = None,
     baidu_secret_key: str | None = None,
@@ -1924,6 +1964,10 @@ def create_ocr_manager(
         request_rpm_limit=request_rpm_limit,
         request_tpm_limit=request_tpm_limit,
         request_max_retries=request_max_retries,
+        prompt_preset=prompt_preset,
+        direct_prompt_override=direct_prompt_override,
+        layout_block_prompt_override=layout_block_prompt_override,
+        image_region_prompt_override=image_region_prompt_override,
         baidu_app_id=baidu_app_id,
         baidu_api_key=baidu_api_key,
         baidu_secret_key=baidu_secret_key,

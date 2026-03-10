@@ -223,6 +223,49 @@ def test_setup_runtime_forwards_experimental_ai_ocr_controls(monkeypatch) -> Non
     assert captured["request_max_retries"] == 2
 
 
+def test_setup_runtime_auto_aligns_layout_block_concurrency_with_page_concurrency(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_create_ocr_manager(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(ocr_runtime, "create_ocr_manager", _fake_create_ocr_manager)
+    monkeypatch.setattr(ocr_runtime, "AiOcrTextRefiner", lambda **_: object())
+
+    setup = ocr_runtime.setup_ocr_runtime(
+        provider=None,
+        api_key=None,
+        base_url=None,
+        model=None,
+        ocr_provider="aiocr",
+        ocr_baidu_app_id=None,
+        ocr_baidu_api_key=None,
+        ocr_baidu_secret_key=None,
+        ocr_tesseract_min_confidence=None,
+        ocr_tesseract_language=None,
+        ocr_ai_api_key="ocr-key",
+        ocr_ai_provider="openai",
+        ocr_ai_base_url="https://example.com/v1",
+        ocr_ai_model="Qwen/Qwen2.5-VL-72B-Instruct",
+        ocr_ai_chain_mode="layout_block",
+        ocr_ai_layout_model="pp_doclayout_v3",
+        ocr_ai_page_concurrency=2,
+        ocr_ai_block_concurrency=None,
+        ocr_ai_requests_per_minute=None,
+        ocr_ai_tokens_per_minute=None,
+        ocr_ai_max_retries=0,
+        ocr_ai_linebreak_assist=False,
+        ocr_strict_mode=True,
+    )
+
+    assert setup.effective_ocr_ai_page_concurrency == 2
+    assert setup.effective_ocr_ai_block_concurrency == 2
+    assert captured["layout_block_max_concurrency"] == 2
+
+
 def test_local_runtime_does_not_auto_enable_text_refiner_from_main_config(
     monkeypatch,
 ) -> None:

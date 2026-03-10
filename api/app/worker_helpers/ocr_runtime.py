@@ -11,6 +11,10 @@ from ..job_options import (
     normalize_requested_ocr_provider,
 )
 from ..convert.ocr import AiOcrTextRefiner, create_ocr_manager
+from ..convert.ocr.prompts import (
+    normalize_ai_ocr_prompt_override,
+    normalize_ai_ocr_prompt_preset,
+)
 from ..convert.ocr.routing import (
     OcrRoutePlan,
     build_ocr_route_plan,
@@ -37,6 +41,10 @@ class OcrRuntimeSetup:
     effective_ocr_ai_model: str | None
     effective_ocr_ai_chain_mode: str
     effective_ocr_ai_layout_model: str
+    effective_ocr_ai_prompt_preset: str
+    effective_ocr_ai_direct_prompt_override: str | None
+    effective_ocr_ai_layout_block_prompt_override: str | None
+    effective_ocr_ai_image_region_prompt_override: str | None
     effective_paddle_doc_max_side_px: int | None
     effective_ocr_ai_page_concurrency: int
     effective_ocr_ai_block_concurrency: int | None
@@ -98,6 +106,10 @@ def setup_ocr_runtime(
     ocr_ai_model: str | None,
     ocr_ai_chain_mode: str | None = None,
     ocr_ai_layout_model: str | None = None,
+    ocr_ai_prompt_preset: str | None = None,
+    ocr_ai_direct_prompt_override: str | None = None,
+    ocr_ai_layout_block_prompt_override: str | None = None,
+    ocr_ai_image_region_prompt_override: str | None = None,
     ocr_paddle_vl_docparser_max_side_px: int | None = None,
     ocr_ai_page_concurrency: int | None = None,
     ocr_ai_block_concurrency: int | None = None,
@@ -120,6 +132,18 @@ def setup_ocr_runtime(
     effective_ocr_ai_chain_mode = normalize_ai_ocr_chain_mode(ocr_ai_chain_mode)
     effective_ocr_ai_layout_model = normalize_ai_ocr_layout_model(
         ocr_ai_layout_model
+    )
+    effective_ocr_ai_prompt_preset = normalize_ai_ocr_prompt_preset(
+        ocr_ai_prompt_preset
+    )
+    effective_ocr_ai_direct_prompt_override = normalize_ai_ocr_prompt_override(
+        ocr_ai_direct_prompt_override
+    )
+    effective_ocr_ai_layout_block_prompt_override = normalize_ai_ocr_prompt_override(
+        ocr_ai_layout_block_prompt_override
+    )
+    effective_ocr_ai_image_region_prompt_override = normalize_ai_ocr_prompt_override(
+        ocr_ai_image_region_prompt_override
     )
     ocr_ai_api_key_source = "ocr" if effective_ocr_ai_api_key else "none"
     ocr_ai_base_url_source = "ocr" if effective_ocr_ai_base_url else "none"
@@ -198,6 +222,11 @@ def setup_ocr_runtime(
             effective_ocr_ai_block_concurrency = max(
                 1, min(8, int(effective_ocr_ai_block_concurrency))
             )
+    if (
+        effective_ocr_ai_block_concurrency is None
+        and effective_ocr_ai_chain_mode == "layout_block"
+    ):
+        effective_ocr_ai_block_concurrency = effective_ocr_ai_page_concurrency
     effective_ocr_ai_requests_per_minute: int | None = None
     if ocr_ai_requests_per_minute is not None:
         try:
@@ -244,6 +273,14 @@ def setup_ocr_runtime(
         )
     if effective_ocr_ai_max_retries > 0:
         setup_notes.append(f"ocr_ai_max_retries={effective_ocr_ai_max_retries}")
+    if effective_ocr_ai_prompt_preset != "auto":
+        setup_notes.append(f"ocr_ai_prompt_preset={effective_ocr_ai_prompt_preset}")
+    if effective_ocr_ai_direct_prompt_override:
+        setup_notes.append("ocr_ai_direct_prompt_override=custom")
+    if effective_ocr_ai_layout_block_prompt_override:
+        setup_notes.append("ocr_ai_layout_block_prompt_override=custom")
+    if effective_ocr_ai_image_region_prompt_override:
+        setup_notes.append("ocr_ai_image_region_prompt_override=custom")
 
     text_refiner: AiOcrTextRefiner | None = None
     linebreak_refiner: AiOcrTextRefiner | None = None
@@ -308,6 +345,10 @@ def setup_ocr_runtime(
             ai_base_url=effective_ocr_ai_base_url,
             ai_model=effective_ocr_ai_model,
             ai_layout_model=effective_ocr_ai_layout_model,
+            prompt_preset=effective_ocr_ai_prompt_preset,
+            direct_prompt_override=effective_ocr_ai_direct_prompt_override,
+            layout_block_prompt_override=effective_ocr_ai_layout_block_prompt_override,
+            image_region_prompt_override=effective_ocr_ai_image_region_prompt_override,
             paddle_doc_max_side_px=effective_paddle_doc_max_side_px,
             layout_block_max_concurrency=effective_ocr_ai_block_concurrency,
             request_rpm_limit=effective_ocr_ai_requests_per_minute,
@@ -401,6 +442,10 @@ def setup_ocr_runtime(
             effective_ocr_ai_model=effective_ocr_ai_model,
             effective_ocr_ai_chain_mode=effective_ocr_ai_chain_mode,
             effective_ocr_ai_layout_model=effective_ocr_ai_layout_model,
+            effective_ocr_ai_prompt_preset=effective_ocr_ai_prompt_preset,
+            effective_ocr_ai_direct_prompt_override=effective_ocr_ai_direct_prompt_override,
+            effective_ocr_ai_layout_block_prompt_override=effective_ocr_ai_layout_block_prompt_override,
+            effective_ocr_ai_image_region_prompt_override=effective_ocr_ai_image_region_prompt_override,
             effective_paddle_doc_max_side_px=effective_paddle_doc_max_side_px,
             effective_ocr_ai_page_concurrency=effective_ocr_ai_page_concurrency,
             effective_ocr_ai_block_concurrency=effective_ocr_ai_block_concurrency,
@@ -448,6 +493,10 @@ def setup_ocr_runtime(
             effective_ocr_ai_model=effective_ocr_ai_model,
             effective_ocr_ai_chain_mode=effective_ocr_ai_chain_mode,
             effective_ocr_ai_layout_model=effective_ocr_ai_layout_model,
+            effective_ocr_ai_prompt_preset=effective_ocr_ai_prompt_preset,
+            effective_ocr_ai_direct_prompt_override=effective_ocr_ai_direct_prompt_override,
+            effective_ocr_ai_layout_block_prompt_override=effective_ocr_ai_layout_block_prompt_override,
+            effective_ocr_ai_image_region_prompt_override=effective_ocr_ai_image_region_prompt_override,
             effective_paddle_doc_max_side_px=effective_paddle_doc_max_side_px,
             effective_ocr_ai_page_concurrency=effective_ocr_ai_page_concurrency,
             effective_ocr_ai_block_concurrency=effective_ocr_ai_block_concurrency,
@@ -542,6 +591,12 @@ def build_ocr_debug_payload(
             "model": setup.effective_ocr_ai_model,
             "chain_mode": setup.effective_ocr_ai_chain_mode,
             "layout_model": setup.effective_ocr_ai_layout_model,
+            "prompt_preset": setup.effective_ocr_ai_prompt_preset,
+            "prompt_overrides": {
+                "direct": setup.effective_ocr_ai_direct_prompt_override,
+                "layout_block": setup.effective_ocr_ai_layout_block_prompt_override,
+                "image_region": setup.effective_ocr_ai_image_region_prompt_override,
+            },
             "paddle_doc_max_side_px": setup.effective_paddle_doc_max_side_px,
             "page_concurrency": setup.effective_ocr_ai_page_concurrency,
             "block_concurrency": setup.effective_ocr_ai_block_concurrency,

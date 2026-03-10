@@ -4,6 +4,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import copy
 import contextvars
 from datetime import datetime, timezone
+import html
 import hashlib
 import json
 import logging
@@ -42,6 +43,14 @@ from .deepseek_parser import (
     _is_deepseek_ocr_model,
     _looks_like_ocr_prompt_echo_text,
 )
+from .prompts import (
+    build_ai_ocr_direct_prompt,
+    build_ai_ocr_image_region_prompt,
+    build_ai_ocr_layout_block_prompt,
+    normalize_ai_ocr_prompt_override,
+    normalize_ai_ocr_prompt_preset,
+    resolve_ai_ocr_prompt_preset,
+)
 from .json_extraction import (
     _extract_json_list,
     _extract_message_text,
@@ -75,6 +84,19 @@ from .vendors import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SPECIAL_OCR_TOKEN_PATTERN = re.compile(
+    r"<\|/?[a-zA-Z0-9_]+\|>|</?image>|</?box>|</?text>",
+    re.IGNORECASE,
+)
+_STANDALONE_BOX_COORDS_PATTERN = re.compile(
+    r"^\s*\[\[\s*"
+    r"-?\d+(?:\.\d+)?\s*,\s*"
+    r"-?\d+(?:\.\d+)?\s*,\s*"
+    r"-?\d+(?:\.\d+)?\s*,\s*"
+    r"-?\d+(?:\.\d+)?\s*"
+    r"\]\]\s*$"
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -493,6 +515,10 @@ class AiOcrClient(OcrProvider):
         request_tpm_limit: int | None = None,
         request_max_retries: int | None = None,
         route_kind: str | None = None,
+        prompt_preset: str | None = None,
+        direct_prompt_override: str | None = None,
+        layout_block_prompt_override: str | None = None,
+        image_region_prompt_override: str | None = None,
     ):
         import openai
 
@@ -540,6 +566,16 @@ class AiOcrClient(OcrProvider):
         self.requested_route_kind = normalize_ocr_route_kind(
             route_kind,
             default="auto",
+        )
+        self.prompt_preset = normalize_ai_ocr_prompt_preset(prompt_preset)
+        self.direct_prompt_override = normalize_ai_ocr_prompt_override(
+            direct_prompt_override
+        )
+        self.layout_block_prompt_override = normalize_ai_ocr_prompt_override(
+            layout_block_prompt_override
+        )
+        self.image_region_prompt_override = normalize_ai_ocr_prompt_override(
+            image_region_prompt_override
         )
         self.route_kind = ROUTE_KIND_REMOTE_PROMPT_OCR
         self.allow_model_downgrade: bool = _env_flag(
@@ -605,15 +641,6 @@ class AiOcrClient(OcrProvider):
 
         if (
             _is_paddleocr_vl_model(self.model)
-            and self.requested_route_kind == ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
-        ):
-            raise ValueError(
-                "PaddleOCR-VL does not support the local layout_block OCR chain. "
-                "Choose `内置文档解析（PaddleOCR-VL）` / `doc_parser` instead."
-            )
-
-        if (
-            _is_paddleocr_vl_model(self.model)
             and self.requested_route_kind == ROUTE_KIND_REMOTE_PROMPT_OCR
         ):
             raise ValueError(
@@ -621,7 +648,10 @@ class AiOcrClient(OcrProvider):
                 "Choose `内置文档解析（PaddleOCR-VL）` / `doc_parser` instead."
             )
 
-        if _is_paddleocr_vl_model(self.model):
+        if (
+            _is_paddleocr_vl_model(self.model)
+            and self.requested_route_kind != ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
+        ):
             should_use_doc_parser = self._should_use_paddle_doc_parser()
             if not should_use_doc_parser and not self.allow_paddle_prompt_fallback:
                 reason = self._describe_paddle_doc_parser_unavailable_reason()
@@ -2014,6 +2044,13 @@ class AiOcrClient(OcrProvider):
                 lines = lines[:-1]
             stripped = "\n".join(lines).strip()
 
+        for _ in range(2):
+            decoded = html.unescape(stripped)
+            if decoded == stripped:
+                break
+            stripped = decoded
+        stripped = _SPECIAL_OCR_TOKEN_PATTERN.sub(" ", stripped)
+
         lowered = stripped.lower()
         if lowered in {
             "",
@@ -2026,8 +2063,33 @@ class AiOcrClient(OcrProvider):
         }:
             return ""
 
-        cleaned_lines = [line.rstrip() for line in stripped.replace("\r\n", "\n").split("\n")]
+        cleaned_lines: list[str] = []
+        for line in stripped.replace("\r\n", "\n").split("\n"):
+            compact = re.sub(r"\s+", " ", str(line or "")).strip()
+            if not compact:
+                continue
+            if _STANDALONE_BOX_COORDS_PATTERN.fullmatch(compact):
+                continue
+            cleaned_lines.append(compact)
         return "\n".join(line for line in cleaned_lines if line.strip()).strip()
+
+    def _extract_deepseek_layout_block_text(self, content: Any) -> str:
+        raw = _extract_message_text(content or "")
+        tagged_items = _extract_deepseek_tagged_items(raw, max_items=48)
+        if tagged_items:
+            lines: list[str] = []
+            for item in tagged_items:
+                text = str(item.get("text") or "").strip()
+                if not text or _looks_like_ocr_prompt_echo_text(text):
+                    continue
+                lines.append(text)
+            if lines:
+                return "\n".join(lines).strip()
+
+        cleaned = self._clean_plain_text_ocr_output(content)
+        if "<|ref|>" in raw or "<|det|>" in raw:
+            return ""
+        return cleaned
 
     def _crop_layout_block(
         self,
@@ -2065,6 +2127,8 @@ class AiOcrClient(OcrProvider):
             or ""
         )
         normalized_key = re.sub(r"[\s_]+", "-", str(normalized_model).strip().lower())
+        if _is_deepseek_ocr_model(normalized_key):
+            return max(min_side_px, 32)
         if "qwen3-vl" in normalized_key:
             return max(min_side_px, 32)
         return min_side_px
@@ -2127,11 +2191,17 @@ class AiOcrClient(OcrProvider):
     ) -> str:
         is_deepseek_model = _is_deepseek_ocr_model(effective_model)
         request_timeout_s = self._resolve_model_request_timeout_s(model_name=effective_model)
-        prompt = (
-            "Read all visible text in this cropped document block and return plain text only. "
-            f"Block label: {label or 'text'}. Crop size: {int(crop_width)}x{int(crop_height)} px. "
-            "Preserve obvious line breaks. Do not return JSON, markdown, or explanations. "
-            "If the crop contains no readable text, return an empty string."
+        resolved_prompt_preset = resolve_ai_ocr_prompt_preset(
+            preset=self.prompt_preset,
+            model_name=effective_model,
+            provider_id=self.provider_id,
+        )
+        prompt = build_ai_ocr_layout_block_prompt(
+            preset=resolved_prompt_preset,
+            label=label,
+            crop_width=int(crop_width),
+            crop_height=int(crop_height),
+            override=self.layout_block_prompt_override,
         )
         user_content = self.vendor_adapter.build_user_content(
             prompt=prompt,
@@ -2167,6 +2237,8 @@ class AiOcrClient(OcrProvider):
             if getattr(completion, "choices", None)
             else ""
         )
+        if is_deepseek_model:
+            return self._extract_deepseek_layout_block_text(content_obj)
         return self._clean_plain_text_ocr_output(content_obj)
 
     def _ocr_image_with_local_layout_blocks(
@@ -2477,23 +2549,17 @@ class AiOcrClient(OcrProvider):
         max_tokens_image_regions = self.vendor_adapter.clamp_max_tokens(
             1024, kind="ocr"
         )
-
-        if is_deepseek_model:
-            prompt = (
-                "<image>\n<|grounding|>Locate <|ref|>screenshots, charts, diagrams, "
-                "illustrations, photos, logos, and icons<|/ref|> in the image."
-            )
-        else:
-            prompt = (
-                "Locate standalone non-text visual regions on this page. "
-                "Return ONLY minified JSON array, no markdown. "
-                f"Image size: {width}x{height} px. "
-                'Each item must be {"bbox":[x0,y0,x1,y1]}. '
-                "Regions include screenshots, charts, diagrams, illustrations, photos, logos, and icons. "
-                "Use tight pixel bbox around the visual asset only. "
-                "Exclude surrounding text, card backgrounds, tables, formulas, and the full-page background. "
-                "Keep output <= 12 items."
-            )
+        resolved_prompt_preset = resolve_ai_ocr_prompt_preset(
+            preset=self.prompt_preset,
+            model_name=effective_model,
+            provider_id=self.provider_id,
+        )
+        prompt = build_ai_ocr_image_region_prompt(
+            preset=resolved_prompt_preset,
+            image_width=int(width),
+            image_height=int(height),
+            override=self.image_region_prompt_override,
+        )
 
         user_content = self.vendor_adapter.build_user_content(
             prompt=prompt,
@@ -3058,24 +3124,17 @@ class AiOcrClient(OcrProvider):
             )
 
             def _make_prompt(*, item_limit: int) -> str:
-                # Keep prompt compact to reduce instruction tokens and steer models
-                # (especially OpenAI-compatible gateways) toward short structured output.
-                if is_deepseek_model:
-                    # Keep DeepSeek prompt minimal. In practice, adding verbose
-                    # format constraints often leads to empty outputs on some
-                    # OpenAI-compatible gateways.
-                    return "<image>\n<|grounding|>OCR this image."
-                return (
-                    f"OCR task. Return ONLY minified JSON array, no markdown. "
-                    f"Image size: {width}x{height} px. "
-                    "Each item must be one visual text line with tight bbox. "
-                    "Do not output duplicate lines/boxes; skip pure punctuation/noise. "
-                    'Preferred item schema: {"t":"text","b":[x0,y0,x1,y1],"c":0.0-1.0}. '
-                    'Also accepted: {"text":...,"bbox":...}. '
-                    "Coordinates are pixel values, origin top-left. "
-                    f"Keep output <= {int(item_limit)} items. "
-                    "If dense page, merge words into line-level entries. "
-                    "Stop immediately after JSON closes."
+                resolved_prompt_preset = resolve_ai_ocr_prompt_preset(
+                    preset=self.prompt_preset,
+                    model_name=effective_model,
+                    provider_id=self.provider_id,
+                )
+                return build_ai_ocr_direct_prompt(
+                    preset=resolved_prompt_preset,
+                    image_width=int(width),
+                    image_height=int(height),
+                    item_limit=int(item_limit),
+                    override=self.direct_prompt_override,
                 )
 
             attempt_limits = [60, 40, 24, 16, 10]

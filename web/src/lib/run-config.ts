@@ -145,6 +145,19 @@ export function resolveAutoOcrAiPageConcurrency(
   return 1
 }
 
+export function resolveAutoOcrAiBlockConcurrency(
+  settings: Pick<Settings, "parseEngineMode" | "ocrAiChainMode">,
+  pageConcurrency: number
+): number | null {
+  if (settings.parseEngineMode !== "remote_ocr") {
+    return null
+  }
+  if (settings.ocrAiChainMode !== "layout_block") {
+    return null
+  }
+  return Math.min(8, Math.max(1, Number(pageConcurrency) || 1))
+}
+
 function getResolvedMainProvider(settings: Settings): MainProvider {
   return settings.parseEngineMode === "mineru_cloud" || settings.provider === "mineru"
     ? settings.preferredMainProvider
@@ -345,7 +358,18 @@ export function resolveRunConfig(settings: Settings): RunConfig {
         ocrAiModel: settings.ocrAiModel,
       })
     : explicitOcrAiPageConcurrency
-  const ocrAiBlockConcurrency = toFinitePositiveIntOrNull(settings.ocrAiBlockConcurrency)
+  const explicitOcrAiBlockConcurrency = toFinitePositiveIntOrNull(
+    settings.ocrAiBlockConcurrency
+  )
+  const ocrAiBlockConcurrency =
+    explicitOcrAiBlockConcurrency ??
+    resolveAutoOcrAiBlockConcurrency(
+      {
+        parseEngineMode,
+        ocrAiChainMode,
+      },
+      ocrAiPageConcurrency
+    )
   const ocrAiRequestsPerMinute = toFinitePositiveIntOrNull(settings.ocrAiRequestsPerMinute)
   const ocrAiTokensPerMinute = toFinitePositiveIntOrNull(settings.ocrAiTokensPerMinute)
   const ocrAiMaxRetries = Math.min(8, Math.max(0, Number(settings.ocrAiMaxRetries) || 0))
@@ -542,12 +566,6 @@ export function validateRunConfig(settings: Settings): ValidationResult {
     ) {
       return { ok: false, message: "模型直出链路不支持 PaddleOCR-VL，请切换到内置文档解析。" }
     }
-    if (
-      run.ocrAiChainMode === "layout_block" &&
-      isPaddleOcrVlModelName(settings.ocrAiModel)
-    ) {
-      return { ok: false, message: "本地切块识别暂不支持 PaddleOCR-VL，请切换到内置文档解析。" }
-    }
   }
 
   return { ok: true }
@@ -641,6 +659,25 @@ export function createJobFormData(
       form.append("ocr_ai_provider", run.effectiveOcrAiProvider)
       form.append("ocr_ai_chain_mode", run.ocrAiChainMode)
       form.append("ocr_ai_layout_model", run.ocrAiLayoutModel)
+      form.append("ocr_ai_prompt_preset", settings.ocrAiPromptPreset)
+      if (settings.ocrAiDirectPromptOverride.trim()) {
+        form.append(
+          "ocr_ai_direct_prompt_override",
+          settings.ocrAiDirectPromptOverride.trim()
+        )
+      }
+      if (settings.ocrAiLayoutBlockPromptOverride.trim()) {
+        form.append(
+          "ocr_ai_layout_block_prompt_override",
+          settings.ocrAiLayoutBlockPromptOverride.trim()
+        )
+      }
+      if (settings.ocrAiImageRegionPromptOverride.trim()) {
+        form.append(
+          "ocr_ai_image_region_prompt_override",
+          settings.ocrAiImageRegionPromptOverride.trim()
+        )
+      }
       const paddleDocMaxSidePx = toFiniteIntStringOrUndefined(
         settings.ocrPaddleVlDocparserMaxSidePx
       )
@@ -648,9 +685,8 @@ export function createJobFormData(
         form.append("ocr_paddle_vl_docparser_max_side_px", paddleDocMaxSidePx)
       }
       form.append("ocr_ai_page_concurrency", String(run.ocrAiPageConcurrency))
-      const ocrAiBlockConcurrency = toFiniteIntStringOrUndefined(
-        settings.ocrAiBlockConcurrency
-      )
+      const ocrAiBlockConcurrency =
+        run.ocrAiBlockConcurrency !== null ? String(run.ocrAiBlockConcurrency) : undefined
       if (ocrAiBlockConcurrency !== undefined) {
         form.append("ocr_ai_block_concurrency", ocrAiBlockConcurrency)
       }

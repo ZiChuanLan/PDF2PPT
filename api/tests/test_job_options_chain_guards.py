@@ -119,3 +119,19 @@ def test_direct_chain_rejects_paddleocr_vl_model() -> None:
         )
 
     assert exc_info.value.message == "direct chain does not support PaddleOCR-VL models"
+
+
+def test_layout_block_chain_accepts_paddleocr_vl_model() -> None:
+    kwargs = _base_kwargs()
+    kwargs["ocr_ai_api_key"] = "ocr-key"
+    kwargs["ocr_ai_model"] = "PaddlePaddle/PaddleOCR-VL-1.5"
+    kwargs["ocr_ai_chain_mode"] = "layout_block"
+
+    normalized = validate_and_normalize_job_options(
+        parse_provider="local",
+        ocr_provider="aiocr",
+        **kwargs,
+    )
+
+    assert normalized.ocr_ai_chain_mode == "layout_block"
+    assert normalized.ocr_ai_model == "PaddlePaddle/PaddleOCR-VL-1.5"

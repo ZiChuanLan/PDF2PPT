@@ -11,6 +11,13 @@ export type OcrProvider =
 export type OcrAiProvider = "auto" | "openai" | "siliconflow" | "deepseek" | "ppio" | "novita"
 export type OcrAiChainMode = "direct" | "doc_parser" | "layout_block"
 export type OcrAiLayoutModel = "pp_doclayout_v3"
+export type OcrAiPromptPreset =
+  | "auto"
+  | "generic_vision"
+  | "openai_vision"
+  | "qwen_vl"
+  | "glm_v"
+  | "deepseek_ocr"
 export type LayoutAssistMode = "off" | "on" | "auto"
 export type VisionAssistMode = LayoutAssistMode
 export type ScannedPageMode = "segmented" | "fullpage"
@@ -69,6 +76,10 @@ export type Settings = {
   ocrAiModel: string
   ocrAiChainMode: OcrAiChainMode
   ocrAiLayoutModel: OcrAiLayoutModel
+  ocrAiPromptPreset: OcrAiPromptPreset
+  ocrAiDirectPromptOverride: string
+  ocrAiLayoutBlockPromptOverride: string
+  ocrAiImageRegionPromptOverride: string
   ocrPaddleVlDocparserMaxSidePx: string
   ocrAiPageConcurrencyAuto: boolean
   ocrAiPageConcurrency: string
@@ -80,8 +91,8 @@ export type Settings = {
 
 export const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 export const DEFAULT_AIOCR_PROVIDER: OcrAiProvider = "siliconflow"
-export const DEFAULT_AIOCR_MODEL = "Pro/deepseek-ai/deepseek-ocr"
-export const DEFAULT_AIOCR_CHAIN_MODE: OcrAiChainMode = "direct"
+export const DEFAULT_AIOCR_MODEL = ""
+export const DEFAULT_AIOCR_CHAIN_MODE: OcrAiChainMode = "layout_block"
 
 export const SETTINGS_STORAGE_KEY = "pdf-to-ppt.settings.v1"
 export const BAIDU_DOC_PARSE_TYPE_LABELS: Record<BaiduDocParseType, string> = {
@@ -170,6 +181,10 @@ export const defaultSettings: Settings = {
   ocrAiModel: DEFAULT_AIOCR_MODEL,
   ocrAiChainMode: DEFAULT_AIOCR_CHAIN_MODE,
   ocrAiLayoutModel: "pp_doclayout_v3",
+  ocrAiPromptPreset: "auto",
+  ocrAiDirectPromptOverride: "",
+  ocrAiLayoutBlockPromptOverride: "",
+  ocrAiImageRegionPromptOverride: "",
   ocrPaddleVlDocparserMaxSidePx: "2200",
   ocrAiPageConcurrencyAuto: true,
   ocrAiPageConcurrency: "1",
@@ -380,6 +395,17 @@ export function loadStoredSettings(): Settings {
   if (!validOcrAiLayoutModels.includes(merged.ocrAiLayoutModel)) {
     merged.ocrAiLayoutModel = "pp_doclayout_v3"
   }
+  const validOcrAiPromptPresets: OcrAiPromptPreset[] = [
+    "auto",
+    "generic_vision",
+    "openai_vision",
+    "qwen_vl",
+    "glm_v",
+    "deepseek_ocr",
+  ]
+  if (!validOcrAiPromptPresets.includes(merged.ocrAiPromptPreset)) {
+    merged.ocrAiPromptPreset = "auto"
+  }
   const validTextEraseModes: TextEraseMode[] = ["smart", "fill"]
   if (!validTextEraseModes.includes(merged.textEraseMode)) {
     merged.textEraseMode = "fill"
@@ -407,12 +433,6 @@ export function loadStoredSettings(): Settings {
       isPaddleOcrVlModelName(merged.ocrAiModel)
     ) {
       merged.ocrAiModel = DEFAULT_AIOCR_MODEL
-    }
-    if (
-      merged.ocrAiChainMode === "layout_block" &&
-      isPaddleOcrVlModelName(merged.ocrAiModel)
-    ) {
-      merged.ocrAiChainMode = "doc_parser"
     }
   }
   const toNumberLikeString = (value: unknown, fallback: string): string => {
@@ -475,6 +495,19 @@ export function loadStoredSettings(): Settings {
   merged.ocrAiMaxRetries = toNumberLikeString(
     merged.ocrAiMaxRetries,
     defaultSettings.ocrAiMaxRetries
+  )
+  const normalizePromptOverride = (value: unknown): string => {
+    if (typeof value !== "string") return ""
+    return value.replace(/\r\n?/g, "\n").slice(0, 6000).trim()
+  }
+  merged.ocrAiDirectPromptOverride = normalizePromptOverride(
+    merged.ocrAiDirectPromptOverride
+  )
+  merged.ocrAiLayoutBlockPromptOverride = normalizePromptOverride(
+    merged.ocrAiLayoutBlockPromptOverride
+  )
+  merged.ocrAiImageRegionPromptOverride = normalizePromptOverride(
+    merged.ocrAiImageRegionPromptOverride
   )
   const ocrRenderDpi = Number(merged.ocrRenderDpi)
   if (!Number.isFinite(ocrRenderDpi) || ocrRenderDpi < 72) {

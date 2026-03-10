@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import {
   CheckIcon,
   KeyRoundIcon,
@@ -21,6 +22,7 @@ import {
   BAIDU_DOC_PARSE_TYPE_LABELS,
   isPaddleOcrVlModelName,
   type BaiduDocParseType,
+  type OcrAiPromptPreset,
   SETTINGS_STORAGE_KEY,
   defaultSettings,
   loadStoredSettings,
@@ -33,6 +35,7 @@ import {
   getOcrConfigSourceLabel,
   PARSE_ENGINE_MODE_LABELS,
   PARSE_ENGINE_OPTIONS,
+  resolveAutoOcrAiBlockConcurrency,
   resolveAutoOcrAiPageConcurrency,
   resolveOcrSettingsState,
 } from "@/lib/run-config"
@@ -120,6 +123,15 @@ function AdvancedReveal({
   )
 }
 
+function PromptTextarea(props: React.ComponentProps<"textarea">) {
+  return (
+    <textarea
+      {...props}
+      className="min-h-[148px] w-full resize-y border border-input bg-transparent px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:bg-[#f0f0f0] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+    />
+  )
+}
+
 const ocrAiProviderOptions: Array<{ id: OcrAiProvider; label: string }> = [
   { id: "auto", label: "自动识别（推荐）" },
   { id: "openai", label: "OpenAI" },
@@ -130,13 +142,22 @@ const ocrAiProviderOptions: Array<{ id: OcrAiProvider; label: string }> = [
 ]
 
 const ocrAiChainModeOptions: Array<{ id: Settings["ocrAiChainMode"]; label: string }> = [
-  { id: "direct", label: "模型直出框和文字" },
+  { id: "layout_block", label: "本地切块识别（默认推荐）" },
+  { id: "direct", label: "模型直出框和文字（提示词驱动）" },
   { id: "doc_parser", label: "内置文档解析（PaddleOCR-VL）" },
-  { id: "layout_block", label: "本地切块识别" },
 ]
 
 const ocrAiLayoutModelOptions: Array<{ id: Settings["ocrAiLayoutModel"]; label: string }> = [
   { id: "pp_doclayout_v3", label: "PP-DocLayoutV3" },
+]
+
+const ocrAiPromptPresetOptions: Array<{ id: OcrAiPromptPreset; label: string }> = [
+  { id: "auto", label: "自动（按模型推断）" },
+  { id: "qwen_vl", label: "Qwen-VL" },
+  { id: "deepseek_ocr", label: "DeepSeek-OCR" },
+  { id: "openai_vision", label: "OpenAI / GPT 视觉" },
+  { id: "glm_v", label: "GLM-V" },
+  { id: "generic_vision", label: "通用视觉模型" },
 ]
 
 const baiduDocParseTypeOptions: Array<{ id: BaiduDocParseType; label: string }> = [
@@ -217,6 +238,8 @@ export default function SettingsPage() {
   const [settingsHydrated, setSettingsHydrated] = React.useState(false)
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null)
   const [showAdvanced, setShowAdvanced] = React.useState(false)
+  const [showOcrPromptExperiment, setShowOcrPromptExperiment] = React.useState(false)
+  const [showOcrModelSuggestions, setShowOcrModelSuggestions] = React.useState(false)
   const [apiOrigin, setApiOrigin] = React.useState("")
   const [apiOriginInput, setApiOriginInput] = React.useState("")
   const [apiOriginOverrideEnabled, setApiOriginOverrideEnabled] = React.useState(false)
@@ -234,6 +257,12 @@ export default function SettingsPage() {
   const [aiOcrCheck, setAiOcrCheck] = React.useState<AiOcrCheckResponse | null>(null)
   const [aiOcrCheckError, setAiOcrCheckError] = React.useState<string | null>(null)
   const skipNextAutoSaveRef = React.useRef(false)
+  const ocrModelPickerRef = React.useRef<HTMLDivElement | null>(null)
+  const ocrModelSuggestionPanelRef = React.useRef<HTMLDivElement | null>(null)
+  const [ocrModelSuggestionStyle, setOcrModelSuggestionStyle] =
+    React.useState<React.CSSProperties | null>(null)
+  const [ocrModelSuggestionDirection, setOcrModelSuggestionDirection] =
+    React.useState<"up" | "down">("down")
 
   React.useEffect(() => {
     setSettings(loadStoredSettings())
@@ -280,12 +309,20 @@ export default function SettingsPage() {
   const currentOcrAiChainMode = ocrState.runConfig.ocrAiChainMode
   const currentOcrAiLayoutModel = ocrState.runConfig.ocrAiLayoutModel
   const autoOcrAiPageConcurrency = resolveAutoOcrAiPageConcurrency(settings)
+  const autoOcrAiBlockConcurrency = resolveAutoOcrAiBlockConcurrency(
+    {
+      parseEngineMode,
+      ocrAiChainMode: currentOcrAiChainMode,
+    },
+    ocrState.runConfig.ocrAiPageConcurrency
+  )
   const isOcrProviderPaddleLocal = ocrState.isOcrProviderPaddleLocal
   const isOcrProviderBaidu = ocrState.isOcrProviderBaidu
   const isOcrProviderTesseract = ocrState.isOcrProviderTesseract
   const isOcrAiChainDirect = ocrState.isOcrAiChainDirect
   const isOcrAiChainDocParser = ocrState.isOcrAiChainDocParser
   const isOcrAiChainLayoutBlock = ocrState.isOcrAiChainLayoutBlock
+  const isPromptDrivenOcrChain = isOcrAiChainDirect || isOcrAiChainLayoutBlock
   const needsRequiredOcrAiConfig = ocrState.needsRequiredOcrAiConfig
   const shouldShowLocalOcrCheck = ocrState.shouldShowLocalOcrCheck
   const tesseractSuite = localOcrSuite?.tesseract ?? null
@@ -312,16 +349,201 @@ export default function SettingsPage() {
   const mainModelsApiKeyRaw = mainConfig.apiKey
   const ocrModelsApiKey = ocrState.ocrModelsApiKey
   const ocrModelsBaseUrl = ocrState.ocrModelsBaseUrl
-  const ocrModelCapability = isOcrAiChainLayoutBlock ? "vision" : "ocr"
+  const currentOcrPromptOverride = isOcrAiChainLayoutBlock
+    ? settings.ocrAiLayoutBlockPromptOverride
+    : settings.ocrAiDirectPromptOverride
+  const currentOcrPromptOverrideLabel = isOcrAiChainLayoutBlock
+    ? "本地切块识别提示词覆盖"
+    : "模型直出提示词覆盖"
+  const currentOcrPromptOverrideHint = isOcrAiChainLayoutBlock
+    ? "只影响单块识别文字的提示词，不影响本地切块本身。"
+    : "只影响整页直出框和文字的提示词。"
+  const currentOcrPromptOverridePlaceholder = isOcrAiChainLayoutBlock
+    ? [
+        "Read all visible text in this cropped document block and return plain text only.",
+        "Block label: {{block_label}}. Crop size: {{crop_width}}x{{crop_height}} px.",
+        "Preserve line breaks. If unreadable, return empty string.",
+      ].join("\n")
+    : [
+        "OCR task. Return ONLY minified JSON array.",
+        "Image size: {{image_width}}x{{image_height}} px.",
+        'Each item: {"text":"...","bbox":[x0,y0,x1,y1]}. Keep output <= {{item_limit}} items.',
+      ].join("\n")
+  const currentOcrPromptVariableHint = isOcrAiChainLayoutBlock
+    ? "{{block_label}} {{crop_width}} {{crop_height}}"
+    : "{{image_width}} {{image_height}} {{item_limit}}"
+  const hasCustomOcrPromptConfig =
+    settings.ocrAiPromptPreset !== "auto" ||
+    Boolean(settings.ocrAiDirectPromptOverride.trim()) ||
+    Boolean(settings.ocrAiLayoutBlockPromptOverride.trim()) ||
+    Boolean(settings.ocrAiImageRegionPromptOverride.trim())
+  const ocrModelCapability =
+    isOcrAiChainLayoutBlock || isOcrAiChainDirect ? "vision" : "ocr"
   const visibleOcrModelOptions = React.useMemo(() => {
     if (isOcrAiChainDocParser) {
       return ocrModelOptions.filter((model) => isPaddleOcrVlModelName(model))
     }
-    if (isOcrAiChainDirect || isOcrAiChainLayoutBlock) {
+    if (isOcrAiChainDirect) {
       return ocrModelOptions.filter((model) => !isPaddleOcrVlModelName(model))
     }
     return ocrModelOptions
   }, [isOcrAiChainDirect, isOcrAiChainDocParser, isOcrAiChainLayoutBlock, ocrModelOptions])
+  const filteredOcrModelOptions = React.useMemo(() => {
+    const seen = new Set<string>()
+    const deduped = visibleOcrModelOptions.filter((model) => {
+      const key = model.trim().toLowerCase()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    const query = settings.ocrAiModel.trim().toLowerCase()
+    if (!query) return deduped.slice(0, 16)
+    const startsWith = deduped.filter((model) => model.toLowerCase().startsWith(query))
+    const includes = deduped.filter(
+      (model) => !model.toLowerCase().startsWith(query) && model.toLowerCase().includes(query)
+    )
+    const merged = [...startsWith, ...includes]
+    return (merged.length ? merged : deduped).slice(0, 16)
+  }, [settings.ocrAiModel, visibleOcrModelOptions])
+
+  React.useEffect(() => {
+    if (!showOcrModelSuggestions) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (ocrModelPickerRef.current?.contains(target)) return
+      if (ocrModelSuggestionPanelRef.current?.contains(target)) return
+      setShowOcrModelSuggestions(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowOcrModelSuggestions(false)
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown)
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown)
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [showOcrModelSuggestions])
+
+  React.useEffect(() => {
+    if (!showOcrModelSuggestions) {
+      setOcrModelSuggestionStyle(null)
+      setOcrModelSuggestionDirection("down")
+      return
+    }
+
+    let frameId = 0
+    const updatePosition = () => {
+      const anchor = ocrModelPickerRef.current
+      if (!anchor) return
+
+      const rect = anchor.getBoundingClientRect()
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      const safeMargin = 12
+      const gap = 8
+      const width = Math.max(280, rect.width)
+      const left = Math.min(
+        Math.max(safeMargin, rect.left),
+        Math.max(safeMargin, viewportWidth - width - safeMargin)
+      )
+      const belowAvailable = Math.max(
+        0,
+        viewportHeight - rect.bottom - gap - safeMargin
+      )
+      const aboveAvailable = Math.max(0, rect.top - gap - safeMargin)
+      const openUpward =
+        aboveAvailable > belowAvailable && aboveAvailable >= 180
+      const maxHeight = openUpward ? aboveAvailable : belowAvailable
+
+      setOcrModelSuggestionDirection(openUpward ? "up" : "down")
+
+      setOcrModelSuggestionStyle({
+        position: "fixed",
+        left,
+        width,
+        maxHeight,
+        ...(openUpward
+          ? { bottom: viewportHeight - rect.top + gap }
+          : { top: rect.bottom + gap }),
+      })
+    }
+
+    const schedulePositionUpdate = () => {
+      window.cancelAnimationFrame(frameId)
+      frameId = window.requestAnimationFrame(updatePosition)
+    }
+
+    schedulePositionUpdate()
+    window.addEventListener("resize", schedulePositionUpdate)
+    window.addEventListener("scroll", schedulePositionUpdate, true)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      window.removeEventListener("resize", schedulePositionUpdate)
+      window.removeEventListener("scroll", schedulePositionUpdate, true)
+    }
+  }, [showOcrModelSuggestions, filteredOcrModelOptions.length])
+
+  const ocrModelSuggestionLayer =
+    showOcrModelSuggestions &&
+    ocrModelSuggestionStyle &&
+    typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={ocrModelSuggestionPanelRef}
+            id="ocr-ai-model-suggestion-panel"
+            style={ocrModelSuggestionStyle}
+            className={`z-[120] animate-in fade-in zoom-in-95 duration-200 ${
+              ocrModelSuggestionDirection === "up"
+                ? "origin-bottom slide-in-from-bottom-1"
+                : "origin-top slide-in-from-top-1"
+            }`}
+          >
+            <div className="flex max-h-full flex-col overflow-hidden border border-border/70 bg-background shadow-[0_18px_44px_rgba(0,0,0,0.16)]">
+              <div className="border-b border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+                候选模型
+                {" "}
+                {filteredOcrModelOptions.length > 0
+                  ? `（显示前 ${filteredOcrModelOptions.length} 个）`
+                  : "（暂无匹配候选）"}
+              </div>
+              {filteredOcrModelOptions.length > 0 ? (
+                <div className="min-h-0 overflow-y-auto py-1">
+                  {filteredOcrModelOptions.map((model) => (
+                    <button
+                      key={model}
+                      type="button"
+                      className={`block w-full px-3 py-2 text-left font-mono text-xs transition-colors ${
+                        settings.ocrAiModel.trim() === model
+                          ? "bg-muted text-foreground"
+                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      }`}
+                      onClick={() => {
+                        setSettings((s) => ({ ...s, ocrAiModel: model }))
+                        setShowOcrModelSuggestions(false)
+                      }}
+                    >
+                      {model}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-3 py-3 text-xs text-muted-foreground">
+                  当前输入没有匹配到候选，仍然可以直接手填模型名。
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )
+      : null
 
   const canLoadOcrModels =
     canUseAiOcr &&
@@ -443,7 +665,7 @@ export default function SettingsPage() {
 
       try {
         const payload: Record<string, string> = {
-          provider: "openai",
+          provider: settings.ocrAiProvider,
           api_key: ocrModelsApiKey,
           capability: ocrModelCapability,
         }
@@ -489,18 +711,11 @@ export default function SettingsPage() {
     ocrModelsApiKey,
     ocrModelsBaseUrl,
     ocrModelCapability,
+    settings.ocrAiProvider,
     settings.ocrAiModel,
     selectedOcrProvider,
     isOcrEnabledForCurrentEngine,
   ])
-
-  React.useEffect(() => {
-    if (ocrModelLoading || !canLoadOcrModels) return
-    if (!settings.ocrAiModel.trim()) return
-    if (!visibleOcrModelOptions.length) return
-    if (visibleOcrModelOptions.includes(settings.ocrAiModel)) return
-    setSettings((prev) => ({ ...prev, ocrAiModel: "" }))
-  }, [canLoadOcrModels, ocrModelLoading, settings.ocrAiModel, visibleOcrModelOptions])
 
   React.useEffect(() => {
     if (!settingsHydrated) return
@@ -712,15 +927,26 @@ export default function SettingsPage() {
         model,
         ocr_ai_chain_mode: currentOcrAiChainMode,
         ocr_ai_layout_model: currentOcrAiLayoutModel,
+        ocr_ai_prompt_preset: settings.ocrAiPromptPreset,
       }
       if (baseUrl) payload.base_url = baseUrl
+      if (settings.ocrAiDirectPromptOverride.trim()) {
+        payload.ocr_ai_direct_prompt_override = settings.ocrAiDirectPromptOverride.trim()
+      }
+      if (settings.ocrAiLayoutBlockPromptOverride.trim()) {
+        payload.ocr_ai_layout_block_prompt_override =
+          settings.ocrAiLayoutBlockPromptOverride.trim()
+      }
+      if (settings.ocrAiImageRegionPromptOverride.trim()) {
+        payload.ocr_ai_image_region_prompt_override =
+          settings.ocrAiImageRegionPromptOverride.trim()
+      }
       const paddleDocMaxSidePx = Number(settings.ocrPaddleVlDocparserMaxSidePx.trim())
       if (Number.isFinite(paddleDocMaxSidePx) && paddleDocMaxSidePx >= 0) {
         payload.ocr_paddle_vl_docparser_max_side_px = Math.round(paddleDocMaxSidePx)
       }
-      const blockConcurrency = Number(settings.ocrAiBlockConcurrency.trim())
-      if (Number.isFinite(blockConcurrency) && blockConcurrency > 0) {
-        payload.ocr_ai_block_concurrency = Math.round(blockConcurrency)
+      if (ocrState.runConfig.ocrAiBlockConcurrency !== null) {
+        payload.ocr_ai_block_concurrency = ocrState.runConfig.ocrAiBlockConcurrency
       }
       const requestsPerMinute = Number(settings.ocrAiRequestsPerMinute.trim())
       if (Number.isFinite(requestsPerMinute) && requestsPerMinute > 0) {
@@ -771,9 +997,13 @@ export default function SettingsPage() {
     ocrModelsApiKey,
     ocrModelsBaseUrl,
     ocrState.ocrModelsConfigSource,
-    settings.ocrAiBlockConcurrency,
+    ocrState.runConfig.ocrAiBlockConcurrency,
+    settings.ocrAiDirectPromptOverride,
+    settings.ocrAiImageRegionPromptOverride,
+    settings.ocrAiLayoutBlockPromptOverride,
     settings.ocrAiMaxRetries,
     settings.ocrAiModel,
+    settings.ocrAiPromptPreset,
     settings.ocrAiProvider,
     settings.ocrPaddleVlDocparserMaxSidePx,
     settings.ocrAiRequestsPerMinute,
@@ -782,6 +1012,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-dvh bg-background">
+      {ocrModelSuggestionLayer}
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 md:px-6 md:py-10">
         <header className="editorial-page-header newsprint-texture page-enter border border-border bg-background p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1569,7 +1800,7 @@ export default function SettingsPage() {
                   <div className="grid gap-2">
                     <FieldLabel
                       htmlFor="ocr-ai-chain-mode"
-                      hint="模型直出适合整页识别；内置文档解析适合 PaddleOCR-VL；本地切块识别暂不支持 PaddleOCR-VL。"
+                      hint="默认推荐本地切块识别；模型直出是提示词驱动，推荐 DeepSeek-OCR，其他视觉模型也可尝试，但 bbox 和结构化输出存在风险；内置文档解析适合 PaddleOCR-VL。"
                     >
                       AIOCR 识别链路
                     </FieldLabel>
@@ -1651,45 +1882,239 @@ export default function SettingsPage() {
                       htmlFor="ocr-ai-model"
                       hint={
                         isOcrAiChainDocParser
-                          ? "此链路只显示 PaddleOCR-VL 模型。"
+                          ? "此链路只显示 PaddleOCR-VL 模型，复杂版式优先用这条。"
                           : isOcrAiChainDirect
-                            ? "适合整页 OCR 模型。"
-                            : "适合通用视觉模型；当前不支持 PaddleOCR-VL。"
+                            ? "提示词驱动链路。推荐 DeepSeek-OCR；其他视觉模型也能尝试，但 bbox、顺序和结构化输出稳定性存在风险。"
+                            : "默认推荐链路。建议优先使用 Qwen 类视觉模型；先本地切块再识别文字，也允许 PaddleOCR-VL。"
                       }
                     >
-                      {isOcrAiChainLayoutBlock ? "AI 视觉识别模型（必填）" : "专用 OCR 模型（必填）"}
+                      {isOcrAiChainDocParser
+                        ? "PaddleOCR-VL 模型（必填）"
+                        : isOcrAiChainLayoutBlock
+                          ? "视觉模型（必填）"
+                          : "视觉 / OCR 模型（必填）"}
                     </FieldLabel>
-                    <Select
-                      id="ocr-ai-model"
-                      value={settings.ocrAiModel}
-                      onChange={(e) =>
-                        setSettings((s) => ({ ...s, ocrAiModel: e.target.value }))
-                      }
-                      disabled={ocrModelLoading}
-                    >
-                      <option value="">请选择 OCR 模型</option>
-                      {ocrModelLoading ? (
-                        <option value="__loading__" disabled>
-                          正在加载模型...
-                        </option>
-                      ) : visibleOcrModelOptions.length ? null : (
-                        <option value="__none__" disabled>
-                          暂无可用 OCR 模型
-                        </option>
-                      )}
-                      {visibleOcrModelOptions.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </Select>
+                    <div className="relative" ref={ocrModelPickerRef}>
+                      <div className="flex gap-2">
+                        <Input
+                          id="ocr-ai-model"
+                          type="text"
+                          value={settings.ocrAiModel}
+                          onChange={(e) => {
+                            setSettings((s) => ({ ...s, ocrAiModel: e.target.value }))
+                            setShowOcrModelSuggestions(true)
+                          }}
+                          onFocus={() => setShowOcrModelSuggestions(true)}
+                          autoComplete="off"
+                          aria-expanded={showOcrModelSuggestions}
+                          aria-controls="ocr-ai-model-suggestion-panel"
+                          disabled={ocrModelLoading}
+                          placeholder={
+                            isOcrAiChainDocParser
+                              ? "输入或选择 PaddleOCR-VL 模型"
+                              : isOcrAiChainLayoutBlock
+                                ? "输入或选择视觉模型，如 Qwen-VL / Qwen2.5-VL / PaddleOCR-VL"
+                                : "输入或选择视觉模型，如 DeepSeek-OCR / GPT-4o / Qwen-VL"
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={ocrModelLoading || visibleOcrModelOptions.length === 0}
+                          onClick={() => setShowOcrModelSuggestions((value) => !value)}
+                        >
+                          {showOcrModelSuggestions ? "收起" : "候选"}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {ocrModelLoading
+                        ? "正在加载模型候选..."
+                        : visibleOcrModelOptions.length > 0
+                          ? isOcrAiChainDirect
+                            ? "可直接手填自定义模型名；下拉列表会尽量展示可看图的模型。推荐优先试 DeepSeek-OCR。"
+                            : "可直接手填自定义模型名；下拉列表是自动发现的候选。"
+                          : "当前没拉到可用候选，也可以直接手填模型名。"}
+                    </div>
                     {ocrModelError ? (
                       <div className="text-xs text-destructive">{ocrModelError}</div>
                     ) : null}
                   </div>
 
+                  <div className="grid gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void onCheckAiOcrModel()}
+                        disabled={aiOcrChecking}
+                      >
+                        {aiOcrChecking ? "检测中..." : "检测 OCR 配置"}
+                      </Button>
+                      <HoverHint
+                        text={
+                          isOcrAiChainLayoutBlock
+                            ? "检查当前分块链路和视觉模型是否可用。"
+                            : "检查当前模型是否能返回可用识别结果。"
+                        }
+                      />
+                    </div>
+                    {aiOcrCheckError ? (
+                      <div className="text-xs text-destructive">{aiOcrCheckError}</div>
+                    ) : null}
+                    {aiOcrCheck ? (
+                      <div
+                        className={
+                          aiOcrCheck.ok
+                            ? "border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-xs text-emerald-900"
+                            : "border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                        }
+                      >
+                        <div>
+                          状态：{aiOcrCheck.check.ready ? "通过" : "未通过"} ·
+                          耗时：{aiOcrCheck.check.elapsed_ms}ms
+                        </div>
+                        <div>模型：{aiOcrCheck.check.model}</div>
+                        <div>
+                          结果：{aiOcrCheck.check.valid_bbox_items}/{aiOcrCheck.check.items_count} 条有效结果
+                        </div>
+                        <div>{aiOcrCheck.check.message}</div>
+                        {aiOcrCheck.check.error ? <div>错误：{aiOcrCheck.check.error}</div> : null}
+                      </div>
+                    ) : null}
+                  </div>
+
                   <AdvancedReveal show={showAdvanced}>
                     <div className="grid gap-3 border border-border/70 bg-muted/10 p-3">
+                      {isPromptDrivenOcrChain ? (
+                        <div className="grid gap-3 border border-border/70 bg-background/70 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 font-sans text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                              <span>提示词实验</span>
+                              <HoverHint text="默认建议先用预设；只有在当前模型经常回显标签、结构化不稳或漏字时再覆盖。" />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowOcrPromptExperiment((value) => !value)}
+                            >
+                              {showOcrPromptExperiment ? "收起" : "展开"}
+                            </Button>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {hasCustomOcrPromptConfig
+                              ? "当前已启用自定义提示词配置。"
+                              : "默认使用内置提示词预设。"}
+                          </div>
+
+                          <AdvancedReveal show={showOcrPromptExperiment}>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="grid gap-2">
+                                <FieldLabel
+                                  htmlFor="ocr-ai-prompt-preset"
+                                  hint="自动会按模型家族推断预设；切错预设可能让输出更差。"
+                                >
+                                  提示词预设
+                                </FieldLabel>
+                                <Select
+                                  id="ocr-ai-prompt-preset"
+                                  value={settings.ocrAiPromptPreset}
+                                  onChange={(e) =>
+                                    setSettings((s) => ({
+                                      ...s,
+                                      ocrAiPromptPreset: e.target.value as OcrAiPromptPreset,
+                                    }))
+                                  }
+                                >
+                                  {ocrAiPromptPresetOptions.map((option) => (
+                                    <option key={option.id} value={option.id}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </div>
+
+                              <div className="grid gap-2">
+                                <div className="text-xs text-muted-foreground">
+                                  {isOcrAiChainLayoutBlock
+                                    ? "本地切块识别仍然是提示词驱动的文字识别，只是 bbox 来自本地切块，所以通常比模型直出稳。"
+                                    : "模型直出框和文字完全依赖提示词约束和模型遵循度，推荐优先用 DeepSeek-OCR。"}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  当前链路变量：
+                                  {" "}
+                                  {currentOcrPromptVariableHint}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2">
+                              <FieldLabel
+                                htmlFor="ocr-ai-current-prompt-override"
+                                hint={currentOcrPromptOverrideHint}
+                              >
+                                {currentOcrPromptOverrideLabel}
+                              </FieldLabel>
+                              <PromptTextarea
+                                id="ocr-ai-current-prompt-override"
+                                value={currentOcrPromptOverride}
+                                onChange={(e) =>
+                                  setSettings((s) =>
+                                    isOcrAiChainLayoutBlock
+                                      ? {
+                                          ...s,
+                                          ocrAiLayoutBlockPromptOverride: e.target.value,
+                                        }
+                                      : {
+                                          ...s,
+                                          ocrAiDirectPromptOverride: e.target.value,
+                                        }
+                                  )
+                                }
+                                placeholder={currentOcrPromptOverridePlaceholder}
+                              />
+                              <div className="text-[11px] text-muted-foreground">
+                                留空使用预设；可用变量：
+                                {" "}
+                                {currentOcrPromptVariableHint}
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2">
+                              <FieldLabel
+                                htmlFor="ocr-ai-image-region-prompt-override"
+                                hint="用于检测图表、截图、插图等非文字区域。大多数情况下保持默认即可。"
+                              >
+                                图片区域检测提示词覆盖
+                              </FieldLabel>
+                              <PromptTextarea
+                                id="ocr-ai-image-region-prompt-override"
+                                value={settings.ocrAiImageRegionPromptOverride}
+                                onChange={(e) =>
+                                  setSettings((s) => ({
+                                    ...s,
+                                    ocrAiImageRegionPromptOverride: e.target.value,
+                                  }))
+                                }
+                                placeholder={[
+                                  "Locate standalone non-text visual regions on this page.",
+                                  "Return ONLY minified JSON array.",
+                                  'Image size: {{image_width}}x{{image_height}} px. Each item: {"bbox":[x0,y0,x1,y1]}.',
+                                ].join("\n")}
+                              />
+                              <div className="text-[11px] text-muted-foreground">
+                                留空使用预设；可用变量：
+                                {" "}
+                                {"{{image_width}} {{image_height}}"}
+                              </div>
+                            </div>
+                          </AdvancedReveal>
+                        </div>
+                      ) : null}
+
                       <div className="flex items-center gap-2 font-sans text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                         <span>并发与限流</span>
                         <HoverHint text="仅对模型直出和本地切块识别生效。" />
@@ -1736,7 +2161,7 @@ export default function SettingsPage() {
                         <div className="grid gap-2">
                           <FieldLabel
                             htmlFor="ocr-ai-block-concurrency"
-                            hint="仅对本地切块识别生效。"
+                            hint="仅对本地切块识别生效。留空时自动跟随多页并发数。"
                           >
                             单页切块并发
                           </FieldLabel>
@@ -1756,6 +2181,13 @@ export default function SettingsPage() {
                             }
                             placeholder="自动"
                           />
+                          <div className="text-[11px] text-muted-foreground">
+                            {settings.ocrAiBlockConcurrency.trim()
+                              ? "已切换为手动值；清空可恢复自动。"
+                              : autoOcrAiBlockConcurrency !== null
+                                ? `当前自动值：${autoOcrAiBlockConcurrency}（跟随多页并发）`
+                                : "切换到本地切块识别后会自动跟随多页并发。"}
+                          </div>
                         </div>
                       </div>
 
@@ -1837,52 +2269,6 @@ export default function SettingsPage() {
                       {isOcrAiChainDocParser ? (
                         <div className="text-xs text-muted-foreground">
                           当前是内置文档解析链路，并发与限流不会生效。
-                        </div>
-                      ) : null}
-                    </div>
-                  </AdvancedReveal>
-
-                  <AdvancedReveal show={showAdvanced}>
-                    <div className="grid gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void onCheckAiOcrModel()}
-                          disabled={aiOcrChecking}
-                        >
-                          {aiOcrChecking ? "检测中..." : "检测 OCR 配置"}
-                        </Button>
-                        <HoverHint
-                          text={
-                            isOcrAiChainLayoutBlock
-                              ? "检查当前分块链路和视觉模型是否可用。"
-                              : "检查当前模型是否能返回可用识别结果。"
-                          }
-                        />
-                      </div>
-                      {aiOcrCheckError ? (
-                        <div className="text-xs text-destructive">{aiOcrCheckError}</div>
-                      ) : null}
-                      {aiOcrCheck ? (
-                        <div
-                          className={
-                            aiOcrCheck.ok
-                              ? "border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-xs text-emerald-900"
-                              : "border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900"
-                          }
-                        >
-                          <div>
-                            状态：{aiOcrCheck.check.ready ? "通过" : "未通过"} ·
-                            耗时：{aiOcrCheck.check.elapsed_ms}ms
-                          </div>
-                          <div>模型：{aiOcrCheck.check.model}</div>
-                          <div>
-                            结果：{aiOcrCheck.check.valid_bbox_items}/{aiOcrCheck.check.items_count} 条有效结果
-                          </div>
-                          <div>{aiOcrCheck.check.message}</div>
-                          {aiOcrCheck.check.error ? <div>错误：{aiOcrCheck.check.error}</div> : null}
                         </div>
                       ) : null}
                     </div>

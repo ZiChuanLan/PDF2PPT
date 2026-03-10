@@ -134,6 +134,22 @@ def test_ai_ocr_client_layout_block_route_is_preserved(monkeypatch) -> None:
     assert client._refresh_route_kind() == ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
 
 
+def test_ai_ocr_client_layout_block_route_allows_paddleocr_vl(monkeypatch) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://api.siliconflow.cn/v1",
+        model="PaddlePaddle/PaddleOCR-VL-1.5",
+        provider="siliconflow",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    assert client.route_kind == ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
+    assert client._refresh_route_kind() == ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
+
+
 def test_paddle_doc_singleflight_lock_released_after_timeout(
     monkeypatch, tmp_path
 ) -> None:

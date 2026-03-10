@@ -238,6 +238,135 @@ def test_layout_block_route_upscales_tiny_qwen3_crops(
     ]
 
 
+def test_layout_block_route_upscales_tiny_deepseek_crops(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://api.siliconflow.cn/v1",
+        model="deepseek-ai/DeepSeek-OCR",
+        provider="siliconflow",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "text",
+                    "bbox": [10.0, 10.0, 146.0, 22.0],
+                    "score": 0.9,
+                    "order": 0,
+                    "text": "",
+                }
+            ],
+            [],
+        ),
+    )
+
+    captured: dict[str, int] = {}
+
+    def _fake_ocr_local_layout_block_crop(**kwargs):
+        captured["crop_width"] = int(kwargs["crop_width"])
+        captured["crop_height"] = int(kwargs["crop_height"])
+        return "DeepSeek text"
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_local_layout_block_crop",
+        _fake_ocr_local_layout_block_crop,
+    )
+
+    image_path = tmp_path / "tiny-deepseek-strip.png"
+    Image.new("RGB", (300, 180), "white").save(image_path)
+
+    items = client.ocr_image(str(image_path))
+
+    assert captured["crop_height"] >= 32
+    assert captured["crop_width"] > 146
+    assert items == [
+        {
+            "text": "DeepSeek text",
+            "bbox": [10.0, 10.0, 146.0, 22.0],
+            "confidence": 0.9,
+            "provider": "siliconflow",
+            "model": "deepseek-ai/DeepSeek-OCR",
+            "ocr_layout_label": "text",
+        }
+    ]
+
+
+def test_deepseek_layout_block_crop_extracts_text_from_grounding_tags(
+    monkeypatch,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://api.siliconflow.cn/v1",
+        model="deepseek-ai/DeepSeek-OCR",
+        provider="siliconflow",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    monkeypatch.setattr(
+        client,
+        "_chat_completion",
+        lambda **kwargs: types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(
+                        content=(
+                            "<|ref|>Invoice ID: A-2048-17<|/ref|>"
+                            "<|det|>[[12,34,240,92]]<|/det|>"
+                        )
+                    )
+                )
+            ]
+        ),
+    )
+
+    text = client._ocr_local_layout_block_crop(
+        data_uri="data:image/png;base64,AAAA",
+        label="text",
+        crop_width=320,
+        crop_height=64,
+        effective_model="deepseek-ai/DeepSeek-OCR",
+    )
+
+    assert text == "Invoice ID: A-2048-17"
+
+
+def test_clean_plain_text_ocr_output_strips_special_box_tokens(
+    monkeypatch,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    text = client._clean_plain_text_ocr_output(
+        "&lt;|begin_of_box|&gt;Invoice ID: A-2048-17&lt;|end_of_box|&gt;\n"
+        "<|begin_of_text|>Status: Ready<|end_of_text|>\n"
+        "[[12,34,240,92]]"
+    )
+
+    assert text == "Invoice ID: A-2048-17\nStatus: Ready"
+
+
 def test_local_layout_analysis_serializes_shared_model_predict(
     monkeypatch,
     tmp_path,

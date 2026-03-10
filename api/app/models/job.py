@@ -159,6 +159,28 @@ class AiOcrCheckRequest(BaseModel):
         "pp_doclayout_v3",
         description="Local layout model for layout_block chain",
     )
+    ocr_ai_prompt_preset: Optional[str] = Field(
+        "auto",
+        description=(
+            "Optional OCR prompt preset "
+            "(auto, generic_vision, openai_vision, qwen_vl, glm_v, deepseek_ocr)"
+        ),
+    )
+    ocr_ai_direct_prompt_override: Optional[str] = Field(
+        None,
+        max_length=6000,
+        description="Optional direct OCR prompt override",
+    )
+    ocr_ai_layout_block_prompt_override: Optional[str] = Field(
+        None,
+        max_length=6000,
+        description="Optional local layout block OCR prompt override",
+    )
+    ocr_ai_image_region_prompt_override: Optional[str] = Field(
+        None,
+        max_length=6000,
+        description="Optional image region detection prompt override",
+    )
     ocr_paddle_vl_docparser_max_side_px: Optional[int] = Field(
         None,
         ge=0,

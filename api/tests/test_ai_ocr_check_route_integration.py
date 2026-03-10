@@ -62,6 +62,10 @@ def test_ai_ocr_capability_check_reports_effective_route(monkeypatch, tmp_path) 
         "ai_model": "PaddlePaddle/PaddleOCR-VL-1.5",
         "route_kind": None,
         "ai_layout_model": None,
+        "prompt_preset": None,
+        "direct_prompt_override": None,
+        "layout_block_prompt_override": None,
+        "image_region_prompt_override": None,
         "paddle_doc_max_side_px": None,
         "layout_block_max_concurrency": None,
         "request_rpm_limit": None,
@@ -102,8 +106,12 @@ def test_ai_ocr_capability_check_passes_layout_block_route(monkeypatch, tmp_path
         "ai_model": "Qwen/Qwen2.5-VL-72B-Instruct",
         "route_kind": "layout_block",
         "ai_layout_model": "pp_doclayout_v3",
+        "prompt_preset": None,
+        "direct_prompt_override": None,
+        "layout_block_prompt_override": None,
+        "image_region_prompt_override": None,
         "paddle_doc_max_side_px": None,
-        "layout_block_max_concurrency": None,
+        "layout_block_max_concurrency": 1,
         "request_rpm_limit": None,
         "request_tpm_limit": None,
         "request_max_retries": None,
@@ -143,3 +151,47 @@ def test_ai_ocr_capability_check_forwards_experimental_request_controls(
     assert captured["request_rpm_limit"] == 40
     assert captured["request_tpm_limit"] == 120000
     assert captured["request_max_retries"] == 3
+
+
+def test_ai_ocr_capability_check_forwards_prompt_settings(monkeypatch, tmp_path) -> None:
+    probe_image = tmp_path / "probe.png"
+    Image.new("RGB", (256, 96), "white").save(probe_image)
+
+    captured: dict[str, str | int | None] = {}
+
+    def _fake_create_remote_ocr_client(**kwargs):
+        captured.update(kwargs)
+        return _FakeRemoteClient(ROUTE_KIND_REMOTE_DOC_PARSER)
+
+    monkeypatch.setattr(jobs, "_create_ai_ocr_probe_image", lambda: probe_image)
+    monkeypatch.setattr(jobs, "create_remote_ocr_client", _fake_create_remote_ocr_client)
+
+    response = jobs._run_ai_ocr_capability_check(
+        provider="openai",
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="gpt-4o",
+        ocr_ai_chain_mode="direct",
+        ocr_ai_prompt_preset="openai_vision",
+        ocr_ai_direct_prompt_override="OCR {{image_width}}x{{image_height}}",
+        ocr_ai_layout_block_prompt_override="Read {{block_label}}",
+        ocr_ai_image_region_prompt_override="Detect {{image_width}}",
+    )
+
+    assert response.ok is True
+    assert captured["prompt_preset"] == "openai_vision"
+    assert captured["direct_prompt_override"] == "OCR {{image_width}}x{{image_height}}"
+    assert captured["layout_block_prompt_override"] == "Read {{block_label}}"
+    assert captured["image_region_prompt_override"] == "Detect {{image_width}}"
+
+
+def test_create_ai_ocr_probe_image_renders_large_non_blank_text() -> None:
+    probe_image = jobs._create_ai_ocr_probe_image()
+    try:
+        image = Image.open(probe_image).convert("RGB")
+        assert image.width >= 1440
+        assert image.height >= 960
+        assert image.getbbox() is not None
+        assert any(pixel != (255, 255, 255) for pixel in image.getdata())
+    finally:
+        probe_image.unlink(missing_ok=True)
