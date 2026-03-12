@@ -164,7 +164,9 @@ def _detect_image_regions_from_render(
     # text in the RGB image using a *local* background color. This avoids
     # creating hard-edged rectangles when the slide background is non-uniform
     # (gradients / cards), which otherwise confuses the edge detector.
-    masked_rects_px: list[tuple[int, int, int, int]] = []
+    masked_regions_px: list[
+        tuple[tuple[int, int, int, int], list[tuple[int, int]] | None]
+    ] = []
     if ocr_text_elements:
         baseline_h_pt = _estimate_baseline_ocr_line_height_pt(
             ocr_text_elements=ocr_text_elements,
@@ -210,8 +212,18 @@ def _detect_image_regions_from_render(
             if x1p <= x0p or y1p <= y0p:
                 continue
 
-            draw.rectangle([x0p, y0p, x1p, y1p], fill=255)
-            masked_rects_px.append((x0p, y0p, x1p, y1p))
+            polygon_px = _element_polygon_points_px(
+                el,
+                page_height_pt=page_height_pt,
+                dpi=int(dpi),
+                width_px=W,
+                height_px=H,
+            )
+            if polygon_px is not None:
+                draw.polygon(polygon_px, fill=255)
+            else:
+                draw.rectangle([x0p, y0p, x1p, y1p], fill=255)
+            masked_regions_px.append(((x0p, y0p, x1p, y1p), polygon_px))
 
         # Dilate the mask a bit to cover edge halos.
         try:
@@ -258,13 +270,16 @@ def _detect_image_regions_from_render(
                 continue
         return _median_rgb(cols)
 
-    if masked_rects_px and mask.getbbox():
+    if masked_regions_px and mask.getbbox():
         try:
             masked_img = img.copy()
             draw_masked = ImageDraw.Draw(masked_img)
-            for x0p, y0p, x1p, y1p in masked_rects_px:
+            for (x0p, y0p, x1p, y1p), polygon_px in masked_regions_px:
                 bg = _sample_local_bg_rgb(img, x0=x0p, y0=y0p, x1=x1p, y1=y1p)
-                draw_masked.rectangle([x0p, y0p, x1p, y1p], fill=bg)
+                if polygon_px is not None:
+                    draw_masked.polygon(polygon_px, fill=bg)
+                else:
+                    draw_masked.rectangle([x0p, y0p, x1p, y1p], fill=bg)
             # A tiny blur helps hide hard boundaries of painted regions.
             try:
                 masked_img = masked_img.filter(ImageFilter.BoxBlur(0.6))
@@ -969,11 +984,116 @@ def _pdf_pt_to_pix_px(
     return (int(round(x_px)), int(round(y_px)))
 
 
+def _coerce_polygon_points_pt(value: Any) -> list[tuple[float, float]] | None:
+    if not isinstance(value, (list, tuple)):
+        return None
+    points: list[tuple[float, float]] = []
+    for raw_point in value:
+        if not isinstance(raw_point, (list, tuple)) or len(raw_point) < 2:
+            return None
+        try:
+            x = float(raw_point[0])
+            y = float(raw_point[1])
+        except Exception:
+            return None
+        if not math.isfinite(x) or not math.isfinite(y):
+            return None
+        points.append((x, y))
+    if len(points) < 3:
+        return None
+    return points
+
+
+def _polygon_points_pt_to_px(
+    value: Any,
+    *,
+    page_height_pt: float,
+    dpi: int,
+    width_px: int,
+    height_px: int,
+) -> list[tuple[int, int]] | None:
+    points_pt = _coerce_polygon_points_pt(value)
+    if points_pt is None or width_px <= 0 or height_px <= 0:
+        return None
+
+    converted: list[tuple[int, int]] = []
+    for x_pt, y_pt in points_pt:
+        x_px, y_px = _pdf_pt_to_pix_px(
+            x_pt,
+            y_pt,
+            page_height_pt=page_height_pt,
+            dpi=int(dpi),
+        )
+        coord = (
+            max(0, min(int(width_px - 1), int(x_px))),
+            max(0, min(int(height_px - 1), int(y_px))),
+        )
+        if converted and coord == converted[-1]:
+            continue
+        converted.append(coord)
+    if len({point for point in converted}) < 3:
+        return None
+    return converted
+
+
+def _element_polygon_points_px(
+    element: dict[str, Any],
+    *,
+    page_height_pt: float,
+    dpi: int,
+    width_px: int,
+    height_px: int,
+) -> list[tuple[int, int]] | None:
+    if bool(element.get("ocr_linebreak_assisted")):
+        return None
+    if str(element.get("ocr_layout_geometry_kind") or "").strip().lower() != "polygon":
+        return None
+    return _polygon_points_pt_to_px(
+        element.get("ocr_layout_geometry_points_pt"),
+        page_height_pt=page_height_pt,
+        dpi=int(dpi),
+        width_px=width_px,
+        height_px=height_px,
+    )
+
+
+def _coerce_image_region_entry_pt(value: Any) -> dict[str, Any] | None:
+    raw_bbox = value.get("bbox_pt") if isinstance(value, dict) else value
+    if raw_bbox is None and isinstance(value, dict):
+        raw_bbox = value.get("bbox")
+    try:
+        bbox_pt = [float(v) for v in _coerce_bbox_pt(raw_bbox)]
+    except Exception:
+        return None
+
+    out: dict[str, Any] = {"bbox_pt": bbox_pt}
+    if not isinstance(value, dict):
+        return out
+
+    for key in ("label", "score", "order", "geometry_source"):
+        if value.get(key) is not None:
+            out[key] = value.get(key)
+
+    geometry_kind = str(value.get("geometry_kind") or "").strip().lower()
+    raw_points = value.get("geometry_points_pt")
+    if raw_points is None:
+        raw_points = value.get("geometry_points")
+    points = _coerce_polygon_points_pt(raw_points)
+    if points is not None:
+        out["geometry_kind"] = "polygon"
+        out["geometry_points_pt"] = [[float(x), float(y)] for x, y in points]
+    elif geometry_kind:
+        out["geometry_kind"] = geometry_kind
+
+    return out
+
+
 def _erase_regions_in_render_image(
     render_path: Path,
     *,
     out_path: Path,
     erase_bboxes_pt: list[list[float]],
+    erase_polygons_pt: list[list[list[float]] | None] | None = None,
     protect_bboxes_pt: list[list[float]] | None = None,
     page_height_pt: float,
     dpi: int,
@@ -1025,7 +1145,9 @@ def _erase_regions_in_render_image(
 
     rects: list[tuple[int, int, int, int]] = []
     core_rects: list[tuple[int, int, int, int]] = []
-    for bb in erase_bboxes_pt:
+    polygon_masks_px: list[list[tuple[int, int]] | None] = []
+    raw_polygons = erase_polygons_pt or []
+    for index, bb in enumerate(erase_bboxes_pt):
         core = _bbox_pt_to_rect_px(bb, pad=0)
         if core is None:
             continue
@@ -1034,6 +1156,15 @@ def _erase_regions_in_render_image(
             expanded = core
         rects.append(expanded)
         core_rects.append(core)
+        polygon_masks_px.append(
+            _polygon_points_pt_to_px(
+                raw_polygons[index] if index < len(raw_polygons) else None,
+                page_height_pt=page_height_pt,
+                dpi=int(dpi),
+                width_px=W,
+                height_px=H,
+            )
+        )
 
     if not rects:
         return render_path
@@ -1124,13 +1255,16 @@ def _erase_regions_in_render_image(
                         [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
                     )
 
-            for x0, y0, x1, y1 in rects:
+            for (x0, y0, x1, y1), polygon_px in zip(rects, polygon_masks_px):
                 color = _estimate_fill_color(x0, y0, x1, y1)
                 rect_mask = Image.new("L", (W, H), 0)
                 rect_draw = ImageDraw.Draw(rect_mask)
-                rect_draw.rectangle(
-                    [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
-                )
+                if polygon_px is not None:
+                    rect_draw.polygon(polygon_px, fill=255)
+                else:
+                    rect_draw.rectangle(
+                        [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
+                    )
                 try:
                     # Expand mask by ~1px to cover anti-aliased text edges.
                     rect_mask = rect_mask.filter(ImageFilter.MaxFilter(dilate_size))
@@ -1175,8 +1309,13 @@ def _erase_regions_in_render_image(
         draw_fallback = ImageDraw.Draw(fallback_mask)
         draw_protect = ImageDraw.Draw(protect_mask_img)
 
-        for x0, y0, x1, y1 in rects:
-            draw_remove.rectangle([x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255)
+        for (x0, y0, x1, y1), polygon_px in zip(rects, polygon_masks_px):
+            if polygon_px is not None:
+                draw_remove.polygon(polygon_px, fill=255)
+            else:
+                draw_remove.rectangle(
+                    [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
+                )
         for x0, y0, x1, y1 in core_rects:
             draw_fallback.rectangle(
                 [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
@@ -1496,6 +1635,84 @@ class _ScannedImageRegionInfo:
     shape_confirmed: bool
     ai_hint: bool = False
     background_removed: bool = False
+    geometry_kind: str | None = None
+    geometry_points_pt: list[list[float]] | None = None
+
+
+def _save_scanned_image_region_crop(
+    *,
+    img: Any,
+    bbox_pt: list[float],
+    crop_out_path: Path,
+    page_h_pt: float,
+    scanned_render_dpi: int,
+    geometry_points_pt: list[list[float]] | None = None,
+) -> bool:
+    try:
+        from PIL import ImageDraw, ImageFilter
+    except Exception:
+        return False
+
+    try:
+        x0, y0, x1, y1 = _coerce_bbox_pt(bbox_pt)
+    except Exception:
+        return False
+
+    x0p, y0p = _pdf_pt_to_pix_px(
+        x0,
+        y0,
+        page_height_pt=page_h_pt,
+        dpi=int(scanned_render_dpi),
+    )
+    x1p, y1p = _pdf_pt_to_pix_px(
+        x1,
+        y1,
+        page_height_pt=page_h_pt,
+        dpi=int(scanned_render_dpi),
+    )
+    x0p = max(0, min(int(img.width - 1), int(x0p)))
+    y0p = max(0, min(int(img.height - 1), int(y0p)))
+    x1p = max(0, min(int(img.width), int(x1p)))
+    y1p = max(0, min(int(img.height), int(y1p)))
+    if x1p <= x0p or y1p <= y0p:
+        return False
+
+    crop = img.crop((x0p, y0p, x1p, y1p))
+    if geometry_points_pt:
+        polygon_px = _polygon_points_pt_to_px(
+            geometry_points_pt,
+            page_height_pt=page_h_pt,
+            dpi=int(scanned_render_dpi),
+            width_px=int(img.width),
+            height_px=int(img.height),
+        )
+        if polygon_px is not None:
+            local_points: list[tuple[int, int]] = []
+            for px, py in polygon_px:
+                coord = (
+                    max(0, min(int(crop.width - 1), int(px - x0p))),
+                    max(0, min(int(crop.height - 1), int(py - y0p))),
+                )
+                if local_points and coord == local_points[-1]:
+                    continue
+                local_points.append(coord)
+            if len({point for point in local_points}) >= 3:
+                crop = crop.convert("RGBA")
+                mask = crop.getchannel("A")
+                mask.paste(0, (0, 0, crop.width, crop.height))
+                ImageDraw.Draw(mask).polygon(local_points, fill=255)
+                try:
+                    mask = mask.filter(ImageFilter.MaxFilter(3))
+                except Exception:
+                    pass
+                crop.putalpha(mask)
+
+    try:
+        _ensure_parent_dir(crop_out_path)
+        crop.save(crop_out_path)
+        return True
+    except Exception:
+        return False
 
 
 def _build_scanned_image_region_suppress_bbox(
@@ -1777,6 +1994,9 @@ def _tighten_scanned_image_region_infos(
 
     out: list[_ScannedImageRegionInfo] = []
     for info in infos:
+        if info.geometry_points_pt:
+            out.append(info)
+            continue
         tightened_bbox = _tighten_scanned_image_region_bbox_by_visual_bounds(
             img=img,
             bbox_pt=info.bbox_pt,
@@ -1833,6 +2053,8 @@ def _tighten_scanned_image_region_infos(
                 shape_confirmed=bool(info.shape_confirmed),
                 ai_hint=bool(info.ai_hint),
                 background_removed=bool(info.background_removed),
+                geometry_kind=info.geometry_kind,
+                geometry_points_pt=info.geometry_points_pt,
             )
         )
     return out
@@ -2040,6 +2262,7 @@ def _clear_regions_for_transparent_crops(
     cleaned_render_path: Path,
     out_path: Path,
     regions_pt: list[list[float]],
+    regions_polygons_pt: list[list[list[float]] | None] | None = None,
     pix: Any,
     page_height_pt: float,
     dpi: int,
@@ -2070,7 +2293,7 @@ def _clear_regions_for_transparent_crops(
     expand_ratio = max(0.0, min(0.12, expand_ratio))
 
     try:
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFilter
     except Exception:
         return cleaned_render_path
 
@@ -2079,8 +2302,10 @@ def _clear_regions_for_transparent_crops(
     except Exception:
         return cleaned_render_path
 
-    draw = ImageDraw.Draw(img)
-    for bb in regions_pt:
+    fill_img = img.copy()
+    raw_polygons = regions_polygons_pt or []
+    dilate_size = 5 if max(img.width, img.height) >= 1600 else 3
+    for index, bb in enumerate(regions_pt):
         try:
             x0, y0, x1, y1 = _coerce_bbox_pt(bb)
         except Exception:
@@ -2119,14 +2344,32 @@ def _clear_regions_for_transparent_crops(
         y1p = max(0, min(int(img.height), int(y1p)))
         if x1p <= x0p or y1p <= y0p:
             continue
-        draw.rectangle(
-            [x0p, y0p, max(x0p, x1p - 1), max(y0p, y1p - 1)],
-            fill=fill_rgb,
+
+        region_mask = Image.new("L", (img.width, img.height), 0)
+        region_draw = ImageDraw.Draw(region_mask)
+        polygon_px = _polygon_points_pt_to_px(
+            raw_polygons[index] if index < len(raw_polygons) else None,
+            page_height_pt=page_height_pt,
+            dpi=int(dpi),
+            width_px=int(img.width),
+            height_px=int(img.height),
         )
+        if polygon_px is not None:
+            region_draw.polygon(polygon_px, fill=255)
+        else:
+            region_draw.rectangle(
+                [x0p, y0p, max(x0p, x1p - 1), max(y0p, y1p - 1)],
+                fill=255,
+            )
+        try:
+            region_mask = region_mask.filter(ImageFilter.MaxFilter(dilate_size))
+        except Exception:
+            pass
+        fill_img.paste(fill_rgb, (0, 0, img.width, img.height), region_mask)
 
     try:
         _ensure_parent_dir(out_path)
-        img.save(out_path)
+        fill_img.save(out_path)
         return out_path
     except Exception:
         return cleaned_render_path
@@ -2393,11 +2636,12 @@ def _collect_scanned_image_region_candidates(
     regions_pt_from_ai: list[list[float]] = []
     regions = page.get("image_regions")
     if isinstance(regions, list) and regions:
-        for bbox in regions:
-            if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        for raw_region in regions:
+            region_info = _coerce_image_region_entry_pt(raw_region)
+            if region_info is None:
                 continue
             try:
-                x0, y0, x1, y1 = _coerce_bbox_pt(bbox)
+                x0, y0, x1, y1 = _coerce_bbox_pt(region_info.get("bbox_pt"))
             except Exception:
                 continue
             # Ignore card-like mixed content panels suggested by AI.
@@ -2977,6 +3221,8 @@ def _try_merge_fragmented_scanned_image_regions(
             shape_confirmed=bool(shape_confirmed),
             ai_hint=bool(ai_hint),
             background_removed=False,
+            geometry_kind=None,
+            geometry_points_pt=None,
         )
 
     merged = list(infos)
@@ -2995,7 +3241,12 @@ def _try_merge_fragmented_scanned_image_regions(
                 if b_area <= 0.0:
                     continue
                 # Don't merge transparent/icon crops; those should remain editable.
-                if a.background_removed or b.background_removed:
+                if (
+                    a.background_removed
+                    or b.background_removed
+                    or a.geometry_points_pt
+                    or b.geometry_points_pt
+                ):
                     continue
 
                 ax0, ay0, ax1, ay1 = _coerce_bbox_pt(a.bbox_pt)
@@ -3176,23 +3427,29 @@ def _build_scanned_image_region_infos(
     crops_dir = artifacts_dir / "image_crops"
     crops_dir.mkdir(parents=True, exist_ok=True)
     page_area = max(1.0, float(page_w_pt) * float(page_h_pt))
-    ai_hint_regions_pt: list[list[float]] = []
+    ai_hint_regions_pt: list[dict[str, Any]] = []
     raw_ai_regions = page.get("image_regions")
     if isinstance(raw_ai_regions, list):
-        for raw_bbox in raw_ai_regions:
-            if not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) != 4:
+        for raw_region in raw_ai_regions:
+            region_info = _coerce_image_region_entry_pt(raw_region)
+            if region_info is None:
                 continue
             try:
-                hx0, hy0, hx1, hy1 = _coerce_bbox_pt(raw_bbox)
+                hx0, hy0, hx1, hy1 = _coerce_bbox_pt(region_info.get("bbox_pt"))
             except Exception:
                 continue
             h_area = max(0.0, float(hx1 - hx0) * float(hy1 - hy0))
             h_area_ratio = float(h_area) / float(page_area)
             if h_area_ratio < 0.0012 or h_area_ratio > 0.90:
                 continue
-            ai_hint_regions_pt.append([hx0, hy0, hx1, hy1])
+            ai_hint_regions_pt.append(
+                {
+                    **region_info,
+                    "bbox_pt": [float(hx0), float(hy0), float(hx1), float(hy1)],
+                }
+            )
 
-    def _is_ai_hint_candidate(cand_bbox: list[float]) -> bool:
+    def _match_ai_hint_candidate(cand_bbox: list[float]) -> dict[str, Any] | None:
         c_area = max(
             1.0,
             float(
@@ -3203,7 +3460,12 @@ def _build_scanned_image_region_infos(
                 )
             ),
         )
-        for hint_bbox in ai_hint_regions_pt:
+        best_hint: dict[str, Any] | None = None
+        best_score = 0.0
+        for hint in ai_hint_regions_pt:
+            hint_bbox = hint.get("bbox_pt")
+            if not isinstance(hint_bbox, list) or len(hint_bbox) != 4:
+                continue
             h_area = max(
                 1.0,
                 float(
@@ -3217,11 +3479,16 @@ def _build_scanned_image_region_infos(
             inter = _bbox_intersection_area_pt(cand_bbox, hint_bbox)
             if inter <= 0.0:
                 continue
-            if _bbox_iou_pt(cand_bbox, hint_bbox) >= 0.52:
-                return True
-            if (inter / c_area) >= 0.72 or (inter / h_area) >= 0.72:
-                return True
-        return False
+            iou = _bbox_iou_pt(cand_bbox, hint_bbox)
+            cover_c = inter / c_area
+            cover_h = inter / h_area
+            if iou < 0.52 and cover_c < 0.72 and cover_h < 0.72:
+                continue
+            score = max(float(iou), float(cover_c), float(cover_h))
+            if best_hint is None or score > best_score:
+                best_hint = hint
+                best_score = score
+        return best_hint
 
     infos: list[_ScannedImageRegionInfo] = []
 
@@ -3239,7 +3506,8 @@ def _build_scanned_image_region_infos(
             continue
 
         cand_bbox = [float(x0), float(y0), float(x1), float(y1)]
-        is_ai_hint = _is_ai_hint_candidate(cand_bbox)
+        matched_ai_hint = _match_ai_hint_candidate(cand_bbox)
+        is_ai_hint = matched_ai_hint is not None
         area_pt = max(0.0, w_pt * h_pt)
         area_ratio = area_pt / page_area
         if is_ai_hint:
@@ -3365,28 +3633,33 @@ def _build_scanned_image_region_infos(
             ):
                 continue
 
-        x0p, y0p = _pdf_pt_to_pix_px(
-            x0,
-            y0,
-            page_height_pt=page_h_pt,
-            dpi=int(scanned_render_dpi),
-        )
-        x1p, y1p = _pdf_pt_to_pix_px(
-            x1,
-            y1,
-            page_height_pt=page_h_pt,
-            dpi=int(scanned_render_dpi),
-        )
-        x0p = max(0, min(int(img.width - 1), int(x0p)))
-        y0p = max(0, min(int(img.height - 1), int(y0p)))
-        x1p = max(0, min(int(img.width), int(x1p)))
-        y1p = max(0, min(int(img.height), int(y1p)))
-        if x1p <= x0p or y1p <= y0p:
-            continue
+        geometry_kind = None
+        geometry_points_pt = None
+        if matched_ai_hint is not None:
+            raw_geometry_kind = str(
+                matched_ai_hint.get("geometry_kind") or ""
+            ).strip().lower()
+            raw_geometry_points = matched_ai_hint.get("geometry_points_pt")
+            if raw_geometry_kind == "polygon" and isinstance(
+                raw_geometry_points, list
+            ):
+                geometry_kind = "polygon"
+                geometry_points_pt = [
+                    [float(point[0]), float(point[1])]
+                    for point in raw_geometry_points
+                    if isinstance(point, list) and len(point) >= 2
+                ] or None
 
-        crop = img.crop((x0p, y0p, x1p, y1p))
         crop_out_path = crops_dir / f"page-{page_index:04d}-crop-{ri:02d}.png"
-        crop.save(crop_out_path)
+        if not _save_scanned_image_region_crop(
+            img=img,
+            bbox_pt=cand_bbox,
+            crop_out_path=crop_out_path,
+            page_h_pt=page_h_pt,
+            scanned_render_dpi=int(scanned_render_dpi),
+            geometry_points_pt=geometry_points_pt,
+        ):
+            continue
         shape_confirmed = _is_shape_confirmed_crop(crop_out_path)
         background_removed = False
 
@@ -3395,7 +3668,7 @@ def _build_scanned_image_region_infos(
 
         # For compact/icon-like crops, remove flat background to avoid card-color
         # patches when re-pasting into PPT.
-        if shape_confirmed:
+        if shape_confirmed and geometry_points_pt is None:
             try:
                 # Background removal is intended for small icons/logos. Applying
                 # it to screenshots can incorrectly make large white areas
@@ -3489,6 +3762,8 @@ def _build_scanned_image_region_infos(
                 shape_confirmed=bool(shape_confirmed),
                 ai_hint=bool(is_ai_hint),
                 background_removed=bool(background_removed),
+                geometry_kind=geometry_kind,
+                geometry_points_pt=geometry_points_pt,
             )
         )
 
@@ -3530,6 +3805,8 @@ def _build_scanned_image_region_infos(
                     "shape_confirmed": bool(info.shape_confirmed),
                     "ai_hint": bool(info.ai_hint),
                     "background_removed": bool(info.background_removed),
+                    "geometry_kind": info.geometry_kind,
+                    "geometry_points_pt": info.geometry_points_pt,
                 }
                 for info in infos
             ],

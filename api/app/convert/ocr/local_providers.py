@@ -12,6 +12,7 @@ from PIL import Image
 from .ai_client import (
     AiOcrClient,
     AiOcrTextRefiner,
+    _clone_image_region_payload,
     _is_multiline_candidate_for_linebreak_assist,
 )
 from .base import (
@@ -1127,7 +1128,7 @@ class OcrManager:
         self.last_provider_error: str | None = None
         self.last_fallback_reason: str | None = None
         self.last_quality_notes: list[str] = []
-        self.last_image_regions: list[list[float]] = []
+        self.last_image_regions: list[Any] = []
         self.last_layout_blocks: list[dict[str, Any]] = []
         self.last_layout_analysis_debug: dict[str, Any] | None = None
         self.provider_id: str = "auto"
@@ -1581,7 +1582,7 @@ class OcrManager:
         tesseract_lines: list[dict] = []
         paddle_lines: list[dict] = []
         ai_lines: list[dict] = []
-        ai_image_regions: list[list[float]] = []
+        ai_image_regions: list[Any] = []
 
         if self.baidu_provider is not None:
             try:
@@ -1623,9 +1624,8 @@ class OcrManager:
             try:
                 raw_ai = self.ai_provider.ocr_image(image_path)
                 ai_image_regions = [
-                    list(region)
+                    _clone_image_region_payload(region)
                     for region in getattr(self.ai_provider, "last_image_regions_px", [])
-                    if isinstance(region, list) and len(region) == 4
                 ]
                 self.last_layout_blocks = [
                     dict(block)
@@ -1742,7 +1742,9 @@ class OcrManager:
             _merge_in(ai_lines, "AI")
 
         if merged:
-            self.last_image_regions = [list(region) for region in ai_image_regions]
+            self.last_image_regions = [
+                _clone_image_region_payload(region) for region in ai_image_regions
+            ]
             self.last_provider_name = (
                 f"HybridOcr({'+'.join(providers_used)})"
                 if len(providers_used) > 1
@@ -1767,9 +1769,8 @@ class OcrManager:
             try:
                 raw_ai = self.ai_provider.ocr_image(image_path)
                 self.last_image_regions = [
-                    list(region)
+                    _clone_image_region_payload(region)
                     for region in getattr(self.ai_provider, "last_image_regions_px", [])
-                    if isinstance(region, list) and len(region) == 4
                 ]
                 self.last_layout_blocks = [
                     dict(block)
@@ -1830,9 +1831,8 @@ class OcrManager:
                 out = provider.ocr_image(image_path)
                 self.last_provider_name = provider.__class__.__name__
                 self.last_image_regions = [
-                    list(region)
+                    _clone_image_region_payload(region)
                     for region in getattr(provider, "last_image_regions_px", [])
-                    if isinstance(region, list) and len(region) == 4
                 ]
                 self.last_layout_blocks = [
                     dict(block)
@@ -1880,9 +1880,12 @@ class OcrManager:
 
         raise RuntimeError("All OCR providers failed") from last_error
 
-    def detect_image_regions(self, image_path: str) -> list[list[float]]:
+    def detect_image_regions(self, image_path: str) -> list[Any]:
         if self.last_image_regions:
-            return [list(region) for region in self.last_image_regions]
+            return [
+                _clone_image_region_payload(region)
+                for region in self.last_image_regions
+            ]
 
         if self.ai_provider_disabled:
             return []
@@ -1914,11 +1917,11 @@ class OcrManager:
             return []
 
         self.last_image_regions = [
-            list(region)
-            for region in regions
-            if isinstance(region, list) and len(region) == 4
+            _clone_image_region_payload(region) for region in regions
         ]
-        return [list(region) for region in self.last_image_regions]
+        return [
+            _clone_image_region_payload(region) for region in self.last_image_regions
+        ]
 
     def convert_bbox_to_pdf_coords(
         self,
@@ -3218,6 +3221,36 @@ def _merge_line_items_prefer_primary(
     return out
 
 
+def _convert_geometry_points_px_to_pdf_coords(
+    geometry_points: Any,
+    *,
+    image_width: int,
+    image_height: int,
+    page_width_pt: float,
+    page_height_pt: float,
+) -> list[list[float]] | None:
+    if not isinstance(geometry_points, (list, tuple)):
+        return None
+    if image_width <= 0 or image_height <= 0:
+        return None
+
+    scale_x = float(page_width_pt) / float(image_width)
+    scale_y = float(page_height_pt) / float(image_height)
+    converted: list[list[float]] = []
+    for point in geometry_points:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            return None
+        try:
+            x = float(point[0])
+            y = float(point[1])
+        except Exception:
+            return None
+        converted.append([x * scale_x, y * scale_y])
+    if len(converted) < 3:
+        return None
+    return converted
+
+
 def ocr_image_to_elements(
     image_path: str,
     *,
@@ -3740,6 +3773,16 @@ def ocr_image_to_elements(
         except Exception:
             continue
 
+        geometry_points_pt = None
+        if not bool(item.get("linebreak_assisted")):
+            geometry_points_pt = _convert_geometry_points_px_to_pdf_coords(
+                item.get("ocr_layout_geometry_points"),
+                image_width=width,
+                image_height=height,
+                page_width_pt=page_width_pt,
+                page_height_pt=page_height_pt,
+            )
+
         elements.append(
             {
                 "type": "text",
@@ -3755,6 +3798,7 @@ def ocr_image_to_elements(
                 "ocr_linebreak_assist_source": item.get("linebreak_assist_source"),
                 "ocr_layout_geometry_source": item.get("ocr_layout_geometry_source"),
                 "ocr_layout_geometry_kind": item.get("ocr_layout_geometry_kind"),
+                "ocr_layout_geometry_points_pt": geometry_points_pt,
             }
         )
 

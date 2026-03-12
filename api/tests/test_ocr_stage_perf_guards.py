@@ -38,6 +38,24 @@ class _GuardedOcrManager:
         return [72.0, 144.0, 216.0, 288.0]
 
 
+class _PolygonGuardedOcrManager(_GuardedOcrManager):
+    def detect_image_regions(self, _image_path: str) -> list[dict[str, object]]:
+        self.detect_calls += 1
+        return [
+            {
+                "bbox": [10.0, 20.0, 30.0, 40.0],
+                "geometry_kind": "polygon",
+                "geometry_source": "polygon_points",
+                "geometry_points": [
+                    [10.0, 20.0],
+                    [30.0, 20.0],
+                    [30.0, 40.0],
+                    [10.0, 40.0],
+                ],
+            }
+        ]
+
+
 def test_detect_page_image_regions_skips_when_disabled() -> None:
     manager = _GuardedOcrManager()
 
@@ -76,6 +94,41 @@ def test_detect_page_image_regions_converts_regions_when_enabled(
     )
 
     assert regions == [[72.0, 144.0, 216.0, 288.0]]
+    assert error is None
+    assert skip_reason is None
+    assert manager.detect_calls == 1
+
+
+def test_detect_page_image_regions_converts_polygon_regions_when_enabled(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "page-0001.png"
+    Image.new("RGB", (100, 200), color=(255, 255, 255)).save(image_path)
+    manager = _PolygonGuardedOcrManager()
+
+    regions, error, skip_reason = ocr_stage._detect_page_image_regions(
+        enabled=True,
+        image_path=image_path,
+        ocr_manager=manager,
+        page_index=1,
+        ocr_image_region_timeout=12,
+        page_w_pt=720.0,
+        page_h_pt=1440.0,
+    )
+
+    assert regions == [
+        {
+            "bbox_pt": [72.0, 144.0, 216.0, 288.0],
+            "geometry_kind": "polygon",
+            "geometry_source": "polygon_points",
+            "geometry_points_pt": [
+                [72.0, 144.0],
+                [216.0, 144.0],
+                [216.0, 288.0],
+                [72.0, 288.0],
+            ],
+        }
+    ]
     assert error is None
     assert skip_reason is None
     assert manager.detect_calls == 1

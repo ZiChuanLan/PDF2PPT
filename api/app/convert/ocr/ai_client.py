@@ -239,6 +239,51 @@ def _layout_geometry_kind(raw_bbox: Any, geometry_source: str | None) -> str:
     return "bbox"
 
 
+def _clone_image_region_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _clone_image_region_payload(item) for key, item in value.items()
+        }
+    if isinstance(value, tuple):
+        value = list(value)
+    if isinstance(value, list):
+        return [_clone_image_region_payload(item) for item in value]
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        return float(value)
+    return value
+
+
+def _build_layout_image_region_payload(
+    *,
+    bbox: list[float],
+    label: str,
+    score: float | None,
+    order: int | None,
+    geometry_source: str | None,
+    geometry_kind: str | None,
+    geometry_points: list[list[float]] | None,
+) -> Any:
+    bbox_xyxy = [float(v) for v in bbox[:4]]
+    polygon_points = (
+        _coerce_layout_geometry_points(geometry_points)
+        if str(geometry_kind or "").strip().lower() == "polygon"
+        else None
+    )
+    if polygon_points is None:
+        return bbox_xyxy
+    return {
+        "bbox": bbox_xyxy,
+        "label": str(label or ""),
+        "score": score,
+        "order": order,
+        "geometry_source": geometry_source,
+        "geometry_kind": "polygon",
+        "geometry_points": polygon_points,
+    }
+
+
 def _normalize_ai_layout_model_name(value: Any) -> str:
     raw = str(value or "").strip().lower()
     if raw in {
@@ -629,7 +674,7 @@ class AiOcrClient(OcrProvider):
         self._paddle_doc_pipeline_version: str | None = None
         self._paddle_doc_server_url: str | None = None
         self._paddle_doc_backend: str | None = None
-        self.last_image_regions_px: list[list[float]] = []
+        self.last_image_regions_px: list[Any] = []
         self.last_layout_blocks: list[dict[str, Any]] = []
         self._last_layout_image_path: str | None = None
         self._image_region_cache_path: str | None = None
@@ -1859,7 +1904,9 @@ class AiOcrClient(OcrProvider):
                     )
                 )
                 self.last_layout_blocks = list(layout_blocks)
-                self.last_image_regions_px = [list(region) for region in image_regions]
+                self.last_image_regions_px = [
+                    _clone_image_region_payload(region) for region in image_regions
+                ]
                 self._last_layout_image_path = str(image_path)
                 self._image_region_cache_path = str(image_path)
                 self._image_region_cache_ready = True
@@ -1941,9 +1988,9 @@ class AiOcrClient(OcrProvider):
     def _extract_local_layout_blocks(
         self,
         output: Any,
-    ) -> tuple[list[dict[str, Any]], list[list[float]]]:
+    ) -> tuple[list[dict[str, Any]], list[Any]]:
         layout_blocks: list[dict[str, Any]] = []
-        image_regions: list[list[float]] = []
+        image_regions: list[Any] = []
         raw_boxes_debug: list[dict[str, Any]] = []
 
         def _result_payloads(result_obj: Any) -> list[Any]:
@@ -2069,7 +2116,17 @@ class AiOcrClient(OcrProvider):
                         }
                     )
                     if _is_image_like_layout_label(label):
-                        image_regions.append([x0, y0, x1, y1])
+                        image_regions.append(
+                            _build_layout_image_region_payload(
+                                bbox=[x0, y0, x1, y1],
+                                label=label,
+                                score=score,
+                                order=order,
+                                geometry_source=geometry_source,
+                                geometry_kind=geometry_kind,
+                                geometry_points=geometry_points,
+                            )
+                        )
                 break
 
         layout_blocks.sort(
@@ -2091,7 +2148,7 @@ class AiOcrClient(OcrProvider):
     def _run_local_layout_analysis(
         self,
         image_path: str,
-    ) -> tuple[list[dict[str, Any]], list[list[float]]]:
+    ) -> tuple[list[dict[str, Any]], list[Any]]:
         requested_path = str(image_path)
         if (
             self._image_region_cache_ready
@@ -2100,7 +2157,10 @@ class AiOcrClient(OcrProvider):
         ):
             return (
                 [dict(block) for block in self.last_layout_blocks],
-                [list(region) for region in self.last_image_regions_px],
+                [
+                    _clone_image_region_payload(region)
+                    for region in self.last_image_regions_px
+                ],
             )
 
         layout_model = self._get_local_layout_model()
@@ -2109,9 +2169,7 @@ class AiOcrClient(OcrProvider):
             _env_float("OCR_AI_LAYOUT_MODEL_PREDICT_TIMEOUT_S", 45.0),
         )
 
-        def _predict_and_extract_once() -> tuple[
-            list[dict[str, Any]], list[list[float]]
-        ]:
+        def _predict_and_extract_once() -> tuple[list[dict[str, Any]], list[Any]]:
             # PaddleX layout model instances are cached process-wide. Keep both
             # predict() and the immediate payload extraction serialized so a
             # later predict() cannot mutate or recycle the previous result
@@ -2134,7 +2192,9 @@ class AiOcrClient(OcrProvider):
             label=f"{self.layout_model}:predict",
         )
         self.last_layout_blocks = [dict(block) for block in layout_blocks]
-        self.last_image_regions_px = [list(region) for region in image_regions]
+        self.last_image_regions_px = [
+            _clone_image_region_payload(region) for region in image_regions
+        ]
         self._last_layout_image_path = requested_path
         self._image_region_cache_path = requested_path
         self._image_region_cache_ready = True
@@ -2152,7 +2212,7 @@ class AiOcrClient(OcrProvider):
         )
         return (
             [dict(block) for block in layout_blocks],
-            [list(region) for region in image_regions],
+            [_clone_image_region_payload(region) for region in image_regions],
         )
 
     def _image_to_data_uri(self, image: Image.Image) -> str:
@@ -2541,7 +2601,9 @@ class AiOcrClient(OcrProvider):
     ) -> List[Dict]:
         layout_blocks, image_regions = self._run_local_layout_analysis(image_path)
         self.last_layout_blocks = [dict(block) for block in layout_blocks]
-        self.last_image_regions_px = [list(region) for region in image_regions]
+        self.last_image_regions_px = [
+            _clone_image_region_payload(region) for region in image_regions
+        ]
         self._last_layout_image_path = str(image_path)
         self._image_region_cache_path = str(image_path)
         self._image_region_cache_ready = True
@@ -2575,6 +2637,11 @@ class AiOcrClient(OcrProvider):
                     "order": block.get("order"),
                     "geometry_source": block.get("geometry_source"),
                     "geometry_kind": block.get("geometry_kind"),
+                    "geometry_points": [
+                        [float(point[0]), float(point[1])]
+                        for point in (block.get("geometry_points") or [])
+                        if isinstance(point, list) and len(point) >= 2
+                    ],
                     "crop_width": int(crop.size[0]),
                     "crop_height": int(crop.size[1]),
                     "data_uri": self._image_to_data_uri(crop),
@@ -2800,6 +2867,8 @@ class AiOcrClient(OcrProvider):
                             or None,
                             "ocr_layout_geometry_kind": result.get("geometry_kind")
                             or None,
+                            "ocr_layout_geometry_points": result.get("geometry_points")
+                            or None,
                         }
                     )
                     self.last_layout_blocks[int(result["index"])]["text"] = text
@@ -2956,13 +3025,16 @@ class AiOcrClient(OcrProvider):
         )
         return validated or []
 
-    def detect_image_regions(self, image_path: str) -> list[list[float]]:
+    def detect_image_regions(self, image_path: str) -> list[Any]:
         requested_path = str(image_path)
         if (
             self._image_region_cache_ready
             and str(self._image_region_cache_path or "") == requested_path
         ):
-            return [list(region) for region in self.last_image_regions_px]
+            return [
+                _clone_image_region_payload(region)
+                for region in self.last_image_regions_px
+            ]
 
         self.last_image_regions_px = []
         self.last_layout_blocks = []
@@ -2974,7 +3046,7 @@ class AiOcrClient(OcrProvider):
             try:
                 _, image_regions = self._run_local_layout_analysis(image_path)
                 self._refresh_route_kind()
-                return [list(region) for region in image_regions]
+                return [_clone_image_region_payload(region) for region in image_regions]
             except Exception as e:
                 logger.warning(
                     "Local layout_block image-region extraction failed; falling back to prompt detection: %s",
@@ -2985,7 +3057,10 @@ class AiOcrClient(OcrProvider):
             try:
                 self._ocr_image_with_paddle_doc_parser(image_path)
                 self._refresh_route_kind()
-                return [list(region) for region in self.last_image_regions_px]
+                return [
+                    _clone_image_region_payload(region)
+                    for region in self.last_image_regions_px
+                ]
             except Exception as e:
                 logger.warning(
                     "PaddleOCR-VL image-region extraction failed; falling back to prompt detection: %s",
@@ -2994,7 +3069,7 @@ class AiOcrClient(OcrProvider):
 
         try:
             self.last_image_regions_px = [
-                list(region)
+                _clone_image_region_payload(region)
                 for region in self._detect_image_regions_with_prompt(image_path)
             ]
             self._refresh_route_kind()
@@ -3003,7 +3078,9 @@ class AiOcrClient(OcrProvider):
             self.last_image_regions_px = []
 
         self._image_region_cache_ready = True
-        return [list(region) for region in self.last_image_regions_px]
+        return [
+            _clone_image_region_payload(region) for region in self.last_image_regions_px
+        ]
 
     def _score_bbox_transform(
         self,

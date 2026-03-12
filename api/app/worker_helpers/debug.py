@@ -174,7 +174,7 @@ def _draw_layout_assist_overlay(
 
         for region in page.get("image_regions") or []:
             rect = _bbox_pt_to_px(
-                region,
+                region.get("bbox_pt") if isinstance(region, dict) else region,
                 page_w_pt=page_w_pt,
                 page_h_pt=page_h_pt,
                 img_w_px=img_w,

@@ -109,12 +109,39 @@ curl http://127.0.0.1:8000/health
 默认生产编排行为：
 
 - `web` 对外暴露 `${WEB_PORT}`，默认 `3000`
-- `api` 只绑定宿主机 `127.0.0.1:${API_PORT}`，默认 `8000`
+- `api` 默认只绑定宿主机 `${API_BIND_HOST:-127.0.0.1}:${API_PORT}`，默认 `127.0.0.1:8000`
 - `redis` 不对外暴露
 - 任务结果和缓存使用 named volume：`api-data`、`paddlex-cache`、`paddle-cache`
 - 浏览器默认只访问 Web，同源 `/api/*` 由 Next 反代到容器内 `api:8000`
 
 如果你有自己的域名反代，通常只需要把外部流量转到 `WEB_PORT`，不需要额外公开 `api`。
+
+如果你要直接远程访问 API，可以额外配置：
+
+- `API_BIND_HOST=0.0.0.0`
+- `API_BEARER_TOKEN=你的密码`
+- `CORS_ALLOW_ORIGINS=https://你的前端域名`
+
+Web 站点默认也会启用一层访问密码；如果你没单独配置，默认值是：
+
+- `WEB_ACCESS_PASSWORD=123456`
+
+建议上线后立刻改成你自己的强密码。
+
+## 访问控制怎么理解
+
+项目现在默认有两层访问边界，但职责不同：
+
+- `WEB_ACCESS_PASSWORD`
+  保护 Web 页面和同源 `/api/*` 入口，浏览器用户先解锁再使用。
+- `API_BEARER_TOKEN`
+  保护直连 `api` 服务的 `/api/v1/*`，适合 MCP、脚本或其他客户端。
+
+如果你还在用 `ppt-mcp`：
+
+- 最简单可用的方式是让 `ppt-mcp` 直接连 `http://127.0.0.1:8000`
+- 如果你开启了 `API_BEARER_TOKEN`，再把同一个值配置到 `ppt-mcp` 的 `PPT_API_BEARER_TOKEN`
+- 不建议把 `PPT_API_BASE_URL` 指向 `web:3000` 或外部 Web 域名作为默认方案，因为那条入口天然会受到 Web 密码影响
 
 ## 服务说明
 
@@ -309,6 +336,7 @@ flowchart LR
 | 变量 | 说明 |
 | --- | --- |
 | `WEB_PORT` | Web 暴露端口，默认 `3000`，可不改 |
+| `API_BIND_HOST` | API 绑定的宿主机地址，默认 `127.0.0.1` |
 | `API_PORT` | API 暴露端口，默认 `8000`，可不改 |
 
 严格来说，默认 compose 连这两项都可以不手动填，直接用默认值启动。
@@ -328,6 +356,7 @@ flowchart LR
 | 变量 | 说明 |
 | --- | --- |
 | `WEB_PORT` | Web 暴露端口，默认 `3000` |
+| `API_BIND_HOST` | API 绑定地址；设为 `0.0.0.0` 表示对外开放 |
 | `API_PORT` | API 暴露端口，默认 `8000` |
 | `JOB_ROOT_DIR` | job 目录根路径 |
 | `WORKER_CONCURRENCY` | worker 进程数 |
@@ -338,6 +367,8 @@ flowchart LR
 | `OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX` | doc_parser 输入长边压缩阈值 |
 | `NEXT_PUBLIC_API_URL` | 浏览器直接访问的 API 地址，默认留空走同源 |
 | `INTERNAL_API_ORIGIN` | Next 容器内访问 API 的地址 |
+| `API_BEARER_TOKEN` | 可选 API Bearer 密码；设置后直接访问 `/api/v1/*` 需要带 `Authorization: Bearer <token>` |
+| `WEB_ACCESS_PASSWORD` | Web 站点访问密码；默认值为 `123456`，页面与同源 `/api/*` 都需要先解锁 |
 
 ### 前端配置和环境变量的关系
 
@@ -364,6 +395,38 @@ INTERNAL_API_ORIGIN=http://api:8000
 ```
 
 这样浏览器只访问 Web，最省心，也最不容易遇到跨域问题。
+
+如果你是单机自用，想先保持最简单可用，推荐这样理解：
+
+- `api` 保持默认 `127.0.0.1:8000`，不要对公网开放
+- `web` 走站点密码访问
+- `ppt-mcp` 直接指向 `http://127.0.0.1:8000`
+- 只有当你需要“直连 API 也必须带密码”时，再额外开启 `API_BEARER_TOKEN`
+
+### 远程 API 和前端密码建议
+
+如果你想让 API 也能被外部脚本、MCP 或别的客户端直接调用，推荐最少这样配：
+
+```env
+API_BIND_HOST=0.0.0.0
+API_BEARER_TOKEN=replace-with-a-strong-secret
+CORS_ALLOW_ORIGINS=https://ppt.your-domain.com
+```
+
+注意：
+
+- 直接请求 API 的客户端需要带 `Authorization: Bearer <API_BEARER_TOKEN>`
+- `ppt-mcp` 这类客户端要把同一个值配置到自己的 `PPT_API_BEARER_TOKEN`
+- 同源 Web 页面的 `/api/*` 只有在站点已解锁后才会自动转发这个 token，所以前端不会因为你打开 API 密码而失效
+- 显式带了 `Authorization` 的 API 客户端可以继续直接走同一个域名入口，不需要 Web 解锁 cookie
+
+Web 密码默认就是开启的；如果你要改掉默认值，直接设置：
+
+```env
+WEB_ACCESS_PASSWORD=replace-with-a-site-password
+```
+
+这样访问首页、跟踪页、设置页，以及同源 `/api/*` 前都会先进入站内解锁页。
 
 ## 任务保留策略
 
@@ -450,4 +513,3 @@ docker compose run --rm --no-deps -v "$PWD/api:/app" api sh -lc \
 ├── docker-compose.dev.yml      # 开发态编排
 └── README.md
 ```
-

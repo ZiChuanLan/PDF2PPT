@@ -136,6 +136,85 @@ def _format_parallel_ocr_progress_message(
     )
 
 
+def _convert_geometry_points_px_to_pt(
+    geometry_points: Any,
+    *,
+    image_width_px: int,
+    image_height_px: int,
+    page_w_pt: float,
+    page_h_pt: float,
+) -> list[list[float]] | None:
+    if not isinstance(geometry_points, (list, tuple)):
+        return None
+    if image_width_px <= 0 or image_height_px <= 0:
+        return None
+
+    scale_x = float(page_w_pt) / float(image_width_px)
+    scale_y = float(page_h_pt) / float(image_height_px)
+    converted: list[list[float]] = []
+    for point in geometry_points:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            return None
+        try:
+            x = float(point[0])
+            y = float(point[1])
+        except Exception:
+            return None
+        converted.append([x * scale_x, y * scale_y])
+    if len(converted) < 3:
+        return None
+    return converted
+
+
+def _convert_image_region_px_to_pt(
+    *,
+    raw_region: Any,
+    ocr_manager: Any,
+    image_width_px: int,
+    image_height_px: int,
+    page_w_pt: float,
+    page_h_pt: float,
+) -> Any | None:
+    raw_bbox = raw_region.get("bbox") if isinstance(raw_region, dict) else raw_region
+    if not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) != 4:
+        return None
+
+    try:
+        bbox_pt = ocr_manager.convert_bbox_to_pdf_coords(
+            bbox=list(raw_bbox),
+            image_width=int(image_width_px),
+            image_height=int(image_height_px),
+            page_width_pt=page_w_pt,
+            page_height_pt=page_h_pt,
+        )
+    except Exception:
+        return None
+
+    if not isinstance(raw_region, dict):
+        return list(bbox_pt)
+
+    converted: dict[str, Any] = {"bbox_pt": list(bbox_pt)}
+    for key in ("label", "score", "order", "geometry_source"):
+        if raw_region.get(key) is not None:
+            converted[key] = raw_region.get(key)
+
+    geometry_kind = str(raw_region.get("geometry_kind") or "").strip().lower()
+    geometry_points_pt = _convert_geometry_points_px_to_pt(
+        raw_region.get("geometry_points"),
+        image_width_px=int(image_width_px),
+        image_height_px=int(image_height_px),
+        page_w_pt=page_w_pt,
+        page_h_pt=page_h_pt,
+    )
+    if geometry_points_pt is not None:
+        converted["geometry_kind"] = "polygon"
+        converted["geometry_points_pt"] = geometry_points_pt
+    elif geometry_kind:
+        converted["geometry_kind"] = geometry_kind
+
+    return converted
+
+
 def _detect_page_image_regions(
     *,
     enabled: bool,
@@ -146,11 +225,11 @@ def _detect_page_image_regions(
     page_w_pt: float,
     page_h_pt: float,
     skip_reason: str | None = None,
-) -> tuple[list[list[float]], str | None, str | None]:
+) -> tuple[list[Any], str | None, str | None]:
     if not enabled:
         return [], None, (skip_reason or "disabled")
 
-    detected_image_regions_pt: list[list[float]] = []
+    detected_image_regions_pt: list[Any] = []
     image_region_error: str | None = None
     try:
         from PIL import Image
@@ -163,20 +242,17 @@ def _detect_page_image_regions(
             timeout_s=float(max(1, ocr_image_region_timeout)),
             label=f"worker:ocr_image_regions:{page_index}",
         )
-        for bbox in detected_image_regions_px or []:
-            if not isinstance(bbox, list) or len(bbox) != 4:
-                continue
-            try:
-                bbox_pt = ocr_manager.convert_bbox_to_pdf_coords(
-                    bbox=bbox,
-                    image_width=int(image_width_px),
-                    image_height=int(image_height_px),
-                    page_width_pt=page_w_pt,
-                    page_height_pt=page_h_pt,
-                )
-            except Exception:
-                continue
-            detected_image_regions_pt.append(list(bbox_pt))
+        for raw_region in detected_image_regions_px or []:
+            converted = _convert_image_region_px_to_pt(
+                raw_region=raw_region,
+                ocr_manager=ocr_manager,
+                image_width_px=int(image_width_px),
+                image_height_px=int(image_height_px),
+                page_w_pt=page_w_pt,
+                page_h_pt=page_h_pt,
+            )
+            if converted is not None:
+                detected_image_regions_pt.append(converted)
     except TimeoutError:
         image_region_error = (
             f"image_region_detection_timeout:{int(max(1, ocr_image_region_timeout))}s"

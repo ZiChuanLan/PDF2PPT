@@ -9,6 +9,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
+    api_bind_host: str = "127.0.0.1"
+    api_bearer_token: str | None = None
     max_file_mb: int = 100
     max_pages: int = 200
     # Terminal job metadata and on-disk job directories are retained for 24h by

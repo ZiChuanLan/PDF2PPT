@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api_auth import has_valid_bearer_token
 from app.config import get_settings, parse_cors_allow_origins
 from app.logging_config import (
     get_logger,
@@ -21,12 +22,26 @@ from app.services.redis_service import get_redis_service
 logger = get_logger(__name__)
 
 
+def _is_loopback_host(value: str | None) -> bool:
+    host = str(value or "").strip().lower()
+    return host in {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     settings = get_settings()
     setup_logging(settings.log_level)
     logger.info("Application starting up")
+    if not _is_loopback_host(settings.api_bind_host) and not str(
+        settings.api_bearer_token or ""
+    ).strip():
+        logger.warning(
+            "API is bound to %s without API_BEARER_TOKEN; direct /api/* access is unauthenticated",
+            settings.api_bind_host,
+        )
+    elif str(settings.api_bearer_token or "").strip():
+        logger.info("API bearer auth enabled for /api/* routes")
     cleanup_stop_event = None
     cleanup_thread = None
     try:
@@ -73,6 +88,25 @@ async def request_id_middleware(request: Request, call_next):
     """Add request ID to each request."""
     request_id = request.headers.get("X-Request-ID") or set_request_id()
     set_request_id(request_id)
+
+    if request.url.path.startswith("/api/") and request.method.upper() != "OPTIONS":
+        token_required = str(settings.api_bearer_token or "").strip()
+        if token_required:
+            has_token = has_valid_bearer_token(
+                request.headers.get("authorization"),
+                token_required,
+            )
+            if not has_token:
+                response = JSONResponse(
+                    status_code=401,
+                    content={
+                        "code": "auth_required",
+                        "message": "Missing or invalid API bearer token",
+                    },
+                )
+                response.headers["X-Request-ID"] = request_id
+                return response
+
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response

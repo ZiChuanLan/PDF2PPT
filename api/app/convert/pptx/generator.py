@@ -888,6 +888,7 @@ def generate_pptx_from_ir(
             # and editable text above it.
 
             text_erase_bboxes_pt: list[list[float]] = []
+            text_erase_polygons_pt: list[list[list[float]] | None] = []
             text_items: list[
                 tuple[dict[str, Any], list[float], str, tuple[int, int, int]]
             ] = []
@@ -906,6 +907,12 @@ def generate_pptx_from_ir(
                 )
                 text_erase_bboxes_pt.append(
                     [x0 - pad_x_pt, y0 - pad_y_pt, x1 + pad_x_pt, y1 + pad_y_pt]
+                )
+                text_erase_polygons_pt.append(
+                    el.get("ocr_layout_geometry_points_pt")
+                    if str(el.get("ocr_layout_geometry_kind") or "").strip().lower()
+                    == "polygon"
+                    else None
                 )
 
             for el in ocr_text_elements:
@@ -947,6 +954,12 @@ def generate_pptx_from_ir(
                 text_erase_bboxes_pt.append(
                     [x0 - pad_x_pt, y0 - pad_y_pt, x1 + pad_x_pt, y1 + pad_y_pt]
                 )
+                text_erase_polygons_pt.append(
+                    el.get("ocr_layout_geometry_points_pt")
+                    if str(el.get("ocr_layout_geometry_kind") or "").strip().lower()
+                    == "polygon"
+                    else None
+                )
 
                 text_items.append((el, [x0, y0, x1, y1], text, bg_rgb))
 
@@ -956,6 +969,9 @@ def generate_pptx_from_ir(
                 # also add a mild merge pass to avoid "text ghosts" between
                 # adjacent bboxes.
                 erase_bboxes_for_background = list(text_erase_bboxes_pt)
+                erase_polygons_for_background: list[list[list[float]] | None] | None = (
+                    list(text_erase_polygons_pt)
+                )
                 # AI OCR outputs can also leave small gaps between line boxes,
                 # causing visible "double text" (residual background glyphs
                 # + editable overlay). Apply a conservative merge for medium-
@@ -976,6 +992,7 @@ def generate_pptx_from_ir(
                         if (my1 - my0) >= 3.8 * float(baseline_ocr_h_pt):
                             continue
                         erase_bboxes_for_background.append([mx0, my0, mx1, my1])
+                        erase_polygons_for_background.append(None)
             else:
                 merged_text_erase_bboxes_pt = _merge_text_erase_bboxes(
                     text_erase_bboxes_pt,
@@ -987,6 +1004,7 @@ def generate_pptx_from_ir(
                 erase_bboxes_for_background = list(merged_text_erase_bboxes_pt) + list(
                     text_erase_bboxes_pt
                 )
+                erase_polygons_for_background = None
 
             # 1) Background image (after erase)
             protect_bboxes_for_erase: list[list[float]] = []
@@ -1022,6 +1040,7 @@ def generate_pptx_from_ir(
                 # image crops are overlaid later, and region erase can introduce
                 # large inpaint artifacts on complex templates.
                 erase_bboxes_pt=erase_bboxes_for_background,
+                erase_polygons_pt=erase_polygons_for_background,
                 # Never modify pixels inside confirmed *large* image crops.
                 protect_bboxes_pt=protect_bboxes_for_erase,
                 page_height_pt=page_h_pt,
@@ -1036,25 +1055,26 @@ def generate_pptx_from_ir(
                 # In non-fill mode keep conservative behavior and clear only
                 # transparent/icon-like crops.
                 if is_fill_mode:
-                    clear_regions_pt = [
-                        info.bbox_pt for info in overlay_image_region_infos
-                    ]
+                    clear_region_infos = list(overlay_image_region_infos)
                     clear_out_name = (
                         f"page-{page_index:04d}.clean.images-bg-cleared.png"
                     )
                 else:
-                    clear_regions_pt = [
-                        info.bbox_pt
+                    clear_region_infos = [
+                        info
                         for info in overlay_image_region_infos
-                        if info.background_removed
+                        if info.background_removed or info.geometry_points_pt
                     ]
                     clear_out_name = f"page-{page_index:04d}.clean.icons-bg-cleared.png"
 
-                if clear_regions_pt:
+                if clear_region_infos:
                     cleaned_render_path = _clear_regions_for_transparent_crops(
                         cleaned_render_path=cleaned_render_path,
                         out_path=artifacts / "page_renders" / clear_out_name,
-                        regions_pt=clear_regions_pt,
+                        regions_pt=[info.bbox_pt for info in clear_region_infos],
+                        regions_polygons_pt=[
+                            info.geometry_points_pt for info in clear_region_infos
+                        ],
                         pix=pix,
                         page_height_pt=page_h_pt,
                         dpi=int(scanned_render_dpi),

@@ -25,7 +25,8 @@ class _DummyOpenAIClient:
 
 
 class _DummyVendorAdapter:
-    provider_id = "openai"
+    def __init__(self, provider_id: str) -> None:
+        self.provider_id = provider_id
 
     def resolve_base_url(self, base_url: str | None) -> str | None:
         return base_url
@@ -68,8 +69,29 @@ def _patch_openai_and_adapter(monkeypatch) -> None:
     monkeypatch.setattr(
         ai_client_module,
         "_create_ai_ocr_vendor_adapter",
-        lambda provider, base_url: _DummyVendorAdapter(),
+        lambda provider, base_url: _DummyVendorAdapter(str(provider or "openai")),
     )
+
+
+def _assert_layout_block_item(
+    item: dict[str, object],
+    *,
+    text: str,
+    bbox: list[float],
+    confidence: float,
+    provider: str,
+    model: str,
+    label: str,
+) -> None:
+    assert item["text"] == text
+    assert item["bbox"] == bbox
+    assert item["confidence"] == confidence
+    assert item["provider"] == provider
+    assert item["model"] == model
+    assert item["ocr_layout_label"] == label
+    assert item["ocr_layout_geometry_source"] is None
+    assert item["ocr_layout_geometry_kind"] is None
+    assert item["ocr_layout_geometry_points"] is None
 
 
 def test_extract_local_layout_blocks_marks_image_regions(monkeypatch) -> None:
@@ -136,7 +158,22 @@ def test_extract_local_layout_blocks_preserves_polygon_geometry(monkeypatch) -> 
         }
     )
 
-    assert image_regions == [[20.0, 20.0, 100.0, 84.0]]
+    assert image_regions == [
+        {
+            "bbox": [20.0, 20.0, 100.0, 84.0],
+            "label": "figure",
+            "score": 0.91,
+            "order": 2,
+            "geometry_source": "polygon_points",
+            "geometry_kind": "polygon",
+            "geometry_points": [
+                [20.0, 20.0],
+                [100.0, 24.0],
+                [92.0, 84.0],
+                [26.0, 78.0],
+            ],
+        }
+    ]
     assert layout_blocks[0]["geometry_source"] == "polygon_points"
     assert layout_blocks[0]["geometry_kind"] == "polygon"
     assert layout_blocks[0]["geometry_points"] == [
@@ -193,6 +230,12 @@ def test_ocr_image_to_elements_keeps_layout_geometry_metadata(monkeypatch) -> No
                     "linebreak_assist_source": "ai",
                     "ocr_layout_geometry_source": "polygon_points",
                     "ocr_layout_geometry_kind": "polygon",
+                    "ocr_layout_geometry_points": [
+                        [10.0, 8.0],
+                        [70.0, 8.0],
+                        [70.0, 28.0],
+                        [10.0, 28.0],
+                    ],
                 }
             ],
             convert_bbox_to_pdf_coords=lambda **kwargs: kwargs["bbox"],
@@ -221,6 +264,60 @@ def test_ocr_image_to_elements_keeps_layout_geometry_metadata(monkeypatch) -> No
     assert len(elements) == 1
     assert elements[0]["ocr_layout_geometry_source"] == "polygon_points"
     assert elements[0]["ocr_layout_geometry_kind"] == "polygon"
+    assert elements[0]["ocr_layout_geometry_points_pt"] is None
+
+
+def test_ocr_image_to_elements_converts_layout_geometry_points_to_pdf_coords(monkeypatch) -> None:
+    manager = cast(
+        local_providers.OcrManager,
+        types.SimpleNamespace(
+            ocr_image_lines=lambda _image_path, **_kwargs: [
+                {
+                    "bbox": [10.0, 8.0, 70.0, 28.0],
+                    "text": "Yellowstone",
+                    "confidence": 0.93,
+                    "provider": "aiocr",
+                    "model": "Qwen/Qwen2.5-VL-72B-Instruct",
+                    "ocr_layout_geometry_source": "polygon_points",
+                    "ocr_layout_geometry_kind": "polygon",
+                    "ocr_layout_geometry_points": [
+                        [10.0, 8.0],
+                        [70.0, 8.0],
+                        [70.0, 28.0],
+                        [10.0, 28.0],
+                    ],
+                }
+            ],
+            convert_bbox_to_pdf_coords=lambda **kwargs: kwargs["bbox"],
+            last_provider_name="AiOcrClient",
+            provider_id="aiocr",
+        ),
+    )
+
+    monkeypatch.setattr(
+        local_providers, "_dedupe_overlapping_ocr_items", lambda items: items
+    )
+    monkeypatch.setattr(
+        local_providers, "_filter_contextual_noise_items", lambda items, **kwargs: items
+    )
+
+    image_path = Path("/tmp/local-layout-geometry-pt.png")
+    Image.new("RGB", (100, 60), "white").save(image_path)
+
+    elements = local_providers.ocr_image_to_elements(
+        image_path=str(image_path),
+        ocr_manager=manager,
+        page_width_pt=100.0,
+        page_height_pt=60.0,
+    )
+
+    assert len(elements) == 1
+    assert elements[0]["ocr_layout_geometry_points_pt"] == [
+        [10.0, 8.0],
+        [70.0, 8.0],
+        [70.0, 28.0],
+        [10.0, 28.0],
+    ]
 
 
 def test_sample_text_color_prefers_dark_ink_for_large_paragraph_bbox() -> None:
@@ -304,16 +401,16 @@ def test_layout_block_route_ocr_image_uses_local_layout_blocks(
     items = client.ocr_image(str(image_path))
 
     assert client.route_kind == ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
-    assert items == [
-        {
-            "text": "Recognized Title",
-            "bbox": [10.0, 10.0, 110.0, 40.0],
-            "confidence": 0.93,
-            "provider": "openai",
-            "model": "Qwen/Qwen2.5-VL-72B-Instruct",
-            "ocr_layout_label": "title",
-        }
-    ]
+    assert len(items) == 1
+    _assert_layout_block_item(
+        items[0],
+        text="Recognized Title",
+        bbox=[10.0, 10.0, 110.0, 40.0],
+        confidence=0.93,
+        provider="openai",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        label="title",
+    )
     assert client.last_image_regions_px == [[140.0, 20.0, 240.0, 120.0]]
     assert client.last_layout_blocks[0]["text"] == "Recognized Title"
     assert client.detect_image_regions(str(image_path)) == [[140.0, 20.0, 240.0, 120.0]]
@@ -371,16 +468,16 @@ def test_layout_block_route_upscales_tiny_qwen3_crops(
 
     assert captured["crop_height"] >= 32
     assert captured["crop_width"] > 139
-    assert items == [
-        {
-            "text": "Tiny strip text",
-            "bbox": [10.0, 10.0, 141.0, 22.0],
-            "confidence": 0.91,
-            "provider": "openai",
-            "model": "Qwen/Qwen3-VL-235B-A22B-Instruct",
-            "ocr_layout_label": "text",
-        }
-    ]
+    assert len(items) == 1
+    _assert_layout_block_item(
+        items[0],
+        text="Tiny strip text",
+        bbox=[10.0, 10.0, 141.0, 22.0],
+        confidence=0.91,
+        provider="openai",
+        model="Qwen/Qwen3-VL-235B-A22B-Instruct",
+        label="text",
+    )
 
 
 def test_layout_block_route_upscales_tiny_deepseek_crops(
@@ -435,16 +532,16 @@ def test_layout_block_route_upscales_tiny_deepseek_crops(
 
     assert captured["crop_height"] >= 32
     assert captured["crop_width"] > 146
-    assert items == [
-        {
-            "text": "DeepSeek text",
-            "bbox": [10.0, 10.0, 146.0, 22.0],
-            "confidence": 0.9,
-            "provider": "siliconflow",
-            "model": "deepseek-ai/DeepSeek-OCR",
-            "ocr_layout_label": "text",
-        }
-    ]
+    assert len(items) == 1
+    _assert_layout_block_item(
+        items[0],
+        text="DeepSeek text",
+        bbox=[10.0, 10.0, 146.0, 22.0],
+        confidence=0.9,
+        provider="siliconflow",
+        model="deepseek-ai/DeepSeek-OCR",
+        label="text",
+    )
 
 
 def test_deepseek_layout_block_crop_extracts_text_from_grounding_tags(
