@@ -215,6 +215,43 @@ def test_crop_layout_block_masks_polygon_geometry(monkeypatch) -> None:
     assert crop.getpixel((pad_x + 40, pad_y + 40)) == (0, 0, 0)
 
 
+def test_tighten_layout_block_bbox_by_visual_bounds_trims_loose_text_block(
+    monkeypatch,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    image = Image.new("RGB", (620, 180), "white")
+    draw = ImageDraw.Draw(image)
+    loose_bbox = [40.0, 18.0, 580.0, 92.0]
+    text_segments = [
+        [170.0, 40.0, 248.0, 52.0],
+        [270.0, 40.0, 352.0, 52.0],
+        [372.0, 40.0, 454.0, 52.0],
+    ]
+    for segment in text_segments:
+        draw.rectangle(segment, fill=(0, 0, 0))
+
+    tightened = client._tighten_layout_block_bbox_by_visual_bounds(
+        image=image,
+        bbox=loose_bbox,
+    )
+
+    assert tightened is not None
+    assert tightened[0] >= 150.0
+    assert tightened[1] >= 28.0
+    assert tightened[2] <= 480.0
+    assert tightened[3] <= 66.0
+
+
 def test_ocr_image_to_elements_keeps_layout_geometry_metadata(monkeypatch) -> None:
     manager = cast(
         local_providers.OcrManager,
@@ -414,6 +451,208 @@ def test_layout_block_route_ocr_image_uses_local_layout_blocks(
     assert client.last_image_regions_px == [[140.0, 20.0, 240.0, 120.0]]
     assert client.last_layout_blocks[0]["text"] == "Recognized Title"
     assert client.detect_image_regions(str(image_path)) == [[140.0, 20.0, 240.0, 120.0]]
+
+
+def test_layout_block_route_uses_tightened_bbox_for_ocr_and_output(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    loose_bbox = [40.0, 18.0, 580.0, 92.0]
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "text",
+                    "bbox": list(loose_bbox),
+                    "score": 0.91,
+                    "order": 0,
+                    "text": "",
+                }
+            ],
+            [],
+        ),
+    )
+
+    captured: dict[str, int] = {}
+
+    def _fake_ocr_local_layout_block_crop(**kwargs):
+        captured["crop_width"] = int(kwargs["crop_width"])
+        captured["crop_height"] = int(kwargs["crop_height"])
+        return "Tightened text"
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_local_layout_block_crop",
+        _fake_ocr_local_layout_block_crop,
+    )
+
+    image_path = tmp_path / "tightened-layout.png"
+    image = Image.new("RGB", (620, 180), "white")
+    draw = ImageDraw.Draw(image)
+    for segment in (
+        [170.0, 40.0, 248.0, 52.0],
+        [270.0, 40.0, 352.0, 52.0],
+        [372.0, 40.0, 454.0, 52.0],
+    ):
+        draw.rectangle(segment, fill=(0, 0, 0))
+    image.save(image_path)
+
+    items = client.ocr_image(str(image_path))
+
+    assert len(items) == 1
+    assert items[0]["text"] == "Tightened text"
+    assert items[0]["bbox"][0] >= 150.0
+    assert items[0]["bbox"][1] >= 28.0
+    assert items[0]["bbox"][2] <= 480.0
+    assert items[0]["bbox"][3] <= 66.0
+    assert captured["crop_width"] < 420
+    assert captured["crop_height"] < 64
+    assert client.last_layout_blocks[0]["ocr_bbox_tightened"] is True
+    assert client.last_layout_blocks[0]["bbox_original"] == loose_bbox
+
+
+def test_layout_block_route_bypasses_wide_flat_blocks_to_direct_page_ocr(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://api.siliconflow.cn/v1",
+        model="deepseek-ai/DeepSeek-OCR",
+        provider="siliconflow",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "paragraph_title",
+                    "bbox": [40.0, 60.0, 560.0, 90.0],
+                    "score": 0.88,
+                    "order": 0,
+                    "text": "",
+                },
+                {
+                    "label": "text",
+                    "bbox": [110.0, 120.0, 500.0, 140.0],
+                    "score": 0.85,
+                    "order": 1,
+                    "text": "",
+                },
+            ],
+            [],
+        ),
+    )
+
+    def _unexpected_layout_block(**kwargs):
+        raise AssertionError("local layout block OCR should have been bypassed")
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_image_with_local_layout_blocks",
+        _unexpected_layout_block,
+    )
+    monkeypatch.setattr(
+        client,
+        "_chat_completion",
+        lambda **kwargs: types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(
+                        content=(
+                            "<|ref|>释放未来·构建你的第一个AI智能体<|/ref|>"
+                            "<|det|>[[170,60,454,90]]<|/det|>"
+                            "<|ref|>HiAgent智能体开发平台大学生指南<|/ref|>"
+                            "<|det|>[[120,120,500,140]]<|/det|>"
+                        )
+                    ),
+                    finish_reason="stop",
+                )
+            ]
+        ),
+    )
+
+    image_path = tmp_path / "wide-flat-bypass.png"
+    Image.new("RGB", (620, 300), "white").save(image_path)
+
+    items = client.ocr_image(str(image_path))
+
+    assert len(items) == 2
+    assert items[0]["text"] == "释放未来·构建你的第一个AI智能体"
+    assert items[1]["text"] == "HiAgent智能体开发平台大学生指南"
+    assert client.last_layout_analysis_debug["layout_block_bypass_reason"] == (
+        "wide_flat_layout_blocks"
+    )
+
+
+def test_layout_block_route_keeps_non_deepseek_models_on_block_ocr(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    def _unexpected_bypass_check(**kwargs):
+        raise AssertionError("non-DeepSeek layout_block OCR should not evaluate bypass")
+
+    monkeypatch.setattr(
+        client,
+        "_should_bypass_local_layout_block_ocr",
+        _unexpected_bypass_check,
+    )
+    monkeypatch.setattr(
+        client,
+        "_ocr_image_with_local_layout_blocks",
+        lambda image_path, image: [
+            {
+                "text": "Block OCR text",
+                "bbox": [40.0, 60.0, 560.0, 90.0],
+                "confidence": 0.91,
+                "provider": "openai",
+                "model": "Qwen/Qwen2.5-VL-72B-Instruct",
+                "ocr_layout_label": "paragraph_title",
+                "ocr_layout_geometry_source": None,
+                "ocr_layout_geometry_kind": None,
+                "ocr_layout_geometry_points": None,
+            }
+        ],
+    )
+
+    image_path = tmp_path / "non-deepseek-layout.png"
+    Image.new("RGB", (620, 300), "white").save(image_path)
+
+    items = client.ocr_image(str(image_path))
+
+    assert len(items) == 1
+    assert items[0]["text"] == "Block OCR text"
+    assert client.route_kind == ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
 
 
 def test_layout_block_route_upscales_tiny_qwen3_crops(

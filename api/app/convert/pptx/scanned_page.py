@@ -65,6 +65,54 @@ def _pixel_to_rgb_triplet(pixel: Any) -> tuple[int, int, int] | None:
         return None
 
 
+def _apply_max_filter_l(image: Any, *, size: int) -> Any:
+    """Apply an L-mode max filter, preferring a faster NumPy implementation."""
+
+    try:
+        size_id = int(size)
+    except Exception:
+        return image
+
+    if size_id <= 1:
+        return image
+    if size_id % 2 == 0:
+        size_id += 1
+
+    try:
+        import numpy as np  # type: ignore
+        from PIL import Image
+
+        if getattr(image, "mode", None) == "L":
+            arr = np.asarray(image, dtype=np.uint8)
+            if arr.ndim == 2 and arr.size > 0:
+                radius = size_id // 2
+                pad = np.pad(arr, radius, mode="edge")
+                out = pad[: arr.shape[0], : arr.shape[1]].copy()
+                for dy in range(size_id):
+                    row_start = dy
+                    row_end = dy + arr.shape[0]
+                    for dx in range(size_id):
+                        if dy == 0 and dx == 0:
+                            continue
+                        col_start = dx
+                        col_end = dx + arr.shape[1]
+                        np.maximum(
+                            out,
+                            pad[row_start:row_end, col_start:col_end],
+                            out=out,
+                        )
+                return Image.fromarray(out, mode="L")
+    except Exception:
+        pass
+
+    try:
+        from PIL import ImageFilter
+
+        return image.filter(ImageFilter.MaxFilter(size_id))
+    except Exception:
+        return image
+
+
 def _render_pdf_page_png(
     pdf_path: Path,
     *,
@@ -226,10 +274,7 @@ def _detect_image_regions_from_render(
             masked_regions_px.append(((x0p, y0p, x1p, y1p), polygon_px))
 
         # Dilate the mask a bit to cover edge halos.
-        try:
-            mask = mask.filter(ImageFilter.MaxFilter(5))
-        except Exception:
-            pass
+        mask = _apply_max_filter_l(mask, size=5)
 
     def _median_rgb(samples: list[tuple[int, int, int]]) -> tuple[int, int, int]:
         if not samples:
@@ -297,10 +342,7 @@ def _detect_image_regions_from_render(
     threshold = 32
     bw = edges.point(lambda p: 255 if p > threshold else 0, "L")  # type: ignore[reportOperatorIssue]
     # Thicken edges to connect disjoint strokes belonging to the same image.
-    try:
-        bw = bw.filter(ImageFilter.MaxFilter(5))
-    except Exception:
-        pass
+    bw = _apply_max_filter_l(bw, size=5)
 
     # 3) Connected components on a downsampled binary image.
     factor = 8 if max(W, H) >= 3000 else (6 if max(W, H) >= 1600 else 4)
@@ -1181,6 +1223,7 @@ def _erase_regions_in_render_image(
 
     if erase_mode == "fill":
         dilate_size = 5 if max(W, H) >= 1600 else 3
+        dilate_pad = max(1, int(dilate_size // 2) + 1)
 
         def _point_in_protect(x: int, y: int) -> bool:
             for px0, py0, px1, py1 in protect_rects:
@@ -1257,13 +1300,59 @@ def _erase_regions_in_render_image(
 
             for (x0, y0, x1, y1), polygon_px in zip(rects, polygon_masks_px):
                 color = _estimate_fill_color(x0, y0, x1, y1)
-                rect_mask = Image.new("L", (W, H), 0)
+
+                patch_x0 = int(x0)
+                patch_y0 = int(y0)
+                patch_x1 = int(x1)
+                patch_y1 = int(y1)
+                if polygon_px is not None:
+                    xs = [int(pt[0]) for pt in polygon_px]
+                    ys = [int(pt[1]) for pt in polygon_px]
+                    if xs and ys:
+                        patch_x0 = min(patch_x0, min(xs))
+                        patch_y0 = min(patch_y0, min(ys))
+                        patch_x1 = max(patch_x1, max(xs) + 1)
+                        patch_y1 = max(patch_y1, max(ys) + 1)
+
+                patch_x0 = max(0, patch_x0 - dilate_pad)
+                patch_y0 = max(0, patch_y0 - dilate_pad)
+                patch_x1 = min(W, patch_x1 + dilate_pad)
+                patch_y1 = min(H, patch_y1 + dilate_pad)
+                if patch_x1 <= patch_x0 or patch_y1 <= patch_y0:
+                    continue
+
+                rect_mask = Image.new(
+                    "L",
+                    (int(patch_x1 - patch_x0), int(patch_y1 - patch_y0)),
+                    0,
+                )
                 rect_draw = ImageDraw.Draw(rect_mask)
                 if polygon_px is not None:
-                    rect_draw.polygon(polygon_px, fill=255)
+                    local_polygon_px = [
+                        (int(px - patch_x0), int(py - patch_y0))
+                        for px, py in polygon_px
+                    ]
+                    if len({pt for pt in local_polygon_px}) >= 3:
+                        rect_draw.polygon(local_polygon_px, fill=255)
+                    else:
+                        rect_draw.rectangle(
+                            [
+                                int(x0 - patch_x0),
+                                int(y0 - patch_y0),
+                                max(int(x0 - patch_x0), int(x1 - patch_x0 - 1)),
+                                max(int(y0 - patch_y0), int(y1 - patch_y0 - 1)),
+                            ],
+                            fill=255,
+                        )
                 else:
                     rect_draw.rectangle(
-                        [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
+                        [
+                            int(x0 - patch_x0),
+                            int(y0 - patch_y0),
+                            max(int(x0 - patch_x0), int(x1 - patch_x0 - 1)),
+                            max(int(y0 - patch_y0), int(y1 - patch_y0 - 1)),
+                        ],
+                        fill=255,
                     )
                 try:
                     # Expand mask by ~1px to cover anti-aliased text edges.
@@ -1271,10 +1360,20 @@ def _erase_regions_in_render_image(
                 except Exception:
                     pass
                 if protect_rects:
-                    rect_mask = ImageChops.subtract(rect_mask, protect_mask_img)
+                    rect_mask = ImageChops.subtract(
+                        rect_mask,
+                        protect_mask_img.crop(
+                            (patch_x0, patch_y0, patch_x1, patch_y1)
+                        ),
+                    )
                     if rect_mask.getbbox() is None:
                         continue
-                fill_img.paste(color, (0, 0, W, H), rect_mask)
+                fill_patch = Image.new(
+                    "RGB",
+                    (int(patch_x1 - patch_x0), int(patch_y1 - patch_y0)),
+                    color,
+                )
+                fill_img.paste(fill_patch, (patch_x0, patch_y0), rect_mask)
 
             _ensure_parent_dir(out_path)
             fill_img.save(out_path)
@@ -3030,6 +3129,88 @@ def _is_card_like_region(
     return False
 
 
+def _is_small_text_fragment_region(
+    bbox: list[float],
+    *,
+    page_w_pt: float,
+    page_h_pt: float,
+    baseline_ocr_h_pt: float,
+    ocr_text_elements: list[dict[str, Any]],
+) -> bool:
+    """Return whether a small candidate region is likely a text fragment.
+
+    Render-based region detection can sometimes isolate part of a title/line as
+    an "image crop". Those false positives are usually:
+    - small relative to the page
+    - strongly aligned with a nearby OCR text line
+    - largely explained by one longer OCR bbox on the same baseline
+    """
+
+    if not ocr_text_elements:
+        return False
+
+    try:
+        x0, y0, x1, y1 = _coerce_bbox_pt(bbox)
+    except Exception:
+        return False
+
+    w = max(1.0, float(x1 - x0))
+    h = max(1.0, float(y1 - y0))
+    area = max(1.0, float(w * h))
+    page_area = max(1.0, float(page_w_pt) * float(page_h_pt))
+    area_ratio = float(area) / float(page_area)
+    if area_ratio > 0.015:
+        return False
+
+    line_h_threshold = max(4.0, 0.55 * float(baseline_ocr_h_pt))
+    for tel in ocr_text_elements:
+        bbox_pt = tel.get("bbox_pt")
+        if not isinstance(bbox_pt, list) or len(bbox_pt) != 4:
+            continue
+
+        text_value = str(tel.get("text") or "")
+        compact_len = _compact_text_length(text_value)
+        if compact_len < 4:
+            continue
+
+        try:
+            tx0, ty0, tx1, ty1 = _coerce_bbox_pt(bbox_pt)
+        except Exception:
+            continue
+
+        tw = max(1.0, float(tx1 - tx0))
+        th = max(1.0, float(ty1 - ty0))
+        if th < line_h_threshold:
+            continue
+
+        inter = _bbox_intersection_area_pt(
+            [x0, y0, x1, y1],
+            [tx0, ty0, tx1, ty1],
+        )
+        if inter > 0.0 and (float(inter) / float(area)) >= 0.72:
+            return True
+
+        y_overlap = float(min(y1, ty1) - max(y0, ty0))
+        if y_overlap <= 0.0:
+            continue
+        min_h = max(1.0, float(min(h, th)))
+        y_overlap_ratio = float(y_overlap) / float(min_h)
+        if y_overlap_ratio < 0.68:
+            continue
+
+        x_overlap = max(0.0, float(min(x1, tx1) - max(x0, tx0)))
+        min_w = max(1.0, float(min(w, tw)))
+        x_overlap_ratio = float(x_overlap) / float(min_w)
+
+        if x_overlap_ratio < 0.10:
+            continue
+
+        if tw >= (1.10 * float(w)) or (float(inter) / float(area)) >= 0.55:
+            return True
+
+    return False
+
+
 def _save_scanned_regions_debug_overlay(
     *,
     render_path: Path,
@@ -3043,31 +3224,9 @@ def _save_scanned_regions_debug_overlay(
         return
     try:
         import json
-        from PIL import Image, ImageDraw
-
-        ov = Image.open(render_path).convert("RGB")
-        d = ImageDraw.Draw(ov)
-        for i, bb in enumerate(regions_pt[:24]):
-            x0, y0, x1, y1 = _coerce_bbox_pt(bb)
-            x0p, y0p = _pdf_pt_to_pix_px(
-                x0,
-                y0,
-                page_height_pt=page_h_pt,
-                dpi=int(scanned_render_dpi),
-            )
-            x1p, y1p = _pdf_pt_to_pix_px(
-                x1,
-                y1,
-                page_height_pt=page_h_pt,
-                dpi=int(scanned_render_dpi),
-            )
-            d.rectangle([x0p, y0p, x1p, y1p], outline=(0, 200, 0), width=3)
-            d.text((x0p + 4, y0p + 4), str(i), fill=(0, 120, 0))
 
         dbg_dir = artifacts_dir / "image_regions"
         dbg_dir.mkdir(parents=True, exist_ok=True)
-        dbg_path = dbg_dir / f"page-{page_index:04d}.regions.png"
-        ov.save(dbg_path)
         try:
             json_path = dbg_dir / f"page-{page_index:04d}.regions.json"
             payload = {
@@ -3537,6 +3696,15 @@ def _build_scanned_image_region_infos(
         n_inside, n_cjk_inside = text_inside_counts_fn([x0, y0, x1, y1])
 
         if (not is_ai_hint) and _is_card_like_region(
+            [x0, y0, x1, y1],
+            page_w_pt=page_w_pt,
+            page_h_pt=page_h_pt,
+            baseline_ocr_h_pt=float(baseline_ocr_h_pt),
+            ocr_text_elements=ocr_text_elements,
+        ):
+            continue
+
+        if (not is_ai_hint) and _is_small_text_fragment_region(
             [x0, y0, x1, y1],
             page_w_pt=page_w_pt,
             page_h_pt=page_h_pt,

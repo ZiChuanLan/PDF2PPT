@@ -2370,6 +2370,186 @@ class AiOcrClient(OcrProvider):
         except Exception:
             return cropped
 
+    def _tighten_layout_block_bbox_by_visual_bounds(
+        self,
+        *,
+        image: Image.Image,
+        bbox: list[float],
+        geometry_points: list[list[float]] | None = None,
+    ) -> list[float] | None:
+        """Best-effort tighten of loose layout text boxes using visual content."""
+
+        try:
+            import numpy as np
+            from PIL import ImageFilter
+        except Exception:
+            return None
+
+        try:
+            x0, y0, x1, y1 = [float(v) for v in bbox[:4]]
+        except Exception:
+            return None
+        if (x1 - x0) <= 0.0 or (y1 - y0) <= 0.0:
+            return None
+
+        crop = self._crop_layout_block(
+            image=image,
+            bbox=bbox,
+            geometry_points=geometry_points,
+        )
+        if crop is None:
+            return None
+
+        crop_w, crop_h = crop.size
+        if crop_w < 48 or crop_h < 16:
+            return None
+
+        width, height = image.size
+        bbox_n = _normalize_bbox_px(bbox)
+        if bbox_n is None or width <= 0 or height <= 0:
+            return None
+        ox0, oy0, ox1, oy1 = bbox_n
+        block_w = max(1.0, float(ox1 - ox0))
+        block_h = max(1.0, float(oy1 - oy0))
+        pad_x = min(24, max(2, int(round(block_w * 0.03))))
+        pad_y = min(24, max(2, int(round(block_h * 0.18))))
+        crop_left = max(0, min(width - 1, int(math.floor(ox0)) - pad_x))
+        crop_top = max(0, min(height - 1, int(math.floor(oy0)) - pad_y))
+
+        try:
+            gray = crop.convert("L")
+            arr = np.asarray(gray, dtype=np.uint8)
+        except Exception:
+            return None
+        if arr.ndim != 2 or arr.size <= 0:
+            return None
+
+        ring_y = max(2, min(18, int(round(0.10 * float(crop_h)))))
+        ring_x = max(2, min(18, int(round(0.04 * float(crop_w)))))
+        try:
+            border_vals = np.concatenate(
+                [
+                    arr[:ring_y, :].reshape(-1),
+                    arr[max(0, crop_h - ring_y) :, :].reshape(-1),
+                    arr[:, :ring_x].reshape(-1),
+                    arr[:, max(0, crop_w - ring_x) :].reshape(-1),
+                ]
+            )
+        except Exception:
+            return None
+        if border_vals.size <= 0:
+            return None
+
+        bg = float(np.median(border_vals))
+        diff = np.abs(arr.astype(np.int16) - int(round(bg)))
+
+        try:
+            edges = np.asarray(gray.filter(ImageFilter.FIND_EDGES), dtype=np.uint8)
+        except Exception:
+            return None
+        if edges.shape != arr.shape:
+            return None
+
+        diff_thresh = 18.0 if bg >= 150.0 else 22.0
+        edge_thresh = 22 if crop_h <= 96 else 26
+        mask = (diff >= diff_thresh) | (edges >= edge_thresh)
+        outer_margin = max(2, min(12, int(round(0.05 * float(min(crop_w, crop_h))))))
+        if outer_margin > 0:
+            mask[:outer_margin, :] = False
+            mask[max(0, crop_h - outer_margin) :, :] = False
+            mask[:, :outer_margin] = False
+            mask[:, max(0, crop_w - outer_margin) :] = False
+        if not bool(mask.any()):
+            return None
+
+        row_threshold = max(2, int(round(0.0035 * float(crop_w))))
+        col_threshold = max(1, int(round(0.020 * float(crop_h))))
+        row_counts = mask.sum(axis=1)
+        col_counts = mask.sum(axis=0)
+        ys = np.flatnonzero(row_counts >= row_threshold)
+        xs = np.flatnonzero(col_counts >= col_threshold)
+        if ys.size <= 0 or xs.size <= 0:
+            return None
+
+        local_x0 = int(xs[0])
+        local_y0 = int(ys[0])
+        local_x1 = int(xs[-1]) + 1
+        local_y1 = int(ys[-1]) + 1
+
+        content_w = max(1, local_x1 - local_x0)
+        content_h = max(1, local_y1 - local_y0)
+        if content_w < 8 or content_h < 6:
+            return None
+
+        keep_area_ratio = (float(content_w) * float(content_h)) / max(
+            1.0,
+            float(crop_w) * float(crop_h),
+        )
+        width_keep_ratio = float(content_w) / max(1.0, float(crop_w))
+        height_keep_ratio = float(content_h) / max(1.0, float(crop_h))
+        if (
+            keep_area_ratio >= 0.94
+            and width_keep_ratio >= 0.97
+            and height_keep_ratio >= 0.90
+        ):
+            return None
+
+        pad_x_local = max(2, min(18, int(round(0.08 * float(content_h)))))
+        pad_y_local = max(2, min(12, int(round(0.12 * float(content_h)))))
+        local_x0 = max(0, local_x0 - pad_x_local)
+        local_y0 = max(0, local_y0 - pad_y_local)
+        local_x1 = min(crop_w, local_x1 + pad_x_local)
+        local_y1 = min(crop_h, local_y1 + pad_y_local)
+        if local_x1 - local_x0 < 6 or local_y1 - local_y0 < 6:
+            return None
+
+        tightened = [
+            max(float(ox0), float(crop_left + local_x0)),
+            max(float(oy0), float(crop_top + local_y0)),
+            min(float(ox1), float(crop_left + local_x1)),
+            min(float(oy1), float(crop_top + local_y1)),
+        ]
+        tightened_n = _normalize_bbox_px(tightened)
+        if tightened_n is None:
+            return None
+        tx0, ty0, tx1, ty1 = tightened_n
+        tightened_w = max(1.0, float(tx1 - tx0))
+        tightened_h = max(1.0, float(ty1 - ty0))
+        if tightened_w >= (0.985 * block_w) and tightened_h >= (0.94 * block_h):
+            return None
+        return [float(tx0), float(ty0), float(tx1), float(ty1)]
+
+    def _layout_geometry_fits_bbox(
+        self,
+        *,
+        geometry_points: list[list[float]] | None,
+        bbox: list[float],
+        tolerance_px: float = 1.5,
+    ) -> bool:
+        if not geometry_points:
+            return False
+        bbox_n = _normalize_bbox_px(bbox)
+        if bbox_n is None:
+            return False
+        x0, y0, x1, y1 = bbox_n
+        tol = max(0.0, float(tolerance_px))
+        for point in geometry_points:
+            if not isinstance(point, list) or len(point) < 2:
+                return False
+            try:
+                px = float(point[0])
+                py = float(point[1])
+            except Exception:
+                return False
+            if (
+                px < (float(x0) - tol)
+                or px > (float(x1) + tol)
+                or py < (float(y0) - tol)
+                or py > (float(y1) + tol)
+            ):
+                return False
+        return True
+
     def _min_side_px_for_layout_block_model(self, effective_model: str) -> int:
         min_side_px = max(0, _env_int("OCR_AI_LAYOUT_BLOCK_MIN_SIDE_PX", 0))
         normalized_model = (
@@ -2514,6 +2694,74 @@ class AiOcrClient(OcrProvider):
             return True
         return False
 
+    def _should_bypass_local_layout_block_ocr(
+        self,
+        *,
+        image_path: str,
+        image: Image.Image,
+    ) -> str | None:
+        """Return a bypass reason when direct page OCR is safer/faster."""
+
+        try:
+            layout_blocks, image_regions = self._run_local_layout_analysis(image_path)
+        except Exception:
+            return None
+
+        self.last_layout_blocks = [dict(block) for block in layout_blocks]
+        self.last_image_regions_px = [
+            _clone_image_region_payload(region) for region in image_regions
+        ]
+        self._last_layout_image_path = str(image_path)
+        self._image_region_cache_path = str(image_path)
+        self._image_region_cache_ready = True
+
+        page_w, page_h = image.size
+        if page_w <= 0 or page_h <= 0:
+            return None
+
+        text_blocks: list[list[float]] = []
+        for block in layout_blocks:
+            label = str(block.get("label") or "")
+            if _is_image_like_layout_label(label):
+                continue
+            if self._should_skip_layout_block_for_ocr(label=label):
+                continue
+            bbox = block.get("bbox")
+            if not isinstance(bbox, list) or len(bbox) != 4:
+                continue
+            bbox_n = _normalize_bbox_px(bbox)
+            if bbox_n is None:
+                continue
+            text_blocks.append([float(v) for v in bbox_n])
+
+        if not text_blocks or len(text_blocks) > 3:
+            return None
+
+        min_y = float(page_h)
+        max_y = 0.0
+        max_width_ratio = 0.0
+        for bbox in text_blocks:
+            x0, y0, x1, y1 = bbox
+            block_w = max(1.0, float(x1 - x0))
+            block_h = max(1.0, float(y1 - y0))
+            width_ratio = block_w / max(1.0, float(page_w))
+            height_ratio = block_h / max(1.0, float(page_h))
+            aspect_ratio = block_w / max(1.0, block_h)
+            if (
+                aspect_ratio < 7.0
+                or width_ratio < 0.35
+                or height_ratio > 0.18
+            ):
+                return None
+            min_y = min(min_y, float(y0))
+            max_y = max(max_y, float(y1))
+            max_width_ratio = max(max_width_ratio, width_ratio)
+
+        vertical_span_ratio = max(0.0, max_y - min_y) / max(1.0, float(page_h))
+        if vertical_span_ratio > 0.28 or max_width_ratio < 0.65:
+            return None
+        return "wide_flat_layout_blocks"
+
     def _ocr_local_layout_block_crop(
         self,
         *,
@@ -2634,10 +2882,27 @@ class AiOcrClient(OcrProvider):
             bbox = block.get("bbox")
             if not isinstance(bbox, list) or len(bbox) != 4:
                 continue
+            original_bbox = [float(v) for v in bbox]
+            adjusted_bbox = self._tighten_layout_block_bbox_by_visual_bounds(
+                image=image,
+                bbox=original_bbox,
+                geometry_points=block.get("geometry_points"),
+            )
+            effective_bbox = list(adjusted_bbox or original_bbox)
+            geometry_points = block.get("geometry_points")
+            geometry_source = block.get("geometry_source")
+            geometry_kind = block.get("geometry_kind")
+            if adjusted_bbox is not None and not self._layout_geometry_fits_bbox(
+                geometry_points=geometry_points,
+                bbox=effective_bbox,
+            ):
+                geometry_points = None
+                geometry_source = None
+                geometry_kind = None
             crop = self._crop_layout_block(
                 image=image,
-                bbox=bbox,
-                geometry_points=block.get("geometry_points"),
+                bbox=effective_bbox,
+                geometry_points=geometry_points,
             )
             if crop is None:
                 continue
@@ -2645,18 +2910,28 @@ class AiOcrClient(OcrProvider):
                 crop=crop,
                 effective_model=effective_model,
             )
+            if index < len(self.last_layout_blocks):
+                self.last_layout_blocks[index]["ocr_input_bbox"] = list(effective_bbox)
+                self.last_layout_blocks[index]["ocr_bbox_tightened"] = bool(
+                    adjusted_bbox is not None
+                )
+                if adjusted_bbox is not None:
+                    self.last_layout_blocks[index]["bbox_original"] = list(
+                        original_bbox
+                    )
+                    self.last_layout_blocks[index]["bbox"] = list(effective_bbox)
             text_tasks.append(
                 {
                     "index": index,
-                    "bbox": [float(v) for v in bbox],
+                    "bbox": list(effective_bbox),
                     "label": label,
                     "score": block.get("score"),
                     "order": block.get("order"),
-                    "geometry_source": block.get("geometry_source"),
-                    "geometry_kind": block.get("geometry_kind"),
+                    "geometry_source": geometry_source,
+                    "geometry_kind": geometry_kind,
                     "geometry_points": [
                         [float(point[0]), float(point[1])]
-                        for point in (block.get("geometry_points") or [])
+                        for point in (geometry_points or [])
                         if isinstance(point, list) and len(point) >= 2
                     ],
                     "crop_width": int(crop.size[0]),
@@ -2672,6 +2947,12 @@ class AiOcrClient(OcrProvider):
                 len(self.last_image_regions_px),
             )
             return []
+
+        if isinstance(self.last_layout_analysis_debug, dict):
+            self.last_layout_analysis_debug = {
+                **self.last_layout_analysis_debug,
+                "ocr_input_blocks": _sanitize_debug_value(self.last_layout_blocks),
+            }
 
         image_name = Path(image_path).name
         max_workers = self._resolve_local_layout_block_max_workers(
@@ -3448,36 +3729,61 @@ class AiOcrClient(OcrProvider):
             return []
 
         if self._uses_local_layout_block_ocr():
-            try:
-                result = self._ocr_image_with_local_layout_blocks(
-                    image_path,
+            bypass_reason = None
+            if _is_deepseek_ocr_model(self.model):
+                bypass_reason = self._should_bypass_local_layout_block_ocr(
+                    image_path=image_path,
                     image=image,
                 )
-            except Exception as exc:
-                if not _is_deepseek_ocr_model(self.model):
-                    raise
-                logger.warning(
-                    "Local layout_block OCR failed; falling back to direct page OCR"
-                    " (provider=%s, model=%s, image=%s, error=%s)",
+            if bypass_reason:
+                layout_debug = (
+                    dict(self.last_layout_analysis_debug)
+                    if isinstance(self.last_layout_analysis_debug, dict)
+                    else {}
+                )
+                self.last_layout_analysis_debug = {
+                    **layout_debug,
+                    "layout_block_bypass_reason": bypass_reason,
+                }
+                logger.info(
+                    "Bypassing local layout_block crop OCR and using direct page OCR"
+                    " (provider=%s, model=%s, image=%s, reason=%s)",
                     self.provider_id,
                     self.model,
                     Path(image_path).name,
-                    exc,
+                    bypass_reason,
                 )
             else:
-                if result:
-                    self._refresh_route_kind()
-                    return result
-                if not _is_deepseek_ocr_model(self.model):
-                    self._refresh_route_kind()
-                    return result
-                logger.warning(
-                    "Local layout_block OCR returned no usable text; falling back to direct page OCR"
-                    " (provider=%s, model=%s, image=%s)",
-                    self.provider_id,
-                    self.model,
-                    Path(image_path).name,
-                )
+                try:
+                    result = self._ocr_image_with_local_layout_blocks(
+                        image_path,
+                        image=image,
+                    )
+                except Exception as exc:
+                    if not _is_deepseek_ocr_model(self.model):
+                        raise
+                    logger.warning(
+                        "Local layout_block OCR failed; falling back to direct page OCR"
+                        " (provider=%s, model=%s, image=%s, error=%s)",
+                        self.provider_id,
+                        self.model,
+                        Path(image_path).name,
+                        exc,
+                    )
+                else:
+                    if result:
+                        self._refresh_route_kind()
+                        return result
+                    if not _is_deepseek_ocr_model(self.model):
+                        self._refresh_route_kind()
+                        return result
+                    logger.warning(
+                        "Local layout_block OCR returned no usable text; falling back to direct page OCR"
+                        " (provider=%s, model=%s, image=%s)",
+                        self.provider_id,
+                        self.model,
+                        Path(image_path).name,
+                    )
 
         is_paddle_model = _is_paddleocr_vl_model(self.model)
         should_use_doc_parser = self._uses_remote_doc_parser()
