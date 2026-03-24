@@ -38,7 +38,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["sh", "/app/scripts/with_prewarm.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["sh", "/app/scripts/run_api.sh"]
     ports:
       - "${API_BIND_HOST:-127.0.0.1}:${API_PORT:-8000}:8000"
     volumes:
@@ -68,7 +68,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["sh", "/app/scripts/with_prewarm.sh", "sh", "-c", "workers=$${WORKER_CONCURRENCY:-1}; i=1; while [ $$i -le $$workers ]; do python -m app.worker & i=$$((i+1)); done; wait"]
+    command: ["sh", "/app/scripts/run_worker.sh"]
     volumes:
       - api-data:/app/data
       - paddlex-cache:/root/.paddlex

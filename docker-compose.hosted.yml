@@ -1,0 +1,32 @@
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: ["sh", "/app/scripts/run_hosted.sh"]
+    restart: unless-stopped
+    ports:
+      - "${API_BIND_HOST:-0.0.0.0}:${API_PORT:-8000}:8000"
+    volumes:
+      - api-data:/app/data
+      - paddlex-cache:/root/.paddlex
+      - paddle-cache:/root/.cache/paddle
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: ${REDIS_URL:-memory://}
+      EMBEDDED_WORKER_CONCURRENCY: ${EMBEDDED_WORKER_CONCURRENCY:-0}
+      OCR_PADDLE_LAYOUT_PREWARM: ${OCR_PADDLE_LAYOUT_PREWARM:-1}
+      OCR_PADDLE_LAYOUT_PREWARM_TARGET: ${OCR_PADDLE_LAYOUT_PREWARM_TARGET:-worker}
+      APP_SERVICE_ROLE: api
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 240s
+
+volumes:
+  api-data:
+  paddlex-cache:
+  paddle-cache:
