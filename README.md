@@ -1,7 +1,7 @@
 # PDF2PPT
 
 <p align="center">
-  <img src="./assets/branding/banner.svg" alt="PDF2PPT banner" width="100%" />
+  <img src="./pictures/首页.png" alt="PDF2PPT 首页" width="100%" />
 </p>
 
 > 将扫描版 PDF、课件截图和图片型文档转换为尽量高保真、尽量可编辑的 PPTX。
@@ -40,6 +40,13 @@
 - 支持本地 OCR、远程 OCR、百度文档解析、MinerU 等多种链路
 - 提供 Web 上传、任务跟踪、结果下载和 API 接入
 - 支持标准 Docker 部署、Hosted 单服务模式、Render 和 Zeabur
+
+## 界面预览
+
+<p align="center">
+  <img src="./pictures/设置-aiocr.png" alt="PDF2PPT AI OCR 设置页" width="49%" />
+  <img src="./pictures/跟踪页面.png" alt="PDF2PPT 跟踪页面" width="49%" />
+</p>
 
 ## 快速开始
 

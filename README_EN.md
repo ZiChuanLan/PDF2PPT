@@ -1,7 +1,7 @@
 # PDF2PPT
 
 <p align="center">
-  <img src="./assets/branding/banner.svg" alt="PDF2PPT banner" width="100%" />
+  <img src="./pictures/首页.png" alt="PDF2PPT home screen" width="100%" />
 </p>
 
 > Convert scanned PDFs, slide screenshots, and image-heavy documents into high-fidelity, as-editable-as-possible PPTX files.
@@ -40,6 +40,13 @@ Instead of flattening every PDF page into a single image, it tries to rebuild pa
 - Support for local OCR, remote OCR, Baidu document parsing, MinerU, and related routes
 - Web upload, job tracking, result download, and API-based integration
 - Standard Docker deployment, hosted single-service mode, Render, and Zeabur support
+
+## Interface Preview
+
+<p align="center">
+  <img src="./pictures/设置-aiocr.png" alt="PDF2PPT AI OCR settings" width="49%" />
+  <img src="./pictures/跟踪页面.png" alt="PDF2PPT tracking page" width="49%" />
+</p>
 
 ## Quick Start
 
