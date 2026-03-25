@@ -13,28 +13,33 @@
 
 [中文](./README.md) | [English](./README_EN.md)
 
-[Docs Site](https://zichuanlan.github.io/PDF2PPT/) · [Quick Start](#quick-start) · [Deployment Modes](#deployment-modes) · [License](#license)
+[Docs Site](https://zichuanlan.github.io/PDF2PPT/) · [Quick Start](#quick-start) · [Deployment Options](#deployment-options) · [License](#license)
 
 `PDF2PPT` is an open-source service built for real usage and deployment.  
 Instead of flattening every PDF page into a single image, it tries to rebuild pages into editable text, separated image regions, and cleaned backgrounds before exporting to PowerPoint.
 
-## Best Fit
+## Why It Exists
 
-- Scanned PDFs where you want to preserve the original look while recovering editable text
-- Screenshot-based slide decks and image-heavy reports that still need editing in PPT
-- Teams that want a Web UI instead of a one-off conversion script
-- Deployments that need a reusable service for internal tools, automation, or API integration
+- It aims for page reconstruction, not just screenshot-style export
+- It is designed for real deployment, not only one-off local conversion
+- It supports multiple OCR and parsing paths instead of one fixed route
 
-## Core Highlights
+## Who It Is For
 
-- High-fidelity page reconstruction instead of pure screenshot export
-- Support for local OCR, remote OCR, and multiple document parsing pipelines
-- Full service architecture with Web, API, and Worker
+- Individual users working with scanned PDFs, slide screenshots, and image-heavy reports
+- Teams that want to turn PDF-to-PPT into an internal service
+- Integrators who want to expose the workflow through APIs, automation, or MCP clients
+
+## Core Capabilities
+
+- High-fidelity page reconstruction with editability as a first-class goal
+- Support for local OCR, remote OCR, Baidu document parsing, MinerU, and related routes
+- Web upload, job tracking, result download, and API-based integration
 - Standard Docker deployment, hosted single-service mode, Render, and Zeabur support
 
 ## Quick Start
 
-### Local Development
+### Local Tryout
 
 ```bash
 make dev-local
@@ -45,7 +50,7 @@ By default it starts:
 - Web: `http://localhost:3000`
 - API: `http://127.0.0.1:8000`
 
-### Standard Docker Deployment
+### Full Deployment
 
 For the full `web + api + worker + redis` stack:
 
@@ -62,7 +67,7 @@ docker compose logs -f
 curl http://127.0.0.1:8000/health
 ```
 
-### Hosted Single-Service Backend
+### Lightweight Hosted Backend
 
 For quick backend validation on hosted platforms:
 
@@ -76,33 +81,31 @@ Recommended variants:
 - Lowest-friction validation: `REDIS_URL=memory://`
 - Hosted Redis: `REDIS_URL=<your-redis-url>` and `EMBEDDED_WORKER_CONCURRENCY=1`
 
-## Deployment Modes
+## Basic Flow
 
-| Mode | Best for | Entry |
-| --- | --- | --- |
-| Local development | Local testing and iteration | `make dev-local` |
-| Standard deployment | Long-running or production setups | [`docker-compose.yml`](docker-compose.yml) |
-| Hosted single-service backend | Fast hosted validation | [`docker-compose.hosted.yml`](docker-compose.hosted.yml) |
-| Render | One-click deployment | [`render.yaml`](render.yaml) |
-| Zeabur | Template-based deployment | [`zeabur.template.yaml`](zeabur.template.yaml) |
-
-## How To Use
-
-1. Upload a PDF from the Web UI or through the API
+1. Upload a PDF
 2. Submit conversion parameters and create a job
 3. Download `output.pptx` after the job finishes
 
 For a conservative first run, start with `remote_ocr + aiocr + fullpage`.
 
+## Deployment Options
+
+| Mode | Best for | Entry |
+| --- | --- | --- |
+| Local tryout | Fast local testing and iteration | `make dev-local` |
+| Full deployment | Long-running or production setups | [`docker-compose.yml`](docker-compose.yml) |
+| Lightweight hosted backend | Fast hosted validation | [`docker-compose.hosted.yml`](docker-compose.hosted.yml) |
+| Render | One-click deployment | [`render.yaml`](render.yaml) |
+| Zeabur | Template-based deployment | [`zeabur.template.yaml`](zeabur.template.yaml) |
+
 ## Docs
 
-Detailed architecture, OCR pipelines, MCP integration, deployment details, and FAQ are now available in the docs site:
+Detailed architecture, OCR pipelines, MCP integration, deployment details, and FAQ are available in the docs site:
 
 - [Docs Home](https://zichuanlan.github.io/PDF2PPT/en/)
 - [Deployment Guide](https://zichuanlan.github.io/PDF2PPT/en/guide/deployment)
-- [Architecture](https://zichuanlan.github.io/PDF2PPT/en/guide/architecture)
 - [MCP Integration](https://zichuanlan.github.io/PDF2PPT/en/guide/mcp-integration)
-- [OCR and Parsing Pipelines](https://zichuanlan.github.io/PDF2PPT/en/guide/ocr-pipelines)
 - [FAQ and Troubleshooting](https://zichuanlan.github.io/PDF2PPT/en/guide/faq)
 
 ## License
