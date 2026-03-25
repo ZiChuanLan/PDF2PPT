@@ -13,7 +13,7 @@
 
 [中文](./README.md) | [English](./README_EN.md)
 
-[Quick Start](#quick-start) · [Deployment Modes](#deployment-modes) · [Docs](#docs) · [License](#license)
+[Docs Site](https://zichuanlan.github.io/PDF2PPT-cloud-test/) · [Quick Start](#quick-start) · [Deployment Modes](#deployment-modes) · [License](#license)
 
 `PDF2PPT` is an open-source service built for real usage and deployment.  
 Instead of flattening every PDF page into a single image, it tries to rebuild pages into editable text, separated image regions, and cleaned backgrounds before exporting to PowerPoint.
@@ -96,15 +96,14 @@ For a conservative first run, start with `remote_ocr + aiocr + fullpage`.
 
 ## Docs
 
-Detailed architecture, OCR pipelines, deployment details, and FAQ have been moved into `docs/`:
+Detailed architecture, OCR pipelines, MCP integration, deployment details, and FAQ are now available in the docs site:
 
-- [Docs Home](docs/en/index.md)
-- [Deployment Guide](docs/en/guide/deployment.md)
-- [Architecture](docs/en/guide/architecture.md)
-- [MCP Integration](docs/en/guide/mcp-integration.md)
-- [OCR and Parsing Pipelines](docs/en/guide/ocr-pipelines.md)
-- [FAQ and Troubleshooting](docs/en/guide/faq.md)
-- [MCP Server PRD](docs/mcp-server-prd.md)
+- [Docs Home](https://zichuanlan.github.io/PDF2PPT-cloud-test/en/)
+- [Deployment Guide](https://zichuanlan.github.io/PDF2PPT-cloud-test/en/guide/deployment)
+- [Architecture](https://zichuanlan.github.io/PDF2PPT-cloud-test/en/guide/architecture)
+- [MCP Integration](https://zichuanlan.github.io/PDF2PPT-cloud-test/en/guide/mcp-integration)
+- [OCR and Parsing Pipelines](https://zichuanlan.github.io/PDF2PPT-cloud-test/en/guide/ocr-pipelines)
+- [FAQ and Troubleshooting](https://zichuanlan.github.io/PDF2PPT-cloud-test/en/guide/faq)
 
 To preview the docs site locally:
 
