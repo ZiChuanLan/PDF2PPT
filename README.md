@@ -1,10 +1,6 @@
 # PDF2PPT
 
 <p align="center">
-  <img src="./assets/branding/logo.svg" alt="PDF2PPT logo" width="104" />
-</p>
-
-<p align="center">
   <img src="./assets/branding/banner.svg" alt="PDF2PPT banner" width="100%" />
 </p>
 
