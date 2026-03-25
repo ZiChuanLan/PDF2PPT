@@ -11,6 +11,8 @@ build/
 # Node
 node_modules/
 .next/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
 
 # Environment
 .env

@@ -1,7 +1,8 @@
-.PHONY: dev dev-local dev-docker dev-docker-down dev-docker-build dev-docker-logs up down build logs clean test lint hosted-backend hosted-backend-down hosted-backend-logs
+.PHONY: dev dev-local dev-docker dev-docker-down dev-docker-build dev-docker-logs up down build logs clean test lint hosted-backend hosted-backend-down hosted-backend-logs docs-dev docs-build docs-preview docs-docker docs-docker-down docs-docker-logs
 
 DEV_COMPOSE = docker compose -f docker-compose.dev.yml
 HOSTED_COMPOSE = docker compose -f docker-compose.hosted.yml
+DOCS_COMPOSE = docker compose -f docker-compose.docs.yml
 
 # Development commands
 dev: dev-local
@@ -29,6 +30,24 @@ hosted-backend-down:
 
 hosted-backend-logs:
 	$(HOSTED_COMPOSE) logs -f
+
+docs-dev:
+	npm run docs:dev
+
+docs-build:
+	npm run docs:build
+
+docs-preview:
+	npm run docs:preview
+
+docs-docker:
+	$(DOCS_COMPOSE) up --build -d
+
+docs-docker-down:
+	$(DOCS_COMPOSE) down
+
+docs-docker-logs:
+	$(DOCS_COMPOSE) logs -f
 
 up:
 	docker compose up --build -d

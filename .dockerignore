@@ -1,0 +1,14 @@
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+node_modules/
+web/node_modules/
+web/.next/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+api/data/
+test/
+*.log
