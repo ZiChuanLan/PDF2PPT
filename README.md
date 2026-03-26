@@ -17,13 +17,29 @@
 
 [中文](./README.md) | [English](./README_EN.md)
 
-[文档站](https://zichuanlan.github.io/PDF2PPT/) · [快速开始](#快速开始) · [部署选项](#部署选项) · [License](#license)
-
-演示站点：<https://ppt.015201314.xyz/>  
-访问密码：`lanPDF2PPT2026!`
+[在线文档](https://zichuanlan.github.io/PDF2PPT/) · [在线体验](#在线体验) · [快速开始](#快速开始) · [部署选项](#部署选项) · [License](#license)
 
 `PDF2PPT` 是一个面向实际使用和部署的开源服务。  
 它不是简单地把 PDF 每页导成一张图，而是尽量把页面重建为可编辑文本、独立图片区域和清理后的页面底图，再导出为 PowerPoint。
+
+## 在线体验
+
+| 项目 | 地址 / 信息 |
+| --- | --- |
+| 演示站点 | <https://ppt.015201314.xyz/> |
+| 访问密码 | `lanPDF2PPT2026!` |
+
+## 介绍
+
+处理扫描版 PDF、课件截图和图片型文档时，常见做法往往只是整页截图导出，后续几乎无法编辑。  
+`PDF2PPT` 的目标不是“把 PDF 贴进 PPT”，而是尽量把页面重建为可编辑文本、独立图片区域和页面底图，在保留原稿观感的同时提高后续编辑能力。
+
+| 典型问题 | PDF2PPT 的处理方式 |
+| --- | --- |
+| 每页只能导成一张大图 | 尽量拆出文本层、图片块和页面底图 |
+| OCR 只是附加能力 | OCR 与页面重建是核心链路 |
+| 只能本地试一下 | 支持 Web、API、Worker 和标准部署 |
+| 路线单一，难以调优 | 可切换本地 OCR、远程 OCR 与文档解析链路 |
 
 ## 为什么用它
 
@@ -46,10 +62,13 @@
 
 ## 界面预览
 
-<p align="center">
-  <img src="https://i.postimg.cc/CMcBNnVq/she-zhi-aiocr.png" alt="PDF2PPT AI OCR 设置页" width="49%" />
-  <img src="https://i.postimg.cc/pVshZ5t5/gen-zong-ye-mian.png" alt="PDF2PPT 跟踪页面" width="49%" />
-</p>
+| 跟踪页面 | 任务记录 |
+| --- | --- |
+| ![PDF2PPT 跟踪页面](https://i.postimg.cc/pVshZ5t5/gen-zong-ye-mian.png) | ![PDF2PPT 任务记录](https://i.postimg.cc/3rt4B0Hy/ren-wu-ji-lu.png) |
+
+| AIOCR 设置 | 云端 MinerU 设置 |
+| --- | --- |
+| ![PDF2PPT AIOCR 设置](https://i.postimg.cc/CMcBNnVq/she-zhi-aiocr.png) | ![PDF2PPT 云端 MinerU 设置](https://i.postimg.cc/gcgXDLPR/she-zhi-yun-duanmineru.png) |
 
 ## 快速开始
 

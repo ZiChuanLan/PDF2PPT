@@ -17,13 +17,29 @@
 
 [中文](./README.md) | [English](./README_EN.md)
 
-[Docs Site](https://zichuanlan.github.io/PDF2PPT/) · [Quick Start](#quick-start) · [Deployment Options](#deployment-options) · [License](#license)
-
-Live demo: <https://ppt.015201314.xyz/>  
-Access password: `lanPDF2PPT2026!`
+[Docs Site](https://zichuanlan.github.io/PDF2PPT/) · [Live Demo](#live-demo) · [Quick Start](#quick-start) · [Deployment Options](#deployment-options) · [License](#license)
 
 `PDF2PPT` is an open-source service built for real usage and deployment.  
 Instead of flattening every PDF page into a single image, it tries to rebuild pages into editable text, separated image regions, and cleaned backgrounds before exporting to PowerPoint.
+
+## Live Demo
+
+| Item | Address / Info |
+| --- | --- |
+| Demo site | <https://ppt.015201314.xyz/> |
+| Access password | `lanPDF2PPT2026!` |
+
+## Overview
+
+When handling scanned PDFs, slide screenshots, and image-heavy reports, the common outcome is often just a full-page image with almost no editability.  
+`PDF2PPT` is not trying to simply paste PDFs into PowerPoint. Its goal is to rebuild pages into editable text, separated image regions, and page backgrounds so the final PPTX stays closer to the source while remaining more usable.
+
+| Common problem | How PDF2PPT addresses it |
+| --- | --- |
+| Each page becomes one big image | It tries to separate text, image blocks, and page background |
+| OCR is treated as secondary | OCR and page reconstruction are core parts of the workflow |
+| Only suitable for local experimentation | It supports Web, API, Worker, and standard deployment paths |
+| One fixed route for every document | It can switch across local OCR, remote OCR, and parsing pipelines |
 
 ## Why It Exists
 
@@ -46,10 +62,13 @@ Instead of flattening every PDF page into a single image, it tries to rebuild pa
 
 ## Interface Preview
 
-<p align="center">
-  <img src="https://i.postimg.cc/CMcBNnVq/she-zhi-aiocr.png" alt="PDF2PPT AI OCR settings" width="49%" />
-  <img src="https://i.postimg.cc/pVshZ5t5/gen-zong-ye-mian.png" alt="PDF2PPT tracking page" width="49%" />
-</p>
+| Tracking Page | Job History |
+| --- | --- |
+| ![PDF2PPT tracking page](https://i.postimg.cc/pVshZ5t5/gen-zong-ye-mian.png) | ![PDF2PPT job history](https://i.postimg.cc/3rt4B0Hy/ren-wu-ji-lu.png) |
+
+| AIOCR Settings | MinerU Settings |
+| --- | --- |
+| ![PDF2PPT AIOCR settings](https://i.postimg.cc/CMcBNnVq/she-zhi-aiocr.png) | ![PDF2PPT MinerU settings](https://i.postimg.cc/gcgXDLPR/she-zhi-yun-duanmineru.png) |
 
 ## Quick Start
 
