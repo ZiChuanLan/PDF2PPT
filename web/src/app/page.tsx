@@ -16,7 +16,7 @@ import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import {
   defaultSettings,
   loadStoredSettings,
@@ -330,8 +330,7 @@ export default function Home() {
       })
 
       if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        throw new Error(body?.message || "创建任务失败")
+        throw new Error(await readResponseErrorMessage(response, "创建任务失败"))
       }
 
       const body = (await response.json().catch(() => null)) as { job_id?: string } | null
