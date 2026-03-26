@@ -1,7 +1,7 @@
 # PDF2PPT
 
 <p align="center">
-  <img src="https://i.postimg.cc/44W75HTp/shou-ye.png" alt="PDF2PPT 首页" width="100%" />
+  <img src="https://i.postimg.cc/44W75HTp/shou-ye.png" alt="PDF2PPT 首页" width="920" />
 </p>
 
 > 将扫描版 PDF、课件截图和图片型文档转换为尽量高保真、尽量可编辑的 PPTX。

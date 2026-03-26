@@ -1,7 +1,7 @@
 # PDF2PPT
 
 <p align="center">
-  <img src="https://i.postimg.cc/44W75HTp/shou-ye.png" alt="PDF2PPT home screen" width="100%" />
+  <img src="https://i.postimg.cc/44W75HTp/shou-ye.png" alt="PDF2PPT home screen" width="920" />
 </p>
 
 > Convert scanned PDFs, slide screenshots, and image-heavy documents into high-fidelity, as-editable-as-possible PPTX files.
