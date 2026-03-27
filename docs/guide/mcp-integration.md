@@ -225,7 +225,47 @@ uv run ppt-mcp-remote
 - `\\wsl.localhost\发行版名\...` 路径
 
 这使得 MCP 客户端在 Windows / WSL 混合环境下更容易把本地 PDF 路径传给 `ppt-mcp`。
+## MCP 配置示例
 
+本地 clone 方式：
+
+```json
+{
+  "mcpServers": {
+    "ppt": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/lan/workspace/ppt-mcp",
+        "run",
+        "ppt-mcp"
+      ],
+      "env": {
+        "PPT_API_BASE_URL": "http://127.0.0.1:8000"
+      }
+    }
+  }
+}
+```
+远程：
+```json
+{
+  "ppt": {
+    "type": "stdio",
+    "command": "uvx",
+    "args": [
+      "--from",
+      "git+https://github.com/ZiChuanLan/ppt-mcp",
+      "ppt-mcp"
+    ],
+    "env": {
+      "PPT_API_BASE_URL": "https://ppt.015201314.xyz",
+      "MINERU_API_TOKEN": "yourkey",
+      "SILICONFLOW_API_KEY": "sk-yourkey"
+    }
+  }
+}
+```
 ## 参考仓库
 
 - `ppt-mcp` 仓库：<https://github.com/ZiChuanLan/ppt-mcp>
