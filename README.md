@@ -5,6 +5,11 @@
 </p>
 
 > 将扫描版 PDF、课件截图和图片型文档转换为尽量高保真、尽量可编辑的 PPTX。
+<p align="left">
+  <a href="https://linux.do/u/zichuanlan/activity/topics" alt="LINUX DO">
+    <img src="https://shorturl.at/ggSqS" alt="LINUX DO">
+  </a>
+</p>
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
