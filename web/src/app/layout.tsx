@@ -4,6 +4,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { UploadSessionProvider } from "@/components/upload-session-provider"
+import { AuthProvider } from "@/components/auth-provider"
 import { WorkbenchNav } from "@/components/workbench-nav"
 
 export const metadata: Metadata = {
@@ -28,11 +29,13 @@ export default function RootLayout({
           forcedTheme="light"
           disableTransitionOnChange
         >
-          <UploadSessionProvider>
-            <WorkbenchNav />
-            {children}
-            <Toaster />
-          </UploadSessionProvider>
+          <AuthProvider>
+            <UploadSessionProvider>
+              <WorkbenchNav />
+              {children}
+              <Toaster />
+            </UploadSessionProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

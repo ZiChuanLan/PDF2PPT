@@ -16,7 +16,8 @@ import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
+import { useAuth } from "@/components/auth-provider"
 import {
   defaultSettings,
   loadStoredSettings,
@@ -136,6 +137,7 @@ function isImageUploadFile(file: File | null | undefined) {
 }
 
 export default function Home() {
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [settingsSnapshot, setSettingsSnapshot] = React.useState<Settings>(defaultSettings)
   const {
     file,
@@ -296,6 +298,12 @@ export default function Home() {
   const handleConvert = React.useCallback(async () => {
     if (!file) return
 
+    // Check authentication
+    if (!user) {
+      setActionError("请先登录后再创建任务")
+      return
+    }
+
     setActionError(null)
 
     const validation = validateRunConfig(settingsSnapshot)
@@ -330,8 +338,7 @@ export default function Home() {
       })
 
       if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        throw new Error(body?.message || "创建任务失败")
+        throw new Error(await readResponseErrorMessage(response, "创建任务失败"))
       }
 
       const body = (await response.json().catch(() => null)) as { job_id?: string } | null
@@ -365,6 +372,7 @@ export default function Home() {
     retainProcessArtifacts,
     settingsSnapshot,
     usePageRange,
+    user,
   ])
 
   const handleCancelCurrentJob = React.useCallback(async () => {
@@ -584,7 +592,7 @@ export default function Home() {
   const inFlightJobs = jobs.filter((row) => row.status === "pending" || row.status === "processing").length
   const failedJobs = jobs.filter((row) => row.status === "failed").length
   const completedJobs = jobs.filter((row) => row.status === "completed").length
-  const canStart = Boolean(file) && !isSubmitting
+  const canStart = Boolean(file) && !isSubmitting && Boolean(user)
   const [filePreviewUrl, setFilePreviewUrl] = React.useState("")
   React.useEffect(() => {
     if (!file) {
@@ -682,7 +690,7 @@ export default function Home() {
                   "home-dropzone cursor-pointer text-center",
                   isDragActive && !isDragReject && "bg-accent/50",
                   isDragReject && "border-destructive bg-destructive/10",
-                  isSubmitting && "pointer-events-none opacity-60"
+                  (isSubmitting || (!user && !isAuthLoading)) && "pointer-events-none opacity-60"
                 )}
               >
                 <input {...getInputProps()} />
@@ -693,6 +701,11 @@ export default function Home() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   支持 .pdf .png .jpg .jpeg .webp
                 </p>
+                {!user && !isAuthLoading ? (
+                  <p className="mt-2 text-xs text-destructive">
+                    请先登录后再上传文件
+                  </p>
+                ) : null}
               </div>
 
               {file ? (
@@ -923,6 +936,11 @@ export default function Home() {
                         重置
                       </Button>
                     </div>
+                    {!user && !isAuthLoading ? (
+                      <Button type="button" variant="outline" asChild>
+                        <Link href="/login">登录后创建任务</Link>
+                      </Button>
+                    ) : null}
                     {jobId && currentStatus && !TERMINAL_JOB_STATUSES.has(currentStatus) ? (
                       <Button type="button" variant="destructive" onClick={handleCancelCurrentJob}>
                         <XCircleIcon className="size-4" />

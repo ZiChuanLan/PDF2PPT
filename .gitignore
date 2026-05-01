@@ -33,6 +33,9 @@ Thumbs.db
 # OMC state
 .omc/
 
+# Trellis & OpenCode
+.opencode/
+
 # Data & fixtures (large files)
 data/
 fixtures/

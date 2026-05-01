@@ -11,9 +11,21 @@ from app.models.job import (
     JobStatus,
     JobStatusResponse,
 )
+from app.models.user import (
+    AuthCallbackRequest,
+    QuotaInfo,
+    RefreshTokenRequest,
+    TokenResponse,
+    UserListResponse,
+    UserORM,
+    UserResponse,
+    UserRole,
+    UserUpdateRequest,
+)
 
 __all__ = [
     "AppException",
+    "AuthCallbackRequest",
     "ErrorCode",
     "ErrorResponse",
     "Job",
@@ -24,4 +36,12 @@ __all__ = [
     "JobStage",
     "JobStatus",
     "JobStatusResponse",
+    "QuotaInfo",
+    "RefreshTokenRequest",
+    "TokenResponse",
+    "UserListResponse",
+    "UserORM",
+    "UserResponse",
+    "UserRole",
+    "UserUpdateRequest",
 ]

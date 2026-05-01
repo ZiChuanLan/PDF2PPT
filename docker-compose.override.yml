@@ -1,0 +1,14 @@
+services:
+  api:
+    image: pdf2ppt-api:latest
+    build: null
+    volumes:
+      - api-data:/app/data
+  worker:
+    image: pdf2ppt-worker:latest
+    build: null
+    volumes:
+      - api-data:/app/data
+  web:
+    image: pdf2ppt-web:latest
+    build: null

@@ -18,6 +18,10 @@ class ErrorCode(str, Enum):
     JOB_NOT_FOUND = "job_not_found"
     INTERNAL_ERROR = "internal_error"
     VALIDATION_ERROR = "validation_error"
+    AUTH_REQUIRED = "auth_required"
+    AUTH_FAILED = "auth_failed"
+    QUOTA_EXCEEDED = "quota_exceeded"
+    FORBIDDEN = "forbidden"
 
 
 class ErrorResponse(BaseModel):

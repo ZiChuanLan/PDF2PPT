@@ -229,13 +229,14 @@ class RedisService:
 
         return self._persist_job(job)
 
-    def create_job(self, job_id: str) -> Job:
+    def create_job(self, job_id: str, user_id: int | None = None) -> Job:
         """Create a new job in Redis."""
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=self.ttl_seconds)
 
         job = Job(
             job_id=job_id,
+            user_id=user_id,
             status=JobStatus.pending,
             stage=JobStage.upload_received,
             progress=0,
@@ -376,13 +377,18 @@ class RedisService:
                 job_ids.append(job_id)
         return job_ids
 
-    def list_jobs(self, *, limit: int = 50) -> list[Job]:
-        """List jobs ordered by creation time descending."""
+    def list_jobs(self, *, limit: int = 50, user_id: int | None = None) -> list[Job]:
+        """List jobs ordered by creation time descending.
+
+        If user_id is provided, only return jobs belonging to that user.
+        """
         limit = max(1, int(limit))
         jobs: list[Job] = []
         for job_id in self.get_all_job_ids():
             job = self.get_job(job_id)
             if job is not None:
+                if user_id is not None and job.user_id != user_id:
+                    continue
                 jobs.append(job)
 
         jobs.sort(key=lambda j: j.created_at, reverse=True)

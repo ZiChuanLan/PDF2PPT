@@ -16,7 +16,7 @@ from typing import Any, AsyncGenerator
 from urllib.parse import quote
 
 import pymupdf
-from fastapi import APIRouter, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 from rq import Queue
@@ -28,6 +28,7 @@ except Exception:  # pragma: no cover - compatibility with older RQ builds
     send_stop_job_command = None
 
 from ..config import get_settings
+from ..dependencies import get_current_user_optional
 from ..job_options import validate_and_normalize_job_options
 from ..job_paths import (
     ensure_job_dir as ensure_job_dir_via_paths,
@@ -592,10 +593,15 @@ def _collect_page_images(
 @router.get("", response_model=JobListResponse)
 async def list_jobs(
     limit: int = Query(50, ge=1, le=200, description="Max jobs to return"),
+    current_user=Depends(get_current_user_optional),
 ):
-    """List recent jobs with queue metadata for frontend history/queue panels."""
+    """List recent jobs with queue metadata for frontend history/queue panels.
+
+    If authenticated, only returns jobs belonging to the current user.
+    """
     redis_service = get_redis_service()
-    jobs = redis_service.list_jobs(limit=limit)
+    user_id = current_user.id if current_user else None
+    jobs = redis_service.list_jobs(limit=limit, user_id=user_id)
 
     queue_job_ids: list[str] = []
     started_job_ids: set[str] = set()
@@ -647,6 +653,7 @@ async def list_jobs(
         items.append(
             JobListItem(
                 job_id=job.job_id,
+                user_id=job.user_id,
                 status=job.status,
                 stage=job.stage,
                 progress=job.progress,
@@ -908,6 +915,7 @@ async def create_job(
             "Strict OCR quality mode (default on): when enabled, disable implicit OCR fallbacks/downgrades and fail fast on OCR errors"
         ),
     ),
+    current_user=Depends(get_current_user_optional),
 ):
     """
     Create a new PDF/image to PPT conversion job.
@@ -1002,7 +1010,8 @@ async def create_job(
         )
 
         # Create job in Redis
-        job = redis_service.create_job(job_id)
+        user_id = current_user.id if current_user else None
+        job = redis_service.create_job(job_id, user_id=user_id)
         job_created = True
 
         # Persist queued state before starting worker execution so debug events
@@ -1189,7 +1198,10 @@ async def create_job(
 
 
 @router.get("/{job_id}", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(
+    job_id: str,
+    current_user=Depends(get_current_user_optional),
+):
     """
     Get current status of a job.
 
@@ -1205,8 +1217,17 @@ async def get_job_status(job_id: str):
             status_code=404,
         )
 
+    # Check ownership: users can only view their own jobs
+    if current_user and job.user_id and job.user_id != current_user.id:
+        raise AppException(
+            code=ErrorCode.FORBIDDEN,
+            message="You can only view your own jobs",
+            status_code=403,
+        )
+
     return JobStatusResponse(
         job_id=job.job_id,
+        user_id=job.user_id,
         status=job.status,
         stage=job.stage,
         progress=job.progress,
@@ -1301,7 +1322,10 @@ async def stream_job_events(job_id: str):
 
 
 @router.post("/{job_id}/cancel")
-async def cancel_job(job_id: str):
+async def cancel_job(
+    job_id: str,
+    current_user=Depends(get_current_user_optional),
+):
     """
     Cancel a running job.
 
@@ -1316,6 +1340,14 @@ async def cancel_job(job_id: str):
             code=ErrorCode.JOB_NOT_FOUND,
             message=f"Job {job_id} not found",
             status_code=404,
+        )
+
+    # Check ownership: users can only cancel their own jobs
+    if current_user and job.user_id and job.user_id != current_user.id:
+        raise AppException(
+            code=ErrorCode.FORBIDDEN,
+            message="You can only cancel your own jobs",
+            status_code=403,
         )
 
     # Can only cancel pending or processing jobs
@@ -1350,7 +1382,10 @@ async def cancel_job(job_id: str):
 
 
 @router.delete("/{job_id}")
-async def delete_job(job_id: str):
+async def delete_job(
+    job_id: str,
+    current_user=Depends(get_current_user_optional),
+):
     """Delete terminal job metadata and on-disk artifacts."""
     redis_service = get_redis_service()
     job = redis_service.get_job(job_id)
@@ -1361,6 +1396,14 @@ async def delete_job(job_id: str):
             code=ErrorCode.JOB_NOT_FOUND,
             message=f"Job {job_id} not found",
             status_code=404,
+        )
+
+    # Check ownership: users can only delete their own jobs
+    if current_user and job and job.user_id and job.user_id != current_user.id:
+        raise AppException(
+            code=ErrorCode.FORBIDDEN,
+            message="You can only delete your own jobs",
+            status_code=403,
         )
 
     if job and job.status in [JobStatus.pending, JobStatus.processing]:

@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation"
 import { LayoutDashboardIcon, ListChecksIcon, Settings2Icon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { UserMenu } from "@/components/user-menu"
+import { useAuth } from "@/components/auth-provider"
+import { isAdmin } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 const workbenchNavItems = [
@@ -35,12 +38,15 @@ function matchesRoute(pathname: string, href: string) {
 
 export function WorkbenchNav() {
   const pathname = usePathname()
+  const { user } = useAuth()
 
   if (!pathname) return null
 
   const activeItem = workbenchNavItems.find((item) => matchesRoute(pathname, item.href))
 
   if (!activeItem) return null
+
+  const userIsAdmin = isAdmin(user)
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
@@ -60,28 +66,46 @@ export function WorkbenchNav() {
           </div>
         </div>
 
-        <nav aria-label="工作台导航" className="flex flex-wrap items-center gap-2">
-          {workbenchNavItems.map((item) => {
-            const active = matchesRoute(pathname, item.href)
-            const Icon = item.icon
-            return (
+        <div className="flex flex-wrap items-center gap-3">
+          <nav aria-label="工作台导航" className="flex flex-wrap items-center gap-2">
+            {workbenchNavItems.map((item) => {
+              const active = matchesRoute(pathname, item.href)
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "nav-highlight flex items-center gap-2 border px-3 py-2 font-sans text-sm",
+                    active
+                      ? "nav-highlight-active border-border bg-secondary text-foreground"
+                      : "nav-highlight-inactive border-border/70 bg-background text-muted-foreground hover:text-foreground"
+                  )}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <Icon className="size-4" />
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+            {userIsAdmin ? (
               <Link
-                key={item.href}
-                href={item.href}
+                href="/admin"
                 className={cn(
                   "nav-highlight flex items-center gap-2 border px-3 py-2 font-sans text-sm",
-                  active
+                  matchesRoute(pathname, "/admin")
                     ? "nav-highlight-active border-border bg-secondary text-foreground"
                     : "nav-highlight-inactive border-border/70 bg-background text-muted-foreground hover:text-foreground"
                 )}
-                aria-current={active ? "page" : undefined}
+                aria-current={matchesRoute(pathname, "/admin") ? "page" : undefined}
               >
-                <Icon className="size-4" />
-                <span>{item.label}</span>
+                <Settings2Icon className="size-4" />
+                <span>管理</span>
               </Link>
-            )
-          })}
-        </nav>
+            ) : null}
+          </nav>
+          <UserMenu />
+        </div>
       </div>
     </div>
   )

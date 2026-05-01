@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     ocr_image_region_timeout_s: int = 12
     cors_allow_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     cors_allow_origin_regex: str | None = None
+    # LinuxDo OAuth settings
+    linuxdo_client_id: str | None = None
+    linuxdo_client_secret: str | None = None
+    linuxdo_redirect_uri: str = "http://localhost:3000/auth/callback"
+    # JWT settings
+    jwt_secret: str = "change-me-in-production"
+    # SQLite database path (relative to api/ directory)
+    sqlite_path: str = "data/pdf2ppt.db"
 
     class Config:
         env_file = ".env"

@@ -252,6 +252,53 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   return fetch(`${base}${normalizeApiPath(path)}`, init)
 }
 
+type ApiErrorBody = {
+  code?: string
+  message?: string
+} | null
+
+function formatHttpStatusSuffix(response: Response): string {
+  const statusText = String(response.statusText || "").trim()
+  return statusText ? `HTTP ${response.status} ${statusText}` : `HTTP ${response.status}`
+}
+
+function compactResponseText(raw: string, maxLength = 220): string {
+  const compact = String(raw || "").replace(/\s+/g, " ").trim()
+  if (!compact) return ""
+  if (compact.length <= maxLength) return compact
+  return `${compact.slice(0, maxLength)}...`
+}
+
+export async function readResponseErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  const statusSuffix = formatHttpStatusSuffix(response)
+
+  try {
+    const body = (await response.json()) as ApiErrorBody
+    const message = String(body?.message || "").trim()
+    if (message) return `${message}（${statusSuffix}）`
+  } catch {
+    // Fall through to text parsing.
+  }
+
+  try {
+    const text = compactResponseText(await response.text())
+    if (text) {
+      const looksLikeHtml = /<!doctype html>|<html[\s>]/i.test(text)
+      if (looksLikeHtml) {
+        return `${fallback}（${statusSuffix}，服务器返回了 HTML 页面）`
+      }
+      return `${fallback}（${statusSuffix}）：${text}`
+    }
+  } catch {
+    // Ignore body parsing failure.
+  }
+
+  return `${fallback}（${statusSuffix}）`
+}
+
 export function normalizeFetchError(error: unknown, fallback: string): string {
   if (error instanceof DOMException && error.name === "AbortError") {
     return "请求已取消"

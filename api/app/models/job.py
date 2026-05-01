@@ -64,6 +64,7 @@ class Job(BaseModel):
     """Job metadata model."""
 
     job_id: str = Field(..., description="Unique job identifier")
+    user_id: Optional[int] = Field(None, description="Owner user ID (None for anonymous)")
     status: JobStatus = Field(..., description="Current job status")
     stage: JobStage = Field(..., description="Current processing stage")
     progress: int = Field(0, ge=0, le=100, description="Progress percentage")
@@ -253,6 +254,7 @@ class JobStatusResponse(BaseModel):
     """Response model for job status query."""
 
     job_id: str
+    user_id: Optional[int] = None
     status: JobStatus
     stage: JobStage
     progress: int
@@ -267,6 +269,7 @@ class JobListItem(BaseModel):
     """Response item for job list query."""
 
     job_id: str
+    user_id: Optional[int] = None
     status: JobStatus
     stage: JobStage
     progress: int

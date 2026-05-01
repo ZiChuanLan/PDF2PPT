@@ -9,13 +9,14 @@ from fastapi.responses import JSONResponse
 
 from app.api_auth import has_valid_bearer_token
 from app.config import get_settings, parse_cors_allow_origins
+from app.database import init_db
 from app.logging_config import (
     get_logger,
     set_request_id,
     setup_logging,
 )
 from app.models.error import AppException, ErrorCode, ErrorResponse
-from app.routers import jobs_router, models_router
+from app.routers import admin_router, auth_router, jobs_router, models_router
 from app.services.job_cleanup import start_job_cleanup_daemon
 from app.services.redis_service import get_redis_service
 
@@ -45,6 +46,8 @@ async def lifespan(app: FastAPI):
     cleanup_stop_event = None
     cleanup_thread = None
     try:
+        # Initialize database
+        init_db()
         cleanup_stop_event, cleanup_thread = start_job_cleanup_daemon(
             redis_service=get_redis_service()
         )
@@ -81,6 +84,8 @@ app.add_middleware(
 # Include routers
 app.include_router(jobs_router)
 app.include_router(models_router)
+app.include_router(auth_router)
+app.include_router(admin_router)
 
 
 @app.middleware("http")
@@ -90,22 +95,28 @@ async def request_id_middleware(request: Request, call_next):
     set_request_id(request_id)
 
     if request.url.path.startswith("/api/") and request.method.upper() != "OPTIONS":
-        token_required = str(settings.api_bearer_token or "").strip()
-        if token_required:
-            has_token = has_valid_bearer_token(
-                request.headers.get("authorization"),
-                token_required,
-            )
-            if not has_token:
-                response = JSONResponse(
-                    status_code=401,
-                    content={
-                        "code": "auth_required",
-                        "message": "Missing or invalid API bearer token",
-                    },
+        # Skip bearer token check for auth and admin routes (they use JWT cookies)
+        skip_bearer_paths = {"/api/v1/auth/", "/api/v1/admin/"}
+        path = request.url.path
+        needs_bearer = not any(path.startswith(p) for p in skip_bearer_paths)
+
+        if needs_bearer:
+            token_required = str(settings.api_bearer_token or "").strip()
+            if token_required:
+                has_token = has_valid_bearer_token(
+                    request.headers.get("authorization"),
+                    token_required,
                 )
-                response.headers["X-Request-ID"] = request_id
-                return response
+                if not has_token:
+                    response = JSONResponse(
+                        status_code=401,
+                        content={
+                            "code": "auth_required",
+                            "message": "Missing or invalid API bearer token",
+                        },
+                    )
+                    response.headers["X-Request-ID"] = request_id
+                    return response
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
