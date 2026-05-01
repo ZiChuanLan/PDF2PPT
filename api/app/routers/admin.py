@@ -78,6 +78,21 @@ async def update_user(
             status_code=404,
         )
 
+    # Prevent admin from deactivating or demoting themselves
+    if user_id == admin.id:
+        if payload.active is not None and not payload.active:
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="Cannot deactivate your own account",
+                status_code=400,
+            )
+        if payload.role is not None and payload.role.value != admin.role:
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="Cannot change your own role",
+                status_code=400,
+            )
+
     if payload.role is not None:
         user.role = payload.role.value
     if payload.active is not None:

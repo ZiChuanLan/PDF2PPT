@@ -126,8 +126,10 @@ async def get_me(
 @router.post("/logout")
 async def logout(response: Response):
     """Logout by clearing auth cookies."""
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
+    from app.config import get_settings
+    secure = get_settings().cookie_secure
+    response.delete_cookie("access_token", path="/", httponly=True, secure=secure, samesite="lax")
+    response.delete_cookie("refresh_token", path="/", httponly=True, secure=secure, samesite="lax")
     return {"message": "Logged out successfully"}
 
 
@@ -163,7 +165,16 @@ async def refresh_token(
             status_code=401,
         )
 
-    user = db.query(UserORM).filter(UserORM.id == int(user_id)).first()
+    try:
+        user_id_int = int(user_id)
+    except (ValueError, TypeError):
+        raise AppException(
+            code=ErrorCode.AUTH_FAILED,
+            message="Invalid token payload",
+            status_code=401,
+        )
+
+    user = db.query(UserORM).filter(UserORM.id == user_id_int).first()
     if not user or not user.active:
         raise AppException(
             code=ErrorCode.AUTH_FAILED,
@@ -227,13 +238,15 @@ def _set_auth_cookies(
     response: Response, access_token: str, refresh_token: str
 ) -> None:
     """Set authentication cookies."""
+    from app.config import get_settings
+    secure = get_settings().cookie_secure
     # Access token cookie - 1 hour
     response.set_cookie(
         key="access_token",
         value=access_token,
         max_age=3600,
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
         path="/",
     )
@@ -243,7 +256,7 @@ def _set_auth_cookies(
         value=refresh_token,
         max_age=30 * 24 * 3600,
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
         path="/",
     )

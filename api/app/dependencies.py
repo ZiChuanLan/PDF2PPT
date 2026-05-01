@@ -48,7 +48,16 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.query(UserORM).filter(UserORM.id == int(user_id)).first()
+    try:
+        user_id_int = int(user_id)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = db.query(UserORM).filter(UserORM.id == user_id_int).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -81,7 +90,12 @@ async def get_current_user_optional(
     if not user_id:
         return None
 
-    user = db.query(UserORM).filter(UserORM.id == int(user_id)).first()
+    try:
+        user_id_int = int(user_id)
+    except (ValueError, TypeError):
+        return None
+
+    user = db.query(UserORM).filter(UserORM.id == user_id_int).first()
     if not user or not user.active:
         return None
 

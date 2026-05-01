@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
   // For now, we'll pass it through to the backend
 
   try {
-    // Exchange code for tokens via backend
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    // Exchange code for tokens via backend (server-side, use Docker service name)
+    const apiBase = process.env.INTERNAL_API_ORIGIN || "http://api:8000"
     const response = await fetch(`${apiBase}/api/v1/auth/callback`, {
       method: "POST",
       headers: {

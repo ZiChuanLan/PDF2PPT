@@ -66,7 +66,7 @@ export function normalizeUser(raw: unknown): User | null {
     linuxdo_id: linuxdoId,
     username,
     name: typeof data.name === "string" ? data.name : null,
-    avatar_url: typeof data.avatar_url === "string" ? data.avatar_url : null,
+    avatar_url: typeof data.avatar_url === "string" && (data.avatar_url.startsWith("https://") || data.avatar_url.startsWith("http://")) ? data.avatar_url : null,
     role: data.role === "admin" ? "admin" : "user",
     trust_level: typeof data.trust_level === "number" ? data.trust_level : 0,
     active: typeof data.active === "boolean" ? data.active : true,
@@ -81,11 +81,13 @@ export function normalizeUser(raw: unknown): User | null {
 /**
  * Build avatar URL with size parameter.
  * LinuxDo avatars support {size} placeholder.
+ * Validates URL scheme to prevent XSS via javascript: or data: URIs.
  */
 export function getAvatarUrl(template: string | null | undefined, size = 48): string {
   if (!template) return ""
-  // LinuxDo avatar templates use {size} placeholder
-  return template.replace(/\{size\}/g, String(size))
+  const url = template.replace(/\{size\}/g, String(size))
+  if (!url.startsWith("https://") && !url.startsWith("http://")) return ""
+  return url
 }
 
 /**

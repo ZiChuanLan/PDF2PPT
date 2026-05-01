@@ -1,13 +1,13 @@
 """OAuth flow and JWT token management for LinuxDo authentication."""
 
 import secrets
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
 from jose import JWTError, jwt
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -26,34 +26,37 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
-# In-memory state store for OAuth flow (state -> timestamp)
-_oauth_states: dict[str, float] = {}
-_STATE_EXPIRY_SECONDS = 600  # 10 minutes
+# OAuth state TTL in seconds (10 minutes)
+_STATE_EXPIRY_SECONDS = 600
 
 
-def _cleanup_expired_states() -> None:
-    """Remove expired OAuth states."""
-    now = time.time()
-    expired = [s for s, ts in _oauth_states.items() if now - ts > _STATE_EXPIRY_SECONDS]
-    for s in expired:
-        _oauth_states.pop(s, None)
+def _get_state_redis():
+    """Get Redis client for OAuth state storage."""
+    from app.services.redis_service import get_redis_service
+    return get_redis_service().redis_client
 
 
 def generate_state() -> str:
     """Generate a random state parameter for OAuth flow."""
-    _cleanup_expired_states()
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = time.time()
+    try:
+        _get_state_redis().setex(f"oauth_state:{state}", _STATE_EXPIRY_SECONDS, "1")
+    except Exception as e:
+        logger.warning("Failed to store OAuth state in Redis: %s", e)
     return state
 
 
 def validate_state(state: str) -> bool:
     """Validate an OAuth state parameter."""
-    _cleanup_expired_states()
-    if state not in _oauth_states:
-        return False
-    _oauth_states.pop(state)
-    return True
+    try:
+        key = f"oauth_state:{state}"
+        redis_client = _get_state_redis()
+        if redis_client.exists(key):
+            redis_client.delete(key)
+            return True
+    except Exception as e:
+        logger.warning("Failed to validate OAuth state from Redis: %s", e)
+    return False
 
 
 def get_authorize_url(state: str) -> str:
@@ -203,7 +206,7 @@ def get_or_create_user(db: Session, userinfo: dict) -> Optional[UserORM]:
         db.refresh(user)
         logger.info("Updated user: %s (linuxdo_id=%d)", username, linuxdo_id)
     else:
-        # Create new user
+        # Create new user (handle race condition: another worker may have inserted)
         user = UserORM(
             linuxdo_id=linuxdo_id,
             username=username,
@@ -215,8 +218,20 @@ def get_or_create_user(db: Session, userinfo: dict) -> Optional[UserORM]:
             last_login_at=datetime.now(timezone.utc),
         )
         db.add(user)
-        db.commit()
-        db.refresh(user)
-        logger.info("Created new user: %s (linuxdo_id=%d)", username, linuxdo_id)
+        try:
+            db.commit()
+            db.refresh(user)
+            logger.info("Created new user: %s (linuxdo_id=%d)", username, linuxdo_id)
+        except IntegrityError:
+            db.rollback()
+            user = db.query(UserORM).filter(UserORM.linuxdo_id == linuxdo_id).first()
+            if user:
+                user.last_login_at = datetime.now(timezone.utc)
+                db.commit()
+                db.refresh(user)
+                logger.info("User already existed, updated: %s (linuxdo_id=%d)", username, linuxdo_id)
+            else:
+                logger.error("Failed to create or retrieve user after IntegrityError")
+                return None
 
     return user

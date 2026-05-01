@@ -34,6 +34,11 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     setup_logging(settings.log_level)
     logger.info("Application starting up")
+    if not settings.jwt_secret:
+        raise RuntimeError(
+            "JWT_SECRET is not configured. Set the JWT_SECRET environment variable. "
+            "Generate one with: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
+        )
     if not _is_loopback_host(settings.api_bind_host) and not str(
         settings.api_bearer_token or ""
     ).strip():
@@ -153,11 +158,13 @@ async def health_check():
     return {"status": "ok"}
 
 
-@app.get("/test-error")
-async def test_error():
-    """Test endpoint to verify error handling."""
-    raise AppException(
-        code=ErrorCode.PDF_ENCRYPTED,
-        message="Test: PDF is password-protected",
-        details={"test": True},
-    )
+if settings.log_level.upper() == "DEBUG":
+
+    @app.get("/test-error")
+    async def test_error():
+        """Test endpoint to verify error handling (debug only)."""
+        raise AppException(
+            code=ErrorCode.PDF_ENCRYPTED,
+            message="Test: PDF is password-protected",
+            details={"test": True},
+        )

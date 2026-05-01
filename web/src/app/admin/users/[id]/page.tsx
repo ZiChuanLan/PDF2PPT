@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 import { useAuth } from "@/components/auth-provider"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
-import { isAdmin, getAvatarUrl, type AdminUser } from "@/lib/auth"
+import { isAdmin, getAvatarUrl, normalizeUser, type AdminUser } from "@/lib/auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -63,12 +63,15 @@ export default function UserDetailPage({ params }: UserDetailPageProps) {
       }
       const data = await response.json().catch(() => null)
       if (data) {
-        setTargetUser(data)
-        setDailyTaskLimit(String(data.daily_task_limit ?? 10))
-        setMaxFileSizeMb(String(data.max_file_size_mb ?? 100))
-        setConcurrentTaskLimit(String(data.concurrent_task_limit ?? 2))
-        setIsActive(data.active !== false)
-        setRole(data.role === "admin" ? "admin" : "user")
+        const normalized = normalizeUser(data)
+        if (normalized) {
+          setTargetUser(normalized)
+          setDailyTaskLimit(String(normalized.daily_task_limit ?? 10))
+          setMaxFileSizeMb(String(normalized.max_file_size_mb ?? 100))
+          setConcurrentTaskLimit(String(normalized.concurrent_task_limit ?? 2))
+          setIsActive(normalized.active !== false)
+          setRole(normalized.role === "admin" ? "admin" : "user")
+        }
       }
     } catch (e) {
       setError(normalizeFetchError(e, "加载用户信息失败"))

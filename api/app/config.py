@@ -68,7 +68,9 @@ class Settings(BaseSettings):
     linuxdo_client_secret: str | None = None
     linuxdo_redirect_uri: str = "http://localhost:3000/auth/callback"
     # JWT settings
-    jwt_secret: str = "change-me-in-production"
+    jwt_secret: str = ""
+    # Cookie secure flag - set to false for HTTP/local dev
+    cookie_secure: bool = True
     # SQLite database path (relative to api/ directory)
     sqlite_path: str = "data/pdf2ppt.db"
 

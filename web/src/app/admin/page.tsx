@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 
 import { useAuth } from "@/components/auth-provider"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
-import { isAdmin, getAvatarUrl, type AdminUser, type AdminStats } from "@/lib/auth"
+import { isAdmin, getAvatarUrl, normalizeUser, type AdminUser, type AdminStats } from "@/lib/auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -52,7 +52,10 @@ export default function AdminPage() {
       const statsData = await statsResponse.json().catch(() => null)
 
       if (usersData?.users && Array.isArray(usersData.users)) {
-        setUsers(usersData.users)
+        const normalized = usersData.users
+          .map((u: unknown) => normalizeUser(u))
+          .filter((u: AdminUser | null): u is AdminUser => u !== null)
+        setUsers(normalized)
       }
 
       if (statsData) {
