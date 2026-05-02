@@ -13,7 +13,6 @@ export type DeployMode = "self" | "public"
 // API key fields that should be disabled in public mode
 export const SENSITIVE_KEYS: ReadonlySet<keyof Settings> = new Set([
   "openaiApiKey",
-  "siliconflowApiKey",
   "claudeApiKey",
   "mineruApiToken",
   "ocrBaiduApiKey",

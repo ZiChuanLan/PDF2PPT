@@ -544,21 +544,15 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             resolved_api_key = (
                 clean_str(ocr_ai_api_key)
                 or clean_str(api_key)
-                or clean_str(getattr(settings, "siliconflow_api_key", None))
-                or clean_str(os.getenv("SILICONFLOW_API_KEY"))
             )
             resolved_base_url = (
                 clean_str(ocr_ai_base_url)
                 or clean_str(base_url)
-                or clean_str(getattr(settings, "siliconflow_base_url", None))
-                or clean_str(os.getenv("SILICONFLOW_BASE_URL"))
                 or "https://api.siliconflow.cn/v1"
             )
             resolved_model = (
                 clean_str(ocr_ai_model)
                 or clean_str(model)
-                or clean_str(getattr(settings, "siliconflow_model", None))
-                or clean_str(os.getenv("SILICONFLOW_MODEL"))
                 or "Pro/deepseek-ai/deepseek-ocr"
             )
 
@@ -567,7 +561,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                     code=ErrorCode.VALIDATION_ERROR,
                     message="Missing API key for parse_provider=v2",
                     details={
-                        "hint": "Use api_key or ocr_ai_api_key, or set SILICONFLOW_API_KEY",
+                        "hint": "Use api_key or ocr_ai_api_key",
                     },
                     status_code=400,
                 )

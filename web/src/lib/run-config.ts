@@ -196,15 +196,6 @@ function resolveParseEngineMode(settings: Settings): ParseEngineMode {
 
 export function getMainProviderConfig(settings: Settings) {
   const provider = getResolvedMainProvider(settings)
-  if (provider === "siliconflow") {
-    return {
-      provider: "openai" as const,
-      ocrAdapter: "siliconflow" as const,
-      apiKey: settings.siliconflowApiKey.trim(),
-      baseUrl: settings.siliconflowBaseUrl.trim() || SILICONFLOW_BASE_URL,
-      model: settings.siliconflowModel.trim(),
-    }
-  }
   if (provider === "claude") {
     return {
       provider: "claude" as const,
@@ -571,6 +562,253 @@ export function validateRunConfig(settings: Settings): ValidationResult {
   return { ok: true }
 }
 
+/** Structured JobConfig matching the backend Pydantic schema. */
+export type JobConfig = {
+  enable_ocr?: boolean
+  retain_process_artifacts?: boolean
+  remove_footer_notebooklm?: boolean
+  ocr?: {
+    provider?: string
+    ai?: {
+      provider?: string
+      api_key?: string
+      base_url?: string
+      model?: string
+      chain_mode?: string
+      layout_model?: string
+      prompt_preset?: string
+      direct_prompt_override?: string
+      layout_block_prompt_override?: string
+      image_region_prompt_override?: string
+      paddle_vl_docparser_max_side_px?: number
+      page_concurrency?: number
+      block_concurrency?: number
+      requests_per_minute?: number
+      tokens_per_minute?: number
+      max_retries?: number
+      linebreak_assist?: boolean
+    }
+    baidu?: {
+      app_id?: string
+      api_key?: string
+      secret_key?: string
+    }
+    tesseract?: {
+      language?: string
+      min_confidence?: number
+    }
+    render_dpi?: number
+    strict_mode?: boolean
+  }
+  parse?: {
+    provider?: string
+    mineru?: {
+      api_token?: string
+      base_url?: string
+      model_version?: string
+      enable_formula?: boolean
+      enable_table?: boolean
+      language?: string
+      is_ocr?: boolean
+    }
+    baidu_doc?: {
+      parse_type?: string
+    }
+  }
+  llm?: {
+    provider?: string
+    api_key?: string
+    base_url?: string
+    model?: string
+  }
+  ppt?: {
+    generation_mode?: string
+    text_erase_mode?: string
+    scanned_page_mode?: string
+    image_regions?: {
+      bg_clear_expand_min_pt?: number
+      bg_clear_expand_max_pt?: number
+      bg_clear_expand_ratio?: number
+      scanned_image_region_min_area_ratio?: number
+      scanned_image_region_max_area_ratio?: number
+      scanned_image_region_max_aspect_ratio?: number
+    }
+  }
+  page_range?: {
+    start?: number
+    end?: number
+  }
+}
+
+/**
+ * Build a structured JobConfig JSON object from RunConfig + Settings.
+ *
+ * This replaces the flat FormData approach for the v2 API endpoint.
+ * Only includes non-default/non-empty values to keep the payload compact.
+ */
+export function buildJobConfig(
+  settings: Settings,
+  pageStart?: number,
+  pageEnd?: number,
+  options?: CreateJobOptions
+): JobConfig {
+  const ui = resolveOcrSettingsState(settings)
+  const run = ui.runConfig
+
+  const config: JobConfig = {
+    enable_ocr: run.parseProvider === "local" ? Boolean(settings.enableOcr) : false,
+    retain_process_artifacts: Boolean(options?.retainProcessArtifacts),
+    remove_footer_notebooklm: Boolean(settings.removeFooterNotebooklm),
+  }
+
+  // LLM config (for layout assist / main provider)
+  if (run.mainApiKey || run.mainBaseUrl || run.mainModel) {
+    config.llm = {
+      provider: run.llmProvider,
+    }
+    if (run.mainApiKey) config.llm.api_key = run.mainApiKey
+    if (run.mainBaseUrl) config.llm.base_url = run.mainBaseUrl
+    if (run.mainModel) config.llm.model = run.mainModel
+  }
+
+  // Parse config
+  config.parse = {
+    provider: run.parseProvider,
+  }
+
+  if (run.parseProvider === "mineru") {
+    config.parse.mineru = {
+      api_token: settings.mineruApiToken.trim(),
+      model_version: settings.mineruModelVersion,
+      enable_formula: Boolean(settings.mineruEnableFormula),
+      enable_table: Boolean(settings.mineruEnableTable),
+      is_ocr: Boolean(settings.mineruIsOcr),
+    }
+    if (settings.mineruBaseUrl.trim()) {
+      config.parse.mineru.base_url = settings.mineruBaseUrl.trim()
+    }
+    if (settings.mineruLanguage.trim()) {
+      config.parse.mineru.language = settings.mineruLanguage.trim()
+    }
+  }
+
+  if (run.parseProvider === "baidu_doc") {
+    config.parse.baidu_doc = {
+      parse_type: settings.baiduDocParseType,
+    }
+  }
+
+  // OCR config
+  config.ocr = {
+    provider: run.effectiveOcrProvider,
+    render_dpi: toFinitePositiveIntOrNull(settings.ocrRenderDpi) ?? undefined,
+    strict_mode: Boolean(settings.ocrStrictMode),
+  }
+
+  // AI OCR config
+  if (run.shouldAttachOcrAiParams) {
+    const ai: NonNullable<JobConfig["ocr"]>["ai"] = {
+      provider: run.effectiveOcrAiProvider,
+      chain_mode: run.ocrAiChainMode,
+      layout_model: run.ocrAiLayoutModel,
+      prompt_preset: settings.ocrAiPromptPreset,
+      page_concurrency: run.ocrAiPageConcurrency,
+      max_retries: run.ocrAiMaxRetries,
+    }
+    if (run.effectiveOcrAiKey) ai.api_key = run.effectiveOcrAiKey
+    if (run.effectiveOcrAiBaseUrl) ai.base_url = run.effectiveOcrAiBaseUrl
+    if (run.effectiveOcrAiModel) ai.model = run.effectiveOcrAiModel
+    if (settings.ocrAiDirectPromptOverride.trim()) {
+      ai.direct_prompt_override = settings.ocrAiDirectPromptOverride.trim()
+    }
+    if (settings.ocrAiLayoutBlockPromptOverride.trim()) {
+      ai.layout_block_prompt_override = settings.ocrAiLayoutBlockPromptOverride.trim()
+    }
+    if (settings.ocrAiImageRegionPromptOverride.trim()) {
+      ai.image_region_prompt_override = settings.ocrAiImageRegionPromptOverride.trim()
+    }
+    const paddleDocMaxSidePx = toFinitePositiveIntOrNull(settings.ocrPaddleVlDocparserMaxSidePx)
+    if (paddleDocMaxSidePx !== null) {
+      ai.paddle_vl_docparser_max_side_px = paddleDocMaxSidePx
+    }
+    if (run.ocrAiBlockConcurrency !== null) {
+      ai.block_concurrency = run.ocrAiBlockConcurrency
+    }
+    const rpm = toFinitePositiveIntOrNull(settings.ocrAiRequestsPerMinute)
+    if (rpm !== null) ai.requests_per_minute = rpm
+    const tpm = toFinitePositiveIntOrNull(settings.ocrAiTokensPerMinute)
+    if (tpm !== null) ai.tokens_per_minute = tpm
+    config.ocr.ai = ai
+  }
+
+  // Baidu OCR
+  if (run.effectiveOcrProvider === "baidu" || run.parseProvider === "baidu_doc") {
+    config.ocr.baidu = {
+      app_id: settings.ocrBaiduAppId.trim() || undefined,
+      api_key: settings.ocrBaiduApiKey.trim() || undefined,
+      secret_key: settings.ocrBaiduSecretKey.trim() || undefined,
+    }
+  }
+
+  // Tesseract
+  if (run.effectiveOcrProvider === "tesseract" || run.effectiveOcrProvider === "auto") {
+    const lang = settings.ocrTesseractLanguage.trim()
+    const minConf = toFinitePositiveIntOrNull(settings.ocrTesseractMinConfidence)
+    if (lang || minConf !== null) {
+      config.ocr.tesseract = {}
+      if (lang) config.ocr.tesseract.language = lang
+      if (minConf !== null) config.ocr.tesseract.min_confidence = minConf
+    }
+  }
+
+  // PPT config
+  config.ppt = {
+    generation_mode: settings.pptGenerationMode,
+    text_erase_mode: settings.textEraseMode,
+    scanned_page_mode: settings.scannedPageMode,
+  }
+
+  // Image region tuning
+  const imgMin = toFiniteFloat(settings.imageBgClearExpandMinPt)
+  const imgMax = toFiniteFloat(settings.imageBgClearExpandMaxPt)
+  const imgRatio = toFiniteFloat(settings.imageBgClearExpandRatio)
+  const scannedMin = toFiniteFloat(settings.scannedImageRegionMinAreaRatio)
+  const scannedMax = toFiniteFloat(settings.scannedImageRegionMaxAreaRatio)
+  const scannedAspect = toFiniteFloat(settings.scannedImageRegionMaxAspectRatio)
+  if (imgMin !== null || imgMax !== null || imgRatio !== null ||
+      scannedMin !== null || scannedMax !== null || scannedAspect !== null) {
+    config.ppt.image_regions = {}
+    if (imgMin !== null) config.ppt.image_regions.bg_clear_expand_min_pt = imgMin
+    if (imgMax !== null) config.ppt.image_regions.bg_clear_expand_max_pt = imgMax
+    if (imgRatio !== null) config.ppt.image_regions.bg_clear_expand_ratio = imgRatio
+    if (scannedMin !== null) config.ppt.image_regions.scanned_image_region_min_area_ratio = scannedMin
+    if (scannedMax !== null) config.ppt.image_regions.scanned_image_region_max_area_ratio = scannedMax
+    if (scannedAspect !== null) config.ppt.image_regions.scanned_image_region_max_aspect_ratio = scannedAspect
+  }
+
+  // Page range
+  if (pageStart && pageEnd) {
+    config.page_range = {
+      start: pageStart,
+      end: pageEnd,
+    }
+  }
+
+  return config
+}
+
+function toFiniteFloat(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return null
+  return n
+}
+
+/**
+ * @deprecated Use `buildJobConfig()` + v2 endpoint instead.
+ * Kept as fallback for backward compatibility with the v1 API.
+ */
 export function createJobFormData(
   file: File,
   settings: Settings,

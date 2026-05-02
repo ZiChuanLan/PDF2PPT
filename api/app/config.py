@@ -45,9 +45,6 @@ class Settings(BaseSettings):
     # add avoidable rendering work. Keep them opt-in for speed-focused runs.
     export_final_preview_images: bool = False
     export_final_preview_max_pages: int = 5
-    siliconflow_api_key: str | None = None
-    siliconflow_base_url: str | None = "https://api.siliconflow.cn/v1"
-    siliconflow_model: str | None = "Pro/deepseek-ai/deepseek-ocr"
     # Per-page OCR timeout in seconds.  If a single page takes longer than
     # this the page is skipped with a warning instead of blocking the whole job.
     ocr_page_timeout_s: int = 300

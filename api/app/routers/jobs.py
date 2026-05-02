@@ -957,15 +957,12 @@ async def create_job(
         has_v2_key = (
             bool((api_key or "").strip())
             or bool((ocr_ai_api_key or "").strip())
-            or bool((getattr(settings, "siliconflow_api_key", "") or "").strip())
-            or bool((os.getenv("SILICONFLOW_API_KEY") or "").strip())
         )
         if not has_v2_key:
             raise AppException(
                 code=ErrorCode.VALIDATION_ERROR,
                 message=(
-                    "api_key or ocr_ai_api_key is required when parse_provider=v2 "
-                    "(or set SILICONFLOW_API_KEY env)"
+                    "api_key or ocr_ai_api_key is required when parse_provider=v2"
                 ),
             )
 
@@ -1282,15 +1279,12 @@ async def create_job_v2(
         has_v2_key = (
             bool((kwargs.get("api_key") or "").strip())
             or bool((kwargs.get("ocr_ai_api_key") or "").strip())
-            or bool((getattr(settings, "siliconflow_api_key", "") or "").strip())
-            or bool((os.getenv("SILICONFLOW_API_KEY") or "").strip())
         )
         if not has_v2_key:
             raise AppException(
                 code=ErrorCode.VALIDATION_ERROR,
                 message=(
-                    "api_key or ocr_ai_api_key is required when parse_provider=v2 "
-                    "(or set SILICONFLOW_API_KEY env)"
+                    "api_key or ocr_ai_api_key is required when parse_provider=v2"
                 ),
             )
 

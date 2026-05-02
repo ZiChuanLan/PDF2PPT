@@ -22,7 +22,6 @@ import { toast } from "sonner"
 // API key fields that should be masked
 const SENSITIVE_KEYS = new Set([
   "openai_api_key",
-  "siliconflow_api_key",
   "claude_api_key",
   "mineru_api_token",
   "ocr_baidu_api_key",
@@ -127,9 +126,6 @@ export default function SiteSettingsPage() {
     { key: "openai_api_key", label: "OpenAI API Key", placeholder: "sk-..." },
     { key: "openai_base_url", label: "OpenAI Base URL", placeholder: "https://api.openai.com/v1" },
     { key: "openai_model", label: "OpenAI Model", placeholder: "gpt-4o" },
-    { key: "siliconflow_api_key", label: "SiliconFlow API Key", placeholder: "sk-..." },
-    { key: "siliconflow_base_url", label: "SiliconFlow Base URL", placeholder: "https://api.siliconflow.cn/v1" },
-    { key: "siliconflow_model", label: "SiliconFlow Model", placeholder: "" },
     { key: "claude_api_key", label: "Claude API Key", placeholder: "sk-ant-..." },
     { key: "mineru_api_token", label: "MinerU Token", placeholder: "" },
   ]

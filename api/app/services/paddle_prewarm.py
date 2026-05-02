@@ -105,24 +105,18 @@ def resolve_paddle_doc_prewarm_config(
     ):
         return None
 
-    model = _clean_str(os.getenv("OCR_PADDLE_VL_PREWARM_MODEL")) or _clean_str(
-        os.getenv("SILICONFLOW_MODEL")
-    )
+    model = _clean_str(os.getenv("OCR_PADDLE_VL_PREWARM_MODEL"))
     if not model or not _is_paddleocr_vl_model(model):
         return None
 
-    api_key = _clean_str(os.getenv("OCR_PADDLE_VL_PREWARM_API_KEY")) or _clean_str(
-        os.getenv("SILICONFLOW_API_KEY")
-    )
+    api_key = _clean_str(os.getenv("OCR_PADDLE_VL_PREWARM_API_KEY"))
     if not api_key:
         return None
 
     provider = (
         _clean_str(os.getenv("OCR_PADDLE_VL_PREWARM_PROVIDER")) or "siliconflow"
     )
-    base_url = _clean_str(os.getenv("OCR_PADDLE_VL_PREWARM_BASE_URL")) or _clean_str(
-        os.getenv("SILICONFLOW_BASE_URL")
-    )
+    base_url = _clean_str(os.getenv("OCR_PADDLE_VL_PREWARM_BASE_URL"))
     max_side_px = _env_int_or_none("OCR_PADDLE_VL_PREWARM_MAX_SIDE_PX")
     if max_side_px is None:
         max_side_px = _env_int_or_none("OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX")

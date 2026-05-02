@@ -374,7 +374,6 @@ ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__f
 SENSITIVE_KEYS = {
     "jwt_secret",
     "linuxdo_client_secret",
-    "siliconflow_api_key",
     "api_bearer_token",
     "web_access_password",
 }
@@ -521,7 +520,7 @@ async def update_env_vars(
 
 # Keys that contain sensitive API keys
 SENSITIVE_SETTING_KEYS = {
-    "openai_api_key", "siliconflow_api_key", "claude_api_key",
+    "openai_api_key", "claude_api_key",
     "mineru_api_token", "ocr_baidu_api_key", "ocr_baidu_secret_key",
     "ocr_ai_api_key",
 }

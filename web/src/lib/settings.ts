@@ -1,4 +1,4 @@
-export type MainProvider = "openai" | "claude" | "siliconflow"
+export type MainProvider = "openai" | "claude"
 export type Provider = MainProvider | "mineru"
 export type ParseEngineMode = "local_ocr" | "remote_ocr" | "baidu_doc" | "mineru_cloud"
 export type BaiduDocParseType = "general" | "paddle_vl"
@@ -32,9 +32,6 @@ export type Settings = {
   openaiApiKey: string
   openaiBaseUrl: string
   openaiModel: string
-  siliconflowApiKey: string
-  siliconflowBaseUrl: string
-  siliconflowModel: string
   claudeApiKey: string
   mineruApiToken: string
   mineruBaseUrl: string
@@ -124,9 +121,6 @@ export const defaultSettings: Settings = {
   openaiApiKey: "",
   openaiBaseUrl: "",
   openaiModel: "",
-  siliconflowApiKey: "",
-  siliconflowBaseUrl: SILICONFLOW_BASE_URL,
-  siliconflowModel: "",
   claudeApiKey: "",
   mineruApiToken: "",
   mineruBaseUrl: "",
@@ -241,7 +235,7 @@ export function loadStoredSettings(): Settings {
   if (parsedProvider === "v2" || parsedParseProvider === "v2") {
     // Backward compatibility: legacy "v2 full-page OCR" maps to the normal
     // pipeline with `scannedPageMode=fullpage` + AIOCR settings.
-    merged.provider = "siliconflow"
+    merged.provider = "openai"
     merged.enableOcr = true
     merged.scannedPageMode = "fullpage"
     merged.ocrProvider = "aiocr"
@@ -259,24 +253,17 @@ export function loadStoredSettings(): Settings {
       .trim()
       .toLowerCase()
     if (legacyOpenaiBase.includes("api.siliconflow.cn")) {
-      merged.provider = "siliconflow"
-      merged.siliconflowApiKey = String(
-        (parsed as { openaiApiKey?: string } | null)?.openaiApiKey || merged.siliconflowApiKey
-      )
-      merged.siliconflowBaseUrl = String(
-        (parsed as { openaiBaseUrl?: string } | null)?.openaiBaseUrl || merged.siliconflowBaseUrl
-      )
-      merged.siliconflowModel = String(
-        (parsed as { openaiModel?: string } | null)?.openaiModel || merged.siliconflowModel
-      )
+      // Migrate legacy siliconflow-as-openai to generic openai provider
+      // (the siliconflow-specific fields have been removed)
+      merged.provider = "openai"
     }
   }
 
-  const validProviders: Provider[] = ["openai", "claude", "siliconflow", "mineru"]
+  const validProviders: Provider[] = ["openai", "claude", "mineru"]
   if (!validProviders.includes(merged.provider)) {
     merged.provider = "openai"
   }
-  const validMainProviders: MainProvider[] = ["openai", "claude", "siliconflow"]
+  const validMainProviders: MainProvider[] = ["openai", "claude"]
   if (!validMainProviders.includes(merged.preferredMainProvider)) {
     if (parsedPreferredMainProvider && validMainProviders.includes(parsedPreferredMainProvider as MainProvider)) {
       merged.preferredMainProvider = parsedPreferredMainProvider as MainProvider
@@ -284,17 +271,12 @@ export function loadStoredSettings(): Settings {
       merged.preferredMainProvider = merged.provider
     } else if (parsedProvider === "claude") {
       merged.preferredMainProvider = "claude"
-    } else if (parsedProvider === "siliconflow") {
-      merged.preferredMainProvider = "siliconflow"
     } else {
       merged.preferredMainProvider = "openai"
     }
   }
   if (merged.provider !== "mineru") {
     merged.preferredMainProvider = merged.provider
-  }
-  if (!merged.siliconflowBaseUrl.trim()) {
-    merged.siliconflowBaseUrl = SILICONFLOW_BASE_URL
   }
 
   const mineruModels: MineruModelVersion[] = ["pipeline", "vlm", "MinerU-HTML"]

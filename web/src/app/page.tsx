@@ -26,6 +26,7 @@ import {
   type Settings,
 } from "@/lib/settings"
 import {
+  buildJobConfig,
   createJobFormData,
   getRunParseEngineLabel,
   resolveRunConfig,
@@ -329,10 +330,13 @@ export default function Home() {
     setActiveJob(null)
 
     try {
-      const formData = createJobFormData(file, settingsSnapshot, pageStart, pageEnd, {
+      const jobConfig = buildJobConfig(settingsSnapshot, pageStart, pageEnd, {
         retainProcessArtifacts,
       })
-      const response = await apiFetch("/jobs", {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("config", JSON.stringify(jobConfig))
+      const response = await apiFetch("/jobs/v2", {
         method: "POST",
         body: formData,
       })
