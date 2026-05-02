@@ -30,6 +30,7 @@ except Exception:  # pragma: no cover - compatibility with older RQ builds
 from ..config import get_settings
 from ..dependencies import get_current_user_optional
 from ..job_options import validate_and_normalize_job_options
+from ..schemas.job_config import JobConfig
 from ..job_paths import (
     ensure_job_dir as ensure_job_dir_via_paths,
     get_job_dir as get_job_dir_via_paths,
@@ -1178,6 +1179,212 @@ async def create_job(
         raise
     except Exception as e:
         logger.exception(f"Failed to create job: {e}")
+        if job_created:
+            try:
+                redis_service.delete_job(job_id)
+            except Exception as cleanup_error:
+                logger.warning(
+                    "Failed to rollback job metadata for %s: %s",
+                    job_id,
+                    cleanup_error,
+                )
+        if job_dir is not None and job_dir.exists():
+            shutil.rmtree(job_dir)
+        raise AppException(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to create job",
+            details={"error": str(e)},
+            status_code=500,
+        )
+
+
+@router.post("/v2", response_model=JobCreateResponse)
+async def create_job_v2(
+    file: UploadFile = File(..., description="PDF or image file to convert"),
+    config: str = Form(..., description="JSON-encoded JobConfig"),
+    current_user=Depends(get_current_user_optional),
+):
+    """
+    Create a new PDF/image to PPT conversion job using structured JSON config.
+
+    This is the v2 endpoint that accepts a structured JobConfig body instead
+    of 60+ Form() parameters. The structured config is converted to the flat
+    kwargs format expected by the worker internally.
+
+    The old POST /api/v1/jobs endpoint with Form() params continues to work
+    for backward compatibility.
+    """
+    import json
+
+    settings = get_settings()
+    redis_service = get_redis_service()
+
+    # Parse JSON config string into JobConfig
+    try:
+        config_data = json.loads(config)
+        job_config = JobConfig.model_validate(config_data)
+    except json.JSONDecodeError as e:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"Invalid JSON in config: {e}",
+            status_code=400,
+        )
+    except Exception as e:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"Invalid JobConfig: {e}",
+            status_code=400,
+        )
+
+    # Convert structured config to flat kwargs for validation and worker
+    kwargs = job_config.to_worker_kwargs()
+
+    # Validate using existing validation logic
+    normalized_options = validate_and_normalize_job_options(
+        parse_provider=kwargs["parse_provider"],
+        mineru_api_token=kwargs["mineru_api_token"],
+        provider=kwargs["provider"],
+        api_key=kwargs["api_key"],
+        baidu_doc_parse_type=kwargs["baidu_doc_parse_type"],
+        ocr_provider=kwargs["ocr_provider"],
+        ocr_ai_provider=kwargs["ocr_ai_provider"],
+        ocr_ai_api_key=kwargs["ocr_ai_api_key"],
+        ocr_ai_model=kwargs["ocr_ai_model"],
+        ocr_ai_chain_mode=kwargs["ocr_ai_chain_mode"],
+        ocr_ai_layout_model=kwargs["ocr_ai_layout_model"],
+        ocr_baidu_app_id=kwargs["ocr_baidu_app_id"],
+        ocr_baidu_api_key=kwargs["ocr_baidu_api_key"],
+        ocr_baidu_secret_key=kwargs["ocr_baidu_secret_key"],
+        ocr_geometry_mode=kwargs["ocr_geometry_mode"],
+        text_erase_mode=kwargs["text_erase_mode"],
+        scanned_page_mode=kwargs["scanned_page_mode"],
+        ppt_generation_mode=kwargs["ppt_generation_mode"],
+        page_start=kwargs["page_start"],
+        page_end=kwargs["page_end"],
+    )
+
+    # Apply normalized values back to kwargs
+    kwargs["parse_provider"] = normalized_options.parse_provider
+    kwargs["provider"] = normalized_options.provider
+    kwargs["baidu_doc_parse_type"] = normalized_options.baidu_doc_parse_type
+    kwargs["ocr_provider"] = normalized_options.ocr_provider
+    kwargs["ocr_ai_provider"] = normalized_options.ocr_ai_provider
+    kwargs["ocr_ai_chain_mode"] = normalized_options.ocr_ai_chain_mode
+    kwargs["ocr_ai_layout_model"] = normalized_options.ocr_ai_layout_model
+    kwargs["ocr_geometry_mode"] = normalized_options.ocr_geometry_mode
+    kwargs["text_erase_mode"] = normalized_options.text_erase_mode
+    kwargs["scanned_page_mode"] = normalized_options.scanned_page_mode
+    kwargs["ppt_generation_mode"] = normalized_options.ppt_generation_mode
+
+    # v2 legacy compatibility check
+    parse_provider_id = normalized_options.parse_provider
+    if parse_provider_id == "v2":
+        has_v2_key = (
+            bool((kwargs.get("api_key") or "").strip())
+            or bool((kwargs.get("ocr_ai_api_key") or "").strip())
+            or bool((getattr(settings, "siliconflow_api_key", "") or "").strip())
+            or bool((os.getenv("SILICONFLOW_API_KEY") or "").strip())
+        )
+        if not has_v2_key:
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=(
+                    "api_key or ocr_ai_api_key is required when parse_provider=v2 "
+                    "(or set SILICONFLOW_API_KEY env)"
+                ),
+            )
+
+    # Generate job ID
+    job_id = str(uuid.uuid4())
+    job_dir: Path | None = None
+    job_created = False
+
+    try:
+        # Handle file upload
+        filename = file.filename or ""
+        normalized_content_type = _normalize_upload_content_type(file.content_type)
+        upload_kind = _classify_upload_kind(
+            filename=filename,
+            content_type=normalized_content_type,
+        )
+        if upload_kind is None:
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="Only PDF, PNG, JPG, JPEG, and WEBP files are supported",
+                details={
+                    "filename": file.filename,
+                    "content_type": normalized_content_type,
+                },
+            )
+
+        content = await file.read()
+        file_size_mb = len(content) / (1024 * 1024)
+        if file_size_mb > settings.max_file_mb:
+            raise AppException(
+                code=ErrorCode.FILE_TOO_LARGE,
+                message=f"File size exceeds {settings.max_file_mb}MB limit",
+                details={"size_mb": file_size_mb, "limit_mb": settings.max_file_mb},
+            )
+
+        # Create job directory and write input file
+        job_dir = ensure_job_dir(job_id)
+        input_path = job_dir / "input.pdf"
+        upload_kind = _write_upload_as_input_pdf(
+            filename=filename,
+            content_type=normalized_content_type,
+            content=content,
+            output_path=input_path,
+        )
+
+        # Create job in Redis
+        user_id = current_user.id if current_user else None
+        job = redis_service.create_job(job_id, user_id=user_id)
+        job_created = True
+
+        # Persist queued state
+        redis_service.update_job(
+            job_id,
+            status=JobStatus.pending,
+            stage=JobStage.queued,
+            message="Job queued for processing",
+        )
+
+        # Add job_timeout to kwargs
+        kwargs["job_timeout"] = "1h"
+
+        # Queue job for processing
+        if redis_service.is_memory_backend():
+            threading.Thread(
+                target=process_pdf_job,
+                kwargs={"job_id": job_id, **kwargs},
+                daemon=True,
+            ).start()
+        else:
+            redis_conn = get_redis_connection()
+            queue = Queue(connection=redis_conn)
+            queue.enqueue(
+                "app.worker.process_pdf_job",
+                job_id,
+                **kwargs,
+                job_id=job_id,
+                description=f"process_pdf_job(job_id={job_id})",
+            )
+
+        logger.info("Job %s created and queued via v2 endpoint", job_id)
+
+        return JobCreateResponse(
+            job_id=job.job_id,
+            status=job.status,
+            created_at=job.created_at,
+            expires_at=job.expires_at,
+        )
+
+    except AppException:
+        if not job_created and job_dir is not None and job_dir.exists():
+            shutil.rmtree(job_dir)
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to create job via v2 endpoint: {e}")
         if job_created:
             try:
                 redis_service.delete_job(job_id)
