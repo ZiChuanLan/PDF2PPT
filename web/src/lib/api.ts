@@ -248,8 +248,13 @@ function normalizeApiPath(path: string): string {
 }
 
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const base = await getResolvedApiBaseUrl()
-  return fetch(`${base}${normalizeApiPath(path)}`, init)
+  // Use same-origin proxy (/api/v1) to avoid cross-origin cookie issues.
+  // Next.js rewrites /api/* → internal API server.
+  // Cookies set for the frontend domain are automatically included.
+  return fetch(`/api/v1${normalizeApiPath(path)}`, {
+    ...init,
+    credentials: "same-origin",
+  })
 }
 
 type ApiErrorBody = {

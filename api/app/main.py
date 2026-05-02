@@ -16,7 +16,7 @@ from app.logging_config import (
     setup_logging,
 )
 from app.models.error import AppException, ErrorCode, ErrorResponse
-from app.routers import admin_router, auth_router, jobs_router, models_router
+from app.routers import admin_router, auth_router, config_router, jobs_router, models_router, setup_router
 from app.services.job_cleanup import start_job_cleanup_daemon
 from app.services.redis_service import get_redis_service
 
@@ -91,6 +91,8 @@ app.include_router(jobs_router)
 app.include_router(models_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(config_router)
+app.include_router(setup_router)
 
 
 @app.middleware("http")
@@ -101,7 +103,7 @@ async def request_id_middleware(request: Request, call_next):
 
     if request.url.path.startswith("/api/") and request.method.upper() != "OPTIONS":
         # Skip bearer token check for auth and admin routes (they use JWT cookies)
-        skip_bearer_paths = {"/api/v1/auth/", "/api/v1/admin/"}
+        skip_bearer_paths = {"/api/v1/auth/", "/api/v1/admin/", "/api/v1/setup/"}
         path = request.url.path
         needs_bearer = not any(path.startswith(p) for p in skip_bearer_paths)
 

@@ -35,6 +35,13 @@ Thumbs.db
 
 # Trellis & OpenCode
 .opencode/
+.trellis/
+
+# Browser testing
+.playwright-mcp/
+
+# Local screenshots
+pictures/
 
 # Data & fixtures (large files)
 data/

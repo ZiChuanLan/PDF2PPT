@@ -1,7 +1,7 @@
 # PDF2PPT
 
 <p align="center">
-  <img src="https://i.postimg.cc/44W75HTp/shou-ye.png" alt="PDF2PPT 首页" width="100%" />
+  <img src="./assets/branding/banner.svg" alt="PDF2PPT banner" width="100%" />
 </p>
 
 > 将扫描版 PDF、课件截图和图片型文档转换为尽量高保真、尽量可编辑的 PPTX。
@@ -17,10 +17,29 @@
 
 [中文](./README.md) | [English](./README_EN.md)
 
-[文档站](https://zichuanlan.github.io/PDF2PPT/) · [快速开始](#快速开始) · [部署选项](#部署选项) · [License](#license)
+[在线文档](https://zichuanlan.github.io/PDF2PPT/) · [在线体验](#在线体验) · [快速开始](#快速开始) · [部署选项](#部署选项) · [License](#license)
 
 `PDF2PPT` 是一个面向实际使用和部署的开源服务。  
 它不是简单地把 PDF 每页导成一张图，而是尽量把页面重建为可编辑文本、独立图片区域和清理后的页面底图，再导出为 PowerPoint。
+
+## 在线体验
+
+| 项目 | 地址 / 信息 |
+| --- | --- |
+| 演示站点 | <https://ppt.015201314.xyz/> |
+| 访问密码 | `lanPDF2PPT2026!` |
+
+## 介绍
+
+处理扫描版 PDF、课件截图和图片型文档时，常见做法往往只是整页截图导出，后续几乎无法编辑。  
+`PDF2PPT` 的目标不是“把 PDF 贴进 PPT”，而是尽量把页面重建为可编辑文本、独立图片区域和页面底图，在保留原稿观感的同时提高后续编辑能力。
+
+| 典型问题 | PDF2PPT 的处理方式 |
+| --- | --- |
+| 每页只能导成一张大图 | 尽量拆出文本层、图片块和页面底图 |
+| OCR 只是附加能力 | OCR 与页面重建是核心链路 |
+| 只能本地试一下 | 支持 Web、API、Worker 和标准部署 |
+| 路线单一，难以调优 | 可切换本地 OCR、远程 OCR 与文档解析链路 |
 
 ## 为什么用它
 
@@ -43,10 +62,13 @@
 
 ## 界面预览
 
-<p align="center">
-  <img src="https://i.postimg.cc/CMcBNnVq/she-zhi-aiocr.png" alt="PDF2PPT AI OCR 设置页" width="49%" />
-  <img src="https://i.postimg.cc/pVshZ5t5/gen-zong-ye-mian.png" alt="PDF2PPT 跟踪页面" width="49%" />
-</p>
+| 跟踪页面 | 任务记录 |
+| --- | --- |
+| ![PDF2PPT 跟踪页面](https://i.postimg.cc/pVshZ5t5/gen-zong-ye-mian.png) | ![PDF2PPT 任务记录](https://i.postimg.cc/3rt4B0Hy/ren-wu-ji-lu.png) |
+
+| AIOCR 设置 | 云端 MinerU 设置 |
+| --- | --- |
+| ![PDF2PPT AIOCR 设置](https://i.postimg.cc/CMcBNnVq/she-zhi-aiocr.png) | ![PDF2PPT 云端 MinerU 设置](https://i.postimg.cc/gcgXDLPR/she-zhi-yun-duanmineru.png) |
 
 ## 快速开始
 
@@ -92,6 +114,18 @@ docker compose -f docker-compose.hosted.yml up -d --build
 - 最低成本验证：`REDIS_URL=memory://`
 - 接入托管 Redis：`REDIS_URL=<your-redis-url>` 且 `EMBEDDED_WORKER_CONCURRENCY=1`
 
+## 部署模式
+
+首次访问时会进入初始化向导，选择部署模式并创建管理员账号。
+
+| 模式 | 适合场景 | 登录方式 | API 密钥管理 |
+| --- | --- | --- | --- |
+| 自用模式 | 个人使用 | 自动登录（退出后需手动登录） | 用户自行配置 |
+| 公开模式 | 团队/公开部署 | 用户名密码登录 | 管理员统一配置 |
+
+- **自用模式**：首次访问自动登录，无需注册。退出后需输入密码重新登录。
+- **公开模式**：支持多用户注册（可关闭）、邀请码、配额管理。管理员在站点配置中统一管理 API 密钥。
+
 ## 基本使用流程
 
 1. 上传 PDF
@@ -115,6 +149,8 @@ docker compose -f docker-compose.hosted.yml up -d --build
 更详细的架构、OCR 链路、MCP 集成、部署细节和 FAQ 已迁移到文档站：
 
 - [文档站首页](https://zichuanlan.github.io/PDF2PPT/)
+- [功能详解](https://zichuanlan.github.io/PDF2PPT/guide/feature-tour)
+- [设置与高级设置](https://zichuanlan.github.io/PDF2PPT/guide/settings-reference)
 - [部署指南](https://zichuanlan.github.io/PDF2PPT/guide/deployment)
 - [MCP 集成](https://zichuanlan.github.io/PDF2PPT/guide/mcp-integration)
 - [FAQ 与排障](https://zichuanlan.github.io/PDF2PPT/guide/faq)

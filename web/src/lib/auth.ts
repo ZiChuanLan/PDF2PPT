@@ -9,7 +9,7 @@ export type UserRole = "user" | "admin"
 
 export type User = {
   id: number
-  linuxdo_id: number
+  linuxdo_id: number | null
   username: string
   name: string | null
   avatar_url: string | null
@@ -59,7 +59,7 @@ export function normalizeUser(raw: unknown): User | null {
   const linuxdoId = typeof data.linuxdo_id === "number" ? data.linuxdo_id : null
   const username = typeof data.username === "string" ? data.username : ""
 
-  if (id === null || linuxdoId === null || !username) return null
+  if (id === null || !username) return null
 
   return {
     id,

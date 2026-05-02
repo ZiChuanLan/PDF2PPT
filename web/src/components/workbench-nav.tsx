@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutDashboardIcon, ListChecksIcon, Settings2Icon } from "lucide-react"
@@ -7,6 +8,7 @@ import { LayoutDashboardIcon, ListChecksIcon, Settings2Icon } from "lucide-react
 import { Badge } from "@/components/ui/badge"
 import { UserMenu } from "@/components/user-menu"
 import { useAuth } from "@/components/auth-provider"
+import { apiFetch } from "@/lib/api"
 import { isAdmin } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
@@ -39,6 +41,21 @@ function matchesRoute(pathname: string, href: string) {
 export function WorkbenchNav() {
   const pathname = usePathname()
   const { user } = useAuth()
+  const [deployMode, setDeployMode] = React.useState<string>("self")
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiFetch("/config/deploy-mode")
+        if (res.ok) {
+          const data = await res.json().catch(() => null)
+          if (data?.mode) setDeployMode(data.mode)
+        }
+      } catch {
+        // Ignore - default to self
+      }
+    })()
+  }, [])
 
   if (!pathname) return null
 
@@ -57,7 +74,7 @@ export function WorkbenchNav() {
               PDF 编排台
             </div>
             <Badge variant="outline" className="font-sans text-[11px] uppercase tracking-[0.12em]">
-              Unified Workbench
+              {deployMode === "public" ? "公开模式" : "自用模式"}
             </Badge>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -98,6 +115,20 @@ export function WorkbenchNav() {
                     : "nav-highlight-inactive border-border/70 bg-background text-muted-foreground hover:text-foreground"
                 )}
                 aria-current={matchesRoute(pathname, "/admin") ? "page" : undefined}
+              >
+                <Settings2Icon className="size-4" />
+                <span>管理</span>
+              </Link>
+            ) : user && deployMode === "public" ? (
+              <Link
+                href="/manage"
+                className={cn(
+                  "nav-highlight flex items-center gap-2 border px-3 py-2 font-sans text-sm",
+                  matchesRoute(pathname, "/manage")
+                    ? "nav-highlight-active border-border bg-secondary text-foreground"
+                    : "nav-highlight-inactive border-border/70 bg-background text-muted-foreground hover:text-foreground"
+                )}
+                aria-current={matchesRoute(pathname, "/manage") ? "page" : undefined}
               >
                 <Settings2Icon className="size-4" />
                 <span>管理</span>

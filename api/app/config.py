@@ -73,15 +73,42 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     # SQLite database path (relative to api/ directory)
     sqlite_path: str = "data/pdf2ppt.db"
+    # Comma-separated LinuxDo usernames that should be auto-promoted to admin
+    admin_usernames: str = ""
+    # Deploy mode: "self" (self-use, localStorage) or "public" (multi-user, DB settings)
+    deploy_mode: str = "self"
+    # Default admin password for self-use mode auto-login
+    admin_default_password: str = "admin12345678"
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+def get_deploy_mode(db=None) -> str:
+    """Get deploy mode, checking DB (site_settings) first, then falling back to env.
+
+    Args:
+        db: SQLAlchemy session. If None, falls back to env var directly.
+
+    Returns:
+        "self" or "public"
+    """
+    if db is not None:
+        try:
+            from app.models.user import SiteSettingsORM
+            row = db.query(SiteSettingsORM).filter(SiteSettingsORM.key == "deploy_mode").first()
+            if row and row.value in ("self", "public"):
+                return row.value
+        except Exception:
+            pass
+    return get_settings().deploy_mode
 
 
 def parse_cors_allow_origins(raw: str | None) -> list[str]:

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ChevronDownIcon, LogOutIcon, ShieldIcon, UserIcon } from "lucide-react"
 
 import { useAuth } from "@/components/auth-provider"
+import { apiFetch } from "@/lib/api"
 import { getAvatarUrl, isAdmin } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -12,7 +13,22 @@ import { Button } from "@/components/ui/button"
 export function UserMenu() {
   const { user, isLoading, logout } = useAuth()
   const [isOpen, setIsOpen] = React.useState(false)
+  const [deployMode, setDeployMode] = React.useState<string>("self")
   const menuRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiFetch("/config/deploy-mode")
+        if (res.ok) {
+          const data = await res.json().catch(() => null)
+          if (data?.mode) setDeployMode(data.mode)
+        }
+      } catch {
+        // Ignore - default to self
+      }
+    })()
+  }, [])
 
   // Close menu when clicking outside
   React.useEffect(() => {
@@ -120,6 +136,15 @@ export function UserMenu() {
               >
                 <ShieldIcon className="size-4 text-muted-foreground" />
                 管理后台
+              </Link>
+            ) : deployMode === "public" ? (
+              <Link
+                href="/manage"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-muted/50"
+              >
+                <UserIcon className="size-4 text-muted-foreground" />
+                账号管理
               </Link>
             ) : null}
 

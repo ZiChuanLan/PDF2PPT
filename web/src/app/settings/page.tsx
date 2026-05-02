@@ -13,6 +13,9 @@ import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card"
 import { HoverHint } from "@/components/ui/hover-hint"
 import { Input } from "@/components/ui/input"
@@ -47,6 +50,7 @@ import {
   resolveApiOrigin,
   setStoredApiOrigin,
 } from "@/lib/api"
+import { useSettings, SENSITIVE_KEYS } from "@/hooks/use-settings"
 
 type SettingsSectionId = "api" | "strategy" | "ocr"
 
@@ -234,9 +238,15 @@ type AiOcrCheckResponse = {
 }
 
 export default function SettingsPage() {
-  const [settings, setSettings] = React.useState<Settings>(defaultSettings)
-  const [settingsHydrated, setSettingsHydrated] = React.useState(false)
-  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null)
+  const {
+    settings,
+    setSettings,
+    settingsHydrated,
+    isPublicMode,
+    lastSavedAt,
+    save: saveSettings,
+    clear: clearSettings,
+  } = useSettings()
   const [showAdvanced, setShowAdvanced] = React.useState(false)
   const [showOcrPromptExperiment, setShowOcrPromptExperiment] = React.useState(false)
   const [showOcrModelSuggestions, setShowOcrModelSuggestions] = React.useState(false)
@@ -256,7 +266,6 @@ export default function SettingsPage() {
   const [aiOcrChecking, setAiOcrChecking] = React.useState(false)
   const [aiOcrCheck, setAiOcrCheck] = React.useState<AiOcrCheckResponse | null>(null)
   const [aiOcrCheckError, setAiOcrCheckError] = React.useState<string | null>(null)
-  const skipNextAutoSaveRef = React.useRef(false)
   const ocrModelPickerRef = React.useRef<HTMLDivElement | null>(null)
   const ocrModelSuggestionPanelRef = React.useRef<HTMLDivElement | null>(null)
   const [ocrModelSuggestionStyle, setOcrModelSuggestionStyle] =
@@ -265,11 +274,9 @@ export default function SettingsPage() {
     React.useState<"up" | "down">("down")
 
   React.useEffect(() => {
-    setSettings(loadStoredSettings())
     const storedOrigin = getStoredApiOrigin() || ""
     setApiOriginInput(storedOrigin)
     setApiOriginOverrideEnabled(Boolean(storedOrigin))
-    setSettingsHydrated(true)
   }, [])
 
   React.useEffect(() => {
@@ -717,26 +724,10 @@ export default function SettingsPage() {
     isOcrEnabledForCurrentEngine,
   ])
 
-  React.useEffect(() => {
-    if (!settingsHydrated) return
-    if (skipNextAutoSaveRef.current) {
-      skipNextAutoSaveRef.current = false
-      return
-    }
-    const timer = window.setTimeout(() => {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
-      setLastSavedAt(Date.now())
-    }, 350)
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [settings, settingsHydrated])
-
   const onSave = React.useCallback(() => {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
-    setLastSavedAt(Date.now())
+    saveSettings()
     toast.success("设置已保存")
-  }, [settings])
+  }, [saveSettings])
 
   const onResetScannedImageTuning = React.useCallback(() => {
     setSettings((s) => ({
@@ -752,16 +743,13 @@ export default function SettingsPage() {
   }, [])
 
   const onClear = React.useCallback(() => {
-    localStorage.removeItem(SETTINGS_STORAGE_KEY)
-    skipNextAutoSaveRef.current = true
-    setSettings(defaultSettings)
-    setLastSavedAt(null)
+    clearSettings()
     setLocalOcrSuite(null)
     setLocalOcrSuiteError(null)
     setAiOcrCheck(null)
     setAiOcrCheckError(null)
     toast("已清空本地设置")
-  }, [])
+  }, [clearSettings])
 
   const onSaveApiOrigin = React.useCallback(async () => {
     setApiOriginError(null)
@@ -1245,7 +1233,11 @@ export default function SettingsPage() {
                         setSettings((s) => ({ ...s, mineruApiToken: e.target.value }))
                       }
                       placeholder="官网申请 Token"
+                      disabled={isPublicMode}
                     />
+                    {isPublicMode ? (
+                      <div className="text-xs text-muted-foreground">由管理员统一配置</div>
+                    ) : null}
                   </div>
 
                   <div className="grid gap-2">
@@ -1769,7 +1761,11 @@ export default function SettingsPage() {
                         }))
                       }
                       placeholder="sk-..."
+                      disabled={isPublicMode}
                     />
+                    {isPublicMode ? (
+                      <div className="text-xs text-muted-foreground">由管理员统一配置</div>
+                    ) : null}
                   </div>
 
                   <div className="flex flex-wrap gap-2 text-xs">
@@ -2328,7 +2324,11 @@ export default function SettingsPage() {
                         }))
                       }
                       placeholder="..."
+                      disabled={isPublicMode}
                     />
+                    {isPublicMode ? (
+                      <div className="text-xs text-muted-foreground">由管理员统一配置</div>
+                    ) : null}
                   </div>
                   <div className="grid gap-2">
                     <FieldLabel htmlFor="ocr-baidu-secret-key">
@@ -2346,7 +2346,11 @@ export default function SettingsPage() {
                         }))
                       }
                       placeholder="..."
+                      disabled={isPublicMode}
                     />
+                    {isPublicMode ? (
+                      <div className="text-xs text-muted-foreground">由管理员统一配置</div>
+                    ) : null}
                   </div>
                   <AdvancedReveal show={showAdvanced}>
                     <div className="grid gap-2">
@@ -2534,6 +2538,7 @@ export default function SettingsPage() {
 
             </Card>
           </div>
+
         </div>
       </div>
     </div>

@@ -23,10 +23,14 @@ export function AuthProvider({
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
 
-  const fetchUser = React.useCallback(async () => {
+  const fetchUser = React.useCallback(async (retries = 2) => {
     try {
       const response = await apiFetch("/auth/me")
       if (!response.ok) {
+        if (response.status === 401 && retries > 0) {
+          await new Promise((r) => setTimeout(r, 500))
+          return fetchUser(retries - 1)
+        }
         if (response.status === 401) {
           setUser(null)
           setError(null)
@@ -53,7 +57,9 @@ export function AuthProvider({
     } catch {
       // Ignore logout errors
     }
+    localStorage.setItem("userLoggedOut", "true")
     setUser(null)
+    window.location.href = "/login"
   }, [])
 
   React.useEffect(() => {

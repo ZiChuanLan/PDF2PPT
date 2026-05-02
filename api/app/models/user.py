@@ -29,10 +29,11 @@ class UserORM(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    linuxdo_id = Column(Integer, unique=True, nullable=False, index=True)
-    username = Column(String(255), nullable=False)
+    linuxdo_id = Column(Integer, unique=True, nullable=True, index=True)
+    username = Column(String(255), nullable=False, unique=True)
     name = Column(String(255), nullable=True, default="")
     avatar_url = Column(String(1024), nullable=True)
+    password_hash = Column(String(255), nullable=True)
     role = Column(String(20), nullable=False, default=UserRole.user.value)
     trust_level = Column(Integer, nullable=False, default=0)
     active = Column(Boolean, nullable=False, default=True)
@@ -67,7 +68,7 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    linuxdo_id: int
+    linuxdo_id: Optional[int] = None
     username: str
     name: Optional[str] = ""
     avatar_url: Optional[str] = None
@@ -113,6 +114,7 @@ class AuthCallbackRequest(BaseModel):
 
     code: str
     state: str
+    origin: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
@@ -128,3 +130,144 @@ class RefreshTokenRequest(BaseModel):
     """Refresh token request model."""
 
     refresh_token: str
+
+
+# Invite code models
+
+
+class InviteCodeORM(Base):
+    """Invite code database model."""
+
+    __tablename__ = "invite_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(64), unique=True, nullable=False, index=True)
+    created_by = Column(Integer, nullable=False)  # admin user id
+    used_by = Column(Integer, nullable=True)  # user id who used it
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<InviteCode(id={self.id}, code={self.code!r})>"
+
+
+class InviteCodeResponse(BaseModel):
+    """Invite code response model."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    created_by: int
+    used_by: Optional[int] = None
+    expires_at: datetime
+    used_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class InviteCodeListResponse(BaseModel):
+    """Invite code list response model."""
+
+    invites: list[InviteCodeResponse]
+    total: int
+
+
+class RegisterRequest(BaseModel):
+    """Register request model."""
+
+    invite_code: str
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8, max_length=100)
+
+
+class LoginPasswordRequest(BaseModel):
+    """Password login request model."""
+
+    username: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change password request model."""
+
+    old_password: str
+    new_password: str
+
+
+# Site settings models (public mode)
+
+
+class SiteSettingsORM(Base):
+    """Global site settings (admin-configured, key-value store)."""
+
+    __tablename__ = "site_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(255), nullable=False, unique=True, index=True)
+    value = Column(String(4096), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<SiteSettings(key={self.key!r})>"
+
+
+class UserPreferencesORM(Base):
+    """Per-user preferences (non-sensitive settings)."""
+
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    key = Column(String(255), nullable=False)
+    value = Column(String(4096), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        {"extend_existing": True},
+    )
+
+    def __repr__(self) -> str:
+        return f"<UserPreferences(user_id={self.user_id}, key={self.key!r})>"
+
+
+class SiteSettingsResponse(BaseModel):
+    """Site settings response model."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str
+    value: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class SiteSettingsUpdateRequest(BaseModel):
+    """Site settings update request."""
+
+    settings: dict[str, Optional[str]]
+
+
+class UserPreferencesResponse(BaseModel):
+    """User preferences response model."""
+
+    preferences: dict[str, Optional[str]]
+
+
+class UserPreferencesUpdateRequest(BaseModel):
+    """User preferences update request."""
+
+    preferences: dict[str, Optional[str]]

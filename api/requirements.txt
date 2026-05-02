@@ -26,3 +26,4 @@ httpx==0.27.2
 # Auth / OAuth
 sqlalchemy==2.0.35
 python-jose[cryptography]==3.3.0
+bcrypt==4.2.0
