@@ -172,9 +172,8 @@ const baiduDocParseTypeOptions: Array<{ id: BaiduDocParseType; label: string }> 
 const ocrProviderLabels: Record<Settings["ocrProvider"], string> = {
   auto: "自动（混合）",
   aiocr: "AIOCR",
-  paddle_local: "本地 OCR（PaddleOCR）",
+  machine: "本地 OCR",
   baidu: "百度 OCR",
-  tesseract: "本地 OCR（Tesseract）",
 }
 
 type LocalOcrCheckResult = {

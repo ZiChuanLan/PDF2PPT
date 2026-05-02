@@ -79,8 +79,7 @@ const ocrProviderLabels: Record<Settings["ocrProvider"], string> = {
   auto: "自动",
   aiocr: "AIOCR",
   baidu: "百度 OCR",
-  tesseract: "本地 OCR（Tesseract）",
-  paddle_local: "本地 OCR（PaddleOCR）",
+  machine: "本地 OCR",
 }
 
 const HOME_ACTIVE_JOB_STORAGE_KEY = "ppt-opencode:home:active-job-id"

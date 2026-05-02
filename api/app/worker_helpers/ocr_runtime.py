@@ -182,7 +182,7 @@ def setup_ocr_runtime(
     # High recall helps text erase completeness; noise can be cleaned
     # downstream. Keep conservative auto-overrides in machine/hybrid
     # modes so users don't accidentally run with eng-only + high conf.
-    if effective_ocr_provider in {"auto", "tesseract", "local"} and not strict_ocr_mode:
+    if effective_ocr_provider in {"auto", "machine", "tesseract", "local"} and not strict_ocr_mode:
         if effective_tesseract_language.strip().lower() == "eng":
             effective_tesseract_language = "chi_sim+eng"
         if effective_tesseract_min_conf is None:

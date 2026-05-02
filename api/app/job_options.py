@@ -7,7 +7,7 @@ from .utils.text import clean_str
 
 
 VALID_PARSE_PROVIDERS = {"local", "mineru", "baidu_doc", "v2"}
-VALID_OCR_PROVIDERS = {"auto", "aiocr", "baidu", "tesseract", "paddle", "paddle_local"}
+VALID_OCR_PROVIDERS = {"auto", "aiocr", "baidu", "machine", "tesseract", "paddle", "paddle_local"}
 VALID_LAYOUT_PROVIDERS = {"openai", "claude"}
 VALID_BAIDU_DOC_PARSE_TYPES = {"general", "paddle_vl"}
 VALID_OCR_AI_PROVIDERS = {
@@ -126,7 +126,13 @@ def normalize_requested_ocr_provider(value: str | None) -> str:
     if provider_id in {"remote", "ai"}:
         return "aiocr"
     if provider_id in {"paddle-local", "local_paddle"}:
-        return "paddle_local"
+        return "machine"
+    # Backward compat: tesseract/paddle_local → machine
+    if provider_id in {"tesseract", "paddle_local"}:
+        return "machine"
+    # Backward compat: paddle → aiocr (same code path as aiocr+doc_parser)
+    if provider_id == "paddle":
+        return "aiocr"
     return provider_id
 
 

@@ -6,8 +6,7 @@ export type OcrProvider =
   | "auto"
   | "aiocr"
   | "baidu"
-  | "tesseract"
-  | "paddle_local"
+  | "machine"
 export type OcrAiProvider = "auto" | "openai" | "siliconflow" | "deepseek" | "ppio" | "novita"
 export type OcrAiChainMode = "direct" | "doc_parser" | "layout_block"
 export type OcrAiLayoutModel = "pp_doclayout_v3"
@@ -161,7 +160,7 @@ export const defaultSettings: Settings = {
   // by surfacing provider/setup failures instead of silently downgrading.
   ocrStrictMode: true,
   // Local mode now defaults to pure local OCR (no auto fallback).
-  ocrProvider: "tesseract",
+  ocrProvider: "machine",
   baiduDocParseType: "paddle_vl",
   ocrBaiduAppId: "",
   ocrBaiduApiKey: "",
@@ -290,20 +289,23 @@ export function loadStoredSettings(): Settings {
     merged.ocrProvider = "aiocr"
   }
   if (legacyProvider === "paddle-local" || legacyProvider === "local_paddle") {
-    merged.ocrProvider = "paddle_local"
+    merged.ocrProvider = "machine"
+  }
+  // Migrate old tesseract/paddle_local → machine
+  if (legacyProvider === "tesseract" || legacyProvider === "paddle_local") {
+    merged.ocrProvider = "machine"
   }
   const validOcrProviders: OcrProvider[] = [
     "auto",
     "aiocr",
     "baidu",
-    "tesseract",
-    "paddle_local",
+    "machine",
   ]
   if (!validOcrProviders.includes(merged.ocrProvider)) {
-    merged.ocrProvider = merged.provider === "mineru" ? "auto" : "tesseract"
+    merged.ocrProvider = merged.provider === "mineru" ? "auto" : "machine"
   }
   if (merged.provider !== "mineru" && merged.ocrProvider === "auto") {
-    merged.ocrProvider = "tesseract"
+    merged.ocrProvider = "machine"
   }
   const validParseEngineModes: ParseEngineMode[] = [
     "local_ocr",
@@ -333,7 +335,7 @@ export function loadStoredSettings(): Settings {
     merged.provider = merged.preferredMainProvider
   }
   if (merged.parseEngineMode === "local_ocr" && merged.ocrProvider === "baidu") {
-    merged.ocrProvider = "tesseract"
+    merged.ocrProvider = "machine"
   }
   const validBaiduDocParseTypes: BaiduDocParseType[] = ["general", "paddle_vl"]
   if (typeof parsedBaiduDocParseType === "string") {

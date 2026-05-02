@@ -38,12 +38,20 @@ from .utils import _coerce_bbox_xyxy
 from .vendors import (
     AiOcrVendorAdapter,
     AiOcrVendorProfile,
-    DeepSeekAiOcrAdapter,
-    NovitaAiOcrAdapter,
     OpenAiAiOcrAdapter,
-    PpioAiOcrAdapter,
-    SiliconFlowAiOcrAdapter,
+    VendorConfig,
+    VendorTuningConfig,
+    VENDOR_DEFAULTS,
+    get_vendor_config,
+    get_vendor_tuning,
 )
+
+# Backward compat aliases — these classes were removed but some external code
+# may still import them.  They all resolve to the base AiOcrVendorAdapter.
+SiliconFlowAiOcrAdapter = AiOcrVendorAdapter
+PpioAiOcrAdapter = AiOcrVendorAdapter
+NovitaAiOcrAdapter = AiOcrVendorAdapter
+DeepSeekAiOcrAdapter = AiOcrVendorAdapter
 
 __all__ = [
     "AiOcrClient",
@@ -67,6 +75,9 @@ __all__ = [
     "ROUTE_KIND_UNKNOWN",
     "SiliconFlowAiOcrAdapter",
     "TesseractOcrClient",
+    "VendorConfig",
+    "VendorTuningConfig",
+    "VENDOR_DEFAULTS",
     "_coerce_bbox_xyxy",
     "_dedupe_overlapping_ocr_items",
     "_extract_deepseek_tagged_items",
@@ -74,6 +85,8 @@ __all__ = [
     "build_ocr_route_plan",
     "create_remote_ocr_client",
     "create_ocr_manager",
+    "get_vendor_config",
+    "get_vendor_tuning",
     "normalize_ocr_route_kind",
     "ocr_image_to_elements",
     "probe_local_paddle_models",

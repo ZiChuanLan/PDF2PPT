@@ -179,7 +179,7 @@ class OcrConfig(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    provider: Literal["auto", "aiocr", "baidu", "tesseract", "paddle", "paddle_local"] = (
+    provider: Literal["auto", "aiocr", "baidu", "machine", "tesseract", "paddle", "paddle_local"] = (
         Field("auto", description="OCR provider selection")
     )
     ai: OcrAiConfig = Field(

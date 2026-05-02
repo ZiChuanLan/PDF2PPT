@@ -78,20 +78,14 @@ from .utils import (
     _looks_like_structural_gibberish,
 )
 from .vendors import (
-    _VENDOR_TUNING,
     VendorTuningConfig,
     _create_ai_ocr_vendor_adapter,
     _normalize_ai_ocr_model_name,
     _should_send_image_first_for_ai_ocr,
+    get_vendor_tuning,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _get_vendor_tuning(provider_id: str | None) -> VendorTuningConfig:
-    """Look up vendor-specific tuning config, falling back to defaults."""
-    normalized = (str(provider_id or "").strip().lower())
-    return _VENDOR_TUNING.get(normalized, VendorTuningConfig())
 
 
 _SPECIAL_OCR_TOKEN_PATTERN = re.compile(
@@ -1417,7 +1411,7 @@ class AiOcrClient(OcrProvider):
             if parsed_max_concurrency > 0:
                 kwargs["vl_rec_max_concurrency"] = parsed_max_concurrency
         elif "paddleocr-vl-1.5" in lowered_model:
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             kwargs["vl_rec_max_concurrency"] = tuning.vl_rec_max_concurrency
 
         raw_use_queues = _clean_str(os.getenv("OCR_PADDLE_VL_DOCPARSER_USE_QUEUES"))
@@ -1427,7 +1421,7 @@ class AiOcrClient(OcrProvider):
                 default=True,
             )
         elif "paddleocr-vl-1.5" in lowered_model:
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             kwargs["use_queues"] = tuning.use_queues
         return kwargs
 
@@ -1438,7 +1432,7 @@ class AiOcrClient(OcrProvider):
         )
         lowered_model = str(self.model or "").strip().lower()
         if "paddleocr-vl-1.5" in lowered_model:
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             v15_default = max(default_timeout, tuning.predict_timeout_override or 180.0)
             return max(
                 10.0,
@@ -1453,7 +1447,7 @@ class AiOcrClient(OcrProvider):
         default_retry_timeout_s = min(90.0, predict_timeout_s)
         lowered_model = str(self.model or "").strip().lower()
         if "paddleocr-vl-1.5" in lowered_model:
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             retry_default = tuning.retry_timeout_override
             if retry_default is not None:
                 return max(
@@ -1484,7 +1478,7 @@ class AiOcrClient(OcrProvider):
                     "OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT",
                     default=False,
                 )
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             return tuning.retry_on_timeout
         return _env_flag("OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT", default=True)
 
@@ -1496,14 +1490,14 @@ class AiOcrClient(OcrProvider):
                     "OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT",
                     default=True,
                 )
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             return tuning.singleflight
         return _env_flag("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT", default=False)
 
     def _resolve_paddle_doc_singleflight_wait_s(self) -> float:
         # Vendor-specific wait time: some providers need longer singleflight
         # locks due to sequential page processing characteristics.
-        tuning = _get_vendor_tuning(self.provider_id)
+        tuning = get_vendor_tuning(self.provider_id)
         default_wait_s = (
             tuning.singleflight_wait_s
             if self._is_vendor_paddle_doc_v15()
@@ -2558,7 +2552,7 @@ class AiOcrClient(OcrProvider):
         provider_id = str(self.provider_id or "").strip().lower()
         lowered_model = str(effective_model or "").strip().lower()
         if "qwen3-vl" in lowered_model:
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             if tuning.layout_block_max_concurrency is not None:
                 return tuning.layout_block_max_concurrency
         return 4
@@ -3658,7 +3652,7 @@ class AiOcrClient(OcrProvider):
             )
 
         if "deepseek-ocr" in lowered or "deepseekocr" in lowered:
-            tuning = _get_vendor_tuning(self.provider_id)
+            tuning = get_vendor_tuning(self.provider_id)
             if tuning.predict_timeout_override is not None:
                 vendor_default = max(default_timeout, tuning.predict_timeout_override)
                 return max(

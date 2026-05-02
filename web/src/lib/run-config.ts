@@ -87,9 +87,8 @@ export type OcrSettingsState = {
 export const OCR_PROVIDER_LABELS: Record<OcrProvider, string> = {
   auto: "自动（混合）",
   aiocr: "AIOCR",
-  paddle_local: "本地 OCR（PaddleOCR）",
+  machine: "本地 OCR",
   baidu: "百度 OCR",
-  tesseract: "本地 OCR（Tesseract）",
 }
 
 const OCR_CONFIG_SOURCE_LABELS: Record<OcrConfigSource, string> = {
@@ -106,7 +105,7 @@ export const PARSE_ENGINE_OPTIONS: Array<{ id: ParseEngineMode; label: string }>
   { id: "mineru_cloud", label: PARSE_ENGINE_MODE_LABELS.mineru_cloud },
 ]
 
-export const LOCAL_PARSE_OCR_PROVIDERS: OcrProvider[] = ["tesseract", "paddle_local"]
+export const LOCAL_PARSE_OCR_PROVIDERS: OcrProvider[] = ["machine"]
 
 export const REMOTE_PARSE_OCR_PROVIDERS: OcrProvider[] = ["aiocr"]
 export const BAIDU_DOC_PARSE_OCR_PROVIDERS: OcrProvider[] = []
@@ -166,10 +165,14 @@ function getResolvedMainProvider(settings: Settings): MainProvider {
 
 function getPreferredLocalOcrProvider(settings: Settings): OcrProvider {
   const rawProvider = (settings.ocrProvider || "").trim().toLowerCase()
-  if (rawProvider === "tesseract" || rawProvider === "paddle_local") {
+  if (rawProvider === "machine") {
     return rawProvider
   }
-  return "tesseract"
+  // Backward compat: old tesseract/paddle_local → machine
+  if (rawProvider === "tesseract" || rawProvider === "paddle_local") {
+    return "machine"
+  }
+  return "machine"
 }
 
 function resolveParseEngineMode(settings: Settings): ParseEngineMode {
@@ -410,18 +413,18 @@ export function resolveOcrSettingsState(settings: Settings): OcrSettingsState {
     Boolean(settings.ocrBaiduSecretKey.trim())
   const canUseAiOcr = parseEngineMode === "local_ocr" || parseEngineMode === "remote_ocr"
   const selectedOcrProvider = runConfig.selectedOcrProvider
-  const isOcrProviderPaddleLocal = selectedOcrProvider === "paddle_local"
+  const isOcrProviderMachine = selectedOcrProvider === "machine"
   const isOcrProviderBaidu = selectedOcrProvider === "baidu"
-  const isOcrProviderTesseract = selectedOcrProvider === "tesseract"
+  const isOcrProviderTesseract = false  // deprecated, use machine
   const needsRequiredOcrAiConfig = parseEngineMode === "remote_ocr"
   const shouldShowAiVendorAdapter = needsRequiredOcrAiConfig
   const shouldShowOcrProviderSelector = parseEngineMode === "local_ocr"
   const shouldShowBaiduConfig = isBaiduDocParseMode || isOcrProviderBaidu
-  const shouldShowTesseractConfig = parseEngineMode === "local_ocr" && isOcrProviderTesseract
+  const shouldShowTesseractConfig = false  // deprecated, machine handles local OCR
   const shouldShowLocalOcrCheck =
     !isMineruProvider &&
     !isBaiduDocParseMode &&
-    (isOcrProviderTesseract || isOcrProviderPaddleLocal)
+    isOcrProviderMachine
   const availableOcrProviders = isMineruProvider
     ? MINERU_OCR_PROVIDERS
     : isBaiduDocParseMode
@@ -451,7 +454,7 @@ export function resolveOcrSettingsState(settings: Settings): OcrSettingsState {
     canUseAiOcr,
     selectedOcrProvider,
     parseEngineMode,
-    isOcrProviderPaddleLocal,
+    isOcrProviderPaddleLocal: isOcrProviderMachine,  // backward compat alias
     isOcrProviderBaidu,
     isOcrProviderTesseract,
     needsRequiredOcrAiConfig,
@@ -484,7 +487,7 @@ export function getRunModelLabel(runConfig: RunConfig): string {
   if (runConfig.parseProvider === "baidu_doc") {
     return BAIDU_DOC_PARSE_TYPE_LABELS[runConfig.baiduDocParseType]
   }
-  if (runConfig.effectiveOcrProvider === "tesseract" || runConfig.effectiveOcrProvider === "paddle_local") {
+  if (runConfig.effectiveOcrProvider === "machine") {
     return "本地 OCR（无需远程模型）"
   }
   if (runConfig.effectiveOcrProvider === "baidu") {
@@ -750,8 +753,8 @@ export function buildJobConfig(
     }
   }
 
-  // Tesseract
-  if (run.effectiveOcrProvider === "tesseract" || run.effectiveOcrProvider === "auto") {
+  // Tesseract / Machine (local OCR)
+  if (run.effectiveOcrProvider === "machine" || run.effectiveOcrProvider === "auto") {
     const lang = settings.ocrTesseractLanguage.trim()
     const minConf = toFinitePositiveIntOrNull(settings.ocrTesseractMinConfidence)
     if (lang || minConf !== null) {
@@ -950,7 +953,7 @@ export function createJobFormData(
       appendBaiduFields(form, settings)
     }
 
-    if (run.effectiveOcrProvider === "tesseract" || run.effectiveOcrProvider === "auto") {
+    if (run.effectiveOcrProvider === "machine" || run.effectiveOcrProvider === "auto") {
       appendTesseractFields(form, settings)
     }
   }

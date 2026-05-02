@@ -194,21 +194,16 @@ def _normalize_paddle_doc_server_url(
     if not parsed.scheme or not parsed.netloc:
         return trimmed
 
-    host = (parsed.netloc or "").lower()
+    # Import here to avoid circular import at module level.
+    from .vendors import _infer_ai_ocr_provider_from_base_url, get_vendor_config
+
     normalized_provider = (_clean_str(provider_id) or "").lower()
-    forced_path: str | None = None
-    if normalized_provider == "siliconflow" or "siliconflow" in host:
-        forced_path = "/v1"
-    elif normalized_provider == "novita" or "novita.ai" in host:
-        forced_path = "/openai"
-    elif (
-        normalized_provider == "ppio"
-        or "ppio.com" in host
-        or "ppinfra.com" in host
-    ):
-        forced_path = "/openai"
-    elif normalized_provider == "deepseek" or "deepseek.com" in host:
-        forced_path = "/v1"
+    # Infer vendor from URL if provider is not explicitly set.
+    if normalized_provider in {"", "auto"}:
+        normalized_provider = _infer_ai_ocr_provider_from_base_url(trimmed)
+
+    vendor_cfg = get_vendor_config(normalized_provider)
+    forced_path = vendor_cfg.paddle_doc_path
 
     normalized_path = (parsed.path or "").rstrip("/")
     if forced_path and not normalized_path:
@@ -226,14 +221,20 @@ def _resolve_paddle_doc_model_and_pipeline(
     provider_id: str | None,
     allow_model_downgrade: bool | None = None,
 ) -> tuple[str, str | None]:
+    # Import here to avoid circular import at module level.
+    from .vendors import get_vendor_config
+
     effective_model = _clean_str(model) or _DEFAULT_PADDLE_OCR_VL_MODEL
     pipeline_version = _clean_str(os.getenv("OCR_PADDLE_VL_PIPELINE_VERSION"))
     normalized_provider = (_clean_str(provider_id) or "").lower()
+    vendor_cfg = get_vendor_config(normalized_provider)
     can_downgrade = bool(allow_model_downgrade)
 
     model_lower = effective_model.lower()
 
-    if "paddleocr-vl-1.5" in model_lower and normalized_provider in {"novita", "ppio"}:
+    # Vendors with lowercase model casing may not support V1.5 on doc_parser.
+    needs_downgrade = vendor_cfg.model_casing == "lowercase"
+    if "paddleocr-vl-1.5" in model_lower and needs_downgrade:
         if can_downgrade:
             logger.warning(
                 "%s does not expose PaddleOCR-VL-1.5 on doc_parser channel; downgrading to v1 model",
@@ -250,7 +251,7 @@ def _resolve_paddle_doc_model_and_pipeline(
                 "Switch to paddlepaddle/paddleocr-vl or enable OCR_PADDLE_ALLOW_MODEL_DOWNGRADE=1."
             )
 
-    if "paddleocr-vl" in model_lower and normalized_provider in {"novita", "ppio"}:
+    if "paddleocr-vl" in model_lower and needs_downgrade:
         effective_model = "paddlepaddle/paddleocr-vl"
         model_lower = effective_model.lower()
 

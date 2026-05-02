@@ -33,7 +33,7 @@ class OcrRoutePlan:
 
 
 def should_allow_main_ai_reuse(requested_ocr_provider: str) -> bool:
-    return requested_ocr_provider not in {"aiocr", "paddle", "baidu"}
+    return requested_ocr_provider not in {"aiocr", "paddle", "baidu", "machine"}
 
 
 def normalize_ocr_route_kind(
@@ -91,10 +91,10 @@ def build_ocr_route_plan(
             force_disable_linebreak=True,
         )
 
-    if requested_ocr_provider == "paddle_local":
+    if requested_ocr_provider in {"paddle_local", "machine"}:
         return OcrRoutePlan(
             requested_provider=requested_ocr_provider,
-            runtime_provider="paddle_local",
+            runtime_provider=requested_ocr_provider,
             route_kind=ROUTE_KIND_MACHINE_OCR,
             is_paddle_vl_model=False,
             allow_main_ai_reuse=True,

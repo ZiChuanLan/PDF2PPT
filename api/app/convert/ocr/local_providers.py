@@ -1149,11 +1149,18 @@ class OcrManager:
         if provider_id in {"remote", "ai"}:
             provider_id = "aiocr"
         if provider_id in {"paddle-local", "local_paddle"}:
-            provider_id = "paddle_local"
+            provider_id = "machine"
+        # paddle → aiocr (identical code path as aiocr+doc_parser)
+        if provider_id == "paddle":
+            provider_id = "aiocr"
+        # tesseract/paddle_local → machine (merged local OCR provider)
+        if provider_id in {"tesseract", "paddle_local"}:
+            provider_id = "machine"
         if provider_id not in {
             "auto",
             "aiocr",
             "baidu",
+            "machine",
             "tesseract",
             "local",
             "paddle",
@@ -1283,13 +1290,33 @@ class OcrManager:
             logger.info("Using Baidu OCR (explicit)")
             _maybe_add_tesseract_fallback(reason="baidu")
             _maybe_add_paddle_local_fallback(reason="baidu")
-        if provider_id in {"tesseract", "local"}:
-            self.tesseract_provider = TesseractOcrClient(
-                min_confidence=tesseract_min_conf or 50.0,
-                language=tesseract_lang,
-            )
-            self.providers.append(self.tesseract_provider)
-            logger.info("Using Tesseract OCR (explicit)")
+        if provider_id in {"tesseract", "local", "machine"}:
+            # machine provider: try PaddleOCR local first (better quality),
+            # fall back to Tesseract.  tesseract/local: Tesseract only.
+            if provider_id == "machine":
+                paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
+                try:
+                    self.paddle_provider = PaddleOcrClient(language=paddle_lang)
+                    self.providers.append(self.paddle_provider)
+                    logger.info("Using local PaddleOCR as primary in machine mode (lang=%s)", paddle_lang)
+                except (ImportError, RuntimeError) as e:
+                    logger.warning("Local PaddleOCR not available in machine mode: %s", e)
+            try:
+                self.tesseract_provider = TesseractOcrClient(
+                    min_confidence=tesseract_min_conf or 50.0,
+                    language=tesseract_lang,
+                )
+                if provider_id != "machine" or not self.providers:
+                    # For explicit tesseract/local, always add. For machine,
+                    # only add as fallback if PaddleOCR is not available.
+                    self.providers.append(self.tesseract_provider)
+                    logger.info("Using Tesseract OCR (explicit)")
+                else:
+                    logger.info("Tesseract OCR available as fallback in machine mode")
+            except (ImportError, RuntimeError) as e:
+                if provider_id != "machine":
+                    raise
+                logger.warning("Tesseract not available in machine mode: %s", e)
         if provider_id == "paddle_local":
             paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
             self.paddle_provider = PaddleOcrClient(language=paddle_lang)
@@ -1482,9 +1509,9 @@ class OcrManager:
                     raw, image_width=W, image_height=H
                 )
                 primary_model = None
-                if self.provider_id == "aiocr" and self.ai_provider is not None:
+                if self.ai_provider is not None:
                     primary_model = getattr(self.ai_provider, "model", None)
-                elif self.provider_id == "paddle" and self.paddle_provider is not None:
+                elif self.paddle_provider is not None:
                     primary_model = getattr(self.paddle_provider, "model", None)
                 self.last_quality_notes = _build_primary_ocr_quality_notes(
                     normalized,
@@ -1532,7 +1559,7 @@ class OcrManager:
                         allow_merge=True,
                     )
                 return normalized
-            if self.provider_id == "paddle_local":
+            if self.provider_id in {"paddle_local", "machine"}:
                 # PaddleOCR local output format varies across versions/models.
                 # Some pipelines emit per-word boxes (very fragmented), which
                 # leads to thousands of PPT shapes and poor line wrapping/font
