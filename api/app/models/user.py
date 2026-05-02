@@ -37,6 +37,7 @@ class UserORM(Base):
     role = Column(String(20), nullable=False, default=UserRole.user.value)
     trust_level = Column(Integer, nullable=False, default=0)
     active = Column(Boolean, nullable=False, default=True)
+    is_initial_admin = Column(Boolean, nullable=False, default=False)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -75,6 +76,7 @@ class UserResponse(BaseModel):
     role: UserRole = UserRole.user
     trust_level: int = 0
     active: bool = True
+    is_initial_admin: bool = False
     created_at: datetime
     last_login_at: Optional[datetime] = None
     daily_task_limit: int = 10

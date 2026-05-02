@@ -99,6 +99,10 @@ async def complete_setup(
             status_code=500,
         )
 
+    # Mark as initial admin (protected from being disabled)
+    user.is_initial_admin = True
+    db.commit()
+
     # 3. Create JWT tokens and set cookies
     tokens = create_token_pair(user.id, user.role)
     _set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])

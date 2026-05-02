@@ -36,6 +36,7 @@ export default function SiteSettingsPage() {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
   const [settings, setSettings] = React.useState<SiteSettings>({})
+  const [originalDeployMode, setOriginalDeployMode] = React.useState<string>("self")
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
@@ -59,7 +60,10 @@ export default function SiteSettingsPage() {
           throw new Error("Failed to fetch site settings")
         }
         const data = await res.json().catch(() => ({}))
-        if (mounted) setSettings(data)
+        if (mounted) {
+          setSettings(data)
+          setOriginalDeployMode(data["deploy_mode"] || "self")
+        }
       } catch (e) {
         if (mounted) setError(normalizeFetchError(e, "加载站点配置失败"))
       } finally {
@@ -81,13 +85,24 @@ export default function SiteSettingsPage() {
       if (!res.ok) {
         throw new Error("Failed to save")
       }
+
+      const newMode = settings["deploy_mode"] || "self"
+      const modeChanged = newMode !== originalDeployMode
+
+      if (modeChanged) {
+        toast.success("部署模式已切换，正在重新登录...")
+        try { await apiFetch("/auth/logout", { method: "POST" }) } catch {}
+        window.location.href = "/login"
+        return
+      }
+
       toast.success("配置已保存")
     } catch (e) {
       toast.error(normalizeFetchError(e, "保存失败"))
     } finally {
       setIsSaving(false)
     }
-  }, [settings])
+  }, [settings, originalDeployMode])
 
   const handleChange = React.useCallback((key: string, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }))

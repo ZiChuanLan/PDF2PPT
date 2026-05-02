@@ -158,6 +158,13 @@ async def delete_user(
             status_code=400,
         )
 
+    if user.is_initial_admin:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Cannot disable the initial admin account",
+            status_code=400,
+        )
+
     user.active = False
     db.commit()
     db.refresh(user)
@@ -228,9 +235,11 @@ async def batch_delete_users(
     users = db.query(UserORM).filter(UserORM.id.in_(ids_to_delete)).all()
     deleted = 0
     for user in users:
-        if user.active:
+        if user.active and not user.is_initial_admin:
             user.active = False
             deleted += 1
+        elif user.is_initial_admin:
+            skipped += 1
 
     db.commit()
 
