@@ -19,6 +19,47 @@ class AiOcrVendorProfile:
     supports_remote_paddle_doc_parser: bool = False
 
 
+@dataclass(frozen=True)
+class VendorTuningConfig:
+    """Vendor-specific tuning parameters for PaddleOCR-VL doc parser.
+
+    Defaults are sensible for most providers. Override per-vendor in
+    ``_VENDOR_TUNING`` when a provider needs different behaviour.
+    """
+
+    # PaddleOCR-VL-1.5: bounded fan-out for doc parser recognition.
+    vl_rec_max_concurrency: int = 4
+    # Whether PaddleX internal queues are enabled (False = off).
+    use_queues: bool = True
+    # Per-predict timeout override (seconds). ``None`` = use generic default.
+    predict_timeout_override: float | None = None
+    # Per-retry timeout override (seconds). ``None`` = use generic default.
+    retry_timeout_override: float | None = None
+    # Whether to retry on timeout for PaddleOCR-VL-1.5.
+    retry_on_timeout: bool = False
+    # Whether to enable singleflight dedup for PaddleOCR-VL-1.5.
+    singleflight: bool = False
+    # How long to wait for the singleflight lock (seconds).
+    singleflight_wait_s: float = 3.0
+    # Layout-block max concurrency override (for Qwen3-VL etc.). ``None`` = default.
+    layout_block_max_concurrency: int | None = None
+
+
+_VENDOR_TUNING: dict[str, VendorTuningConfig] = {
+    "siliconflow": VendorTuningConfig(
+        vl_rec_max_concurrency=4,
+        use_queues=False,
+        predict_timeout_override=180.0,
+        retry_timeout_override=20.0,
+        retry_on_timeout=False,
+        singleflight=True,
+        singleflight_wait_s=10.0,
+        layout_block_max_concurrency=2,  # Qwen3-VL on SiliconFlow
+    ),
+    # Other vendors use defaults; add entries here when tuning is needed.
+}
+
+
 _AI_OCR_VENDOR_PROFILES: dict[str, AiOcrVendorProfile] = {
     "openai": AiOcrVendorProfile(
         provider_id="openai",

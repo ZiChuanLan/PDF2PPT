@@ -78,12 +78,21 @@ from .utils import (
     _looks_like_structural_gibberish,
 )
 from .vendors import (
+    _VENDOR_TUNING,
+    VendorTuningConfig,
     _create_ai_ocr_vendor_adapter,
     _normalize_ai_ocr_model_name,
     _should_send_image_first_for_ai_ocr,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_vendor_tuning(provider_id: str | None) -> VendorTuningConfig:
+    """Look up vendor-specific tuning config, falling back to defaults."""
+    normalized = (str(provider_id or "").strip().lower())
+    return _VENDOR_TUNING.get(normalized, VendorTuningConfig())
+
 
 _SPECIAL_OCR_TOKEN_PATTERN = re.compile(
     r"<\|/?[a-zA-Z0-9_]+\|>|</?image>|</?box>|</?text>",
@@ -1407,15 +1416,9 @@ class AiOcrClient(OcrProvider):
                 parsed_max_concurrency = 0
             if parsed_max_concurrency > 0:
                 kwargs["vl_rec_max_concurrency"] = parsed_max_concurrency
-        elif (
-            "paddleocr-vl-1.5" in lowered_model
-            and str(self.provider_id or "").strip().lower() == "siliconflow"
-        ):
-            # PaddleOCR-VL upstream default max_concurrency=200 can overload some
-            # OpenAI-compatible gateways (notably SiliconFlow) and cause long-tail
-            # latency/timeouts. A small bounded fan-out keeps per-page latency
-            # reasonable without reopening the 200-way burst.
-            kwargs["vl_rec_max_concurrency"] = 4
+        elif "paddleocr-vl-1.5" in lowered_model:
+            tuning = _get_vendor_tuning(self.provider_id)
+            kwargs["vl_rec_max_concurrency"] = tuning.vl_rec_max_concurrency
 
         raw_use_queues = _clean_str(os.getenv("OCR_PADDLE_VL_DOCPARSER_USE_QUEUES"))
         if raw_use_queues is not None:
@@ -1423,14 +1426,9 @@ class AiOcrClient(OcrProvider):
                 "OCR_PADDLE_VL_DOCPARSER_USE_QUEUES",
                 default=True,
             )
-        elif (
-            "paddleocr-vl-1.5" in lowered_model
-            and str(self.provider_id or "").strip().lower() == "siliconflow"
-        ):
-            # SiliconFlow already handles remote request fan-out. Keeping PaddleX
-            # internal queues enabled adds another scheduling layer and, in our
-            # direct repros, increased end-to-end latency on the same page.
-            kwargs["use_queues"] = False
+        elif "paddleocr-vl-1.5" in lowered_model:
+            tuning = _get_vendor_tuning(self.provider_id)
+            kwargs["use_queues"] = tuning.use_queues
         return kwargs
 
     def _resolve_paddle_doc_predict_timeout_s(self) -> float:
@@ -1439,26 +1437,14 @@ class AiOcrClient(OcrProvider):
             _env_float("OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S", 120.0),
         )
         lowered_model = str(self.model or "").strip().lower()
-        provider_id = str(self.provider_id or "").strip().lower()
         if "paddleocr-vl-1.5" in lowered_model:
-            if provider_id == "siliconflow":
-                v15_siliconflow_default_timeout = max(default_timeout, 180.0)
-                return max(
-                    10.0,
-                    _env_float(
-                        "OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S_V15_SILICONFLOW",
-                        _env_float(
-                            "OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S_V15",
-                            v15_siliconflow_default_timeout,
-                        ),
-                    ),
-                )
-            v15_default_timeout = max(default_timeout, 180.0)
+            tuning = _get_vendor_tuning(self.provider_id)
+            v15_default = max(default_timeout, tuning.predict_timeout_override or 180.0)
             return max(
                 10.0,
                 _env_float(
                     "OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S_V15",
-                    v15_default_timeout,
+                    v15_default,
                 ),
             )
         return default_timeout
@@ -1466,18 +1452,17 @@ class AiOcrClient(OcrProvider):
     def _resolve_paddle_doc_retry_timeout_s(self, *, predict_timeout_s: float) -> float:
         default_retry_timeout_s = min(90.0, predict_timeout_s)
         lowered_model = str(self.model or "").strip().lower()
-        provider_id = str(self.provider_id or "").strip().lower()
-        if "paddleocr-vl-1.5" in lowered_model and provider_id == "siliconflow":
-            return max(
-                10.0,
-                _env_float(
-                    "OCR_PADDLE_VL_DOCPARSER_RETRY_TIMEOUT_S_V15_SILICONFLOW",
+        if "paddleocr-vl-1.5" in lowered_model:
+            tuning = _get_vendor_tuning(self.provider_id)
+            retry_default = tuning.retry_timeout_override
+            if retry_default is not None:
+                return max(
+                    10.0,
                     _env_float(
                         "OCR_PADDLE_VL_DOCPARSER_RETRY_TIMEOUT_S",
-                        min(20.0, predict_timeout_s),
+                        min(retry_default, predict_timeout_s),
                     ),
-                ),
-            )
+                )
         return max(
             10.0,
             _env_float(
@@ -1486,52 +1471,44 @@ class AiOcrClient(OcrProvider):
             ),
         )
 
-    def _is_siliconflow_paddle_doc_v15(self) -> bool:
+    def _is_vendor_paddle_doc_v15(self) -> bool:
+        """Check if current model is PaddleOCR-VL-1.5 (vendor-agnostic)."""
         lowered_model = str(self.model or "").strip().lower()
-        provider_id = str(self.provider_id or "").strip().lower()
-        return "paddleocr-vl-1.5" in lowered_model and provider_id == "siliconflow"
+        return "paddleocr-vl-1.5" in lowered_model
 
     def _should_retry_paddle_doc_timeout(self) -> bool:
-        raw_specific = os.getenv(
-            "OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT_V15_SILICONFLOW"
-        )
-        raw_general = os.getenv("OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT")
-        if self._is_siliconflow_paddle_doc_v15():
-            if raw_specific is not None:
-                return _env_flag(
-                    "OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT_V15_SILICONFLOW",
-                    default=False,
-                )
-            if raw_general is not None:
+        raw_generic = os.getenv("OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT")
+        if self._is_vendor_paddle_doc_v15():
+            if raw_generic is not None:
                 return _env_flag(
                     "OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT",
                     default=False,
                 )
-            return False
+            tuning = _get_vendor_tuning(self.provider_id)
+            return tuning.retry_on_timeout
         return _env_flag("OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT", default=True)
 
     def _should_use_paddle_doc_singleflight(self) -> bool:
-        raw_specific = os.getenv("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT_V15_SILICONFLOW")
-        raw_general = os.getenv("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT")
-        if self._is_siliconflow_paddle_doc_v15():
-            if raw_specific is not None:
-                return _env_flag(
-                    "OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT_V15_SILICONFLOW",
-                    default=True,
-                )
-            if raw_general is not None:
+        raw_generic = os.getenv("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT")
+        if self._is_vendor_paddle_doc_v15():
+            if raw_generic is not None:
                 return _env_flag(
                     "OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT",
                     default=True,
                 )
-            return True
+            tuning = _get_vendor_tuning(self.provider_id)
+            return tuning.singleflight
         return _env_flag("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT", default=False)
 
     def _resolve_paddle_doc_singleflight_wait_s(self) -> float:
-        # SiliconFlow PaddleOCR-VL-1.5 can briefly keep the shared doc_parser
-        # lock occupied between sequential pages, so a 1s wait is too eager
-        # for multi-page OCR jobs.
-        default_wait_s = 10.0 if self._is_siliconflow_paddle_doc_v15() else 3.0
+        # Vendor-specific wait time: some providers need longer singleflight
+        # locks due to sequential page processing characteristics.
+        tuning = _get_vendor_tuning(self.provider_id)
+        default_wait_s = (
+            tuning.singleflight_wait_s
+            if self._is_vendor_paddle_doc_v15()
+            else 3.0
+        )
         return max(
             0.0,
             _env_float("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT_WAIT_S", default_wait_s),
@@ -2580,10 +2557,10 @@ class AiOcrClient(OcrProvider):
 
         provider_id = str(self.provider_id or "").strip().lower()
         lowered_model = str(effective_model or "").strip().lower()
-        if provider_id == "siliconflow" and "qwen3-vl" in lowered_model:
-            # Qwen3-VL on SiliconFlow is stable for single pages, but 4-way block
-            # fan-out can trigger long-tail retries on multi-page jobs.
-            return 2
+        if "qwen3-vl" in lowered_model:
+            tuning = _get_vendor_tuning(self.provider_id)
+            if tuning.layout_block_max_concurrency is not None:
+                return tuning.layout_block_max_concurrency
         return 4
 
     def _resolve_local_layout_block_progress_log_interval_s(self) -> float:
@@ -3681,17 +3658,12 @@ class AiOcrClient(OcrProvider):
             )
 
         if "deepseek-ocr" in lowered or "deepseekocr" in lowered:
-            if provider_id == "siliconflow":
-                siliconflow_default_timeout = max(default_timeout, 90.0)
+            tuning = _get_vendor_tuning(self.provider_id)
+            if tuning.predict_timeout_override is not None:
+                vendor_default = max(default_timeout, tuning.predict_timeout_override)
                 return max(
                     8.0,
-                    _env_float(
-                        "OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR_SILICONFLOW",
-                        _env_float(
-                            "OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR",
-                            siliconflow_default_timeout,
-                        ),
-                    ),
+                    _env_float("OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR", vendor_default),
                 )
             return max(
                 8.0,
