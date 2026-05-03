@@ -18,7 +18,7 @@ from app.convert.ocr.layout_models import (
     is_model_downloaded,
 )
 from app.convert.ocr.runtime_probe import (
-    probe_local_paddleocr,
+    probe_local_paddle_models,
     probe_local_tesseract,
 )
 from app.database import get_db
@@ -153,7 +153,7 @@ def _check_local_providers() -> dict[str, ModelProviderStatus]:
 
     # PaddleOCR
     try:
-        probe = probe_local_paddleocr(language="ch")
+        probe = probe_local_paddle_models(language="ch")
         providers["paddleocr"] = ModelProviderStatus(
             ready=bool(probe.get("ready")),
             issues=[

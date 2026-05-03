@@ -234,6 +234,15 @@ export default function Home() {
   const [preflightWarning, setPreflightWarning] = React.useState<string | null>(null)
   const [preflightAcknowledged, setPreflightAcknowledged] = React.useState(false)
 
+  const downloadedLayoutModels = React.useMemo(() => {
+    if (!modelStatus) return new Set<string>()
+    return new Set(
+      Object.entries(modelStatus.local)
+        .filter(([key, p]) => p.ready && Object.keys(LAYOUT_MODELS).includes(key))
+        .map(([key]) => key)
+    )
+  }, [modelStatus])
+
   const handleConvertAll = React.useCallback(async () => {
     if (fileCount === 0) return
     if (!user) {
@@ -1075,11 +1084,18 @@ export default function Home() {
                             }
                           >
                             {Object.values(LAYOUT_MODELS).map((m) => (
-                              <option key={m.modelId} value={m.modelId}>
-                                {m.displayName} ({m.sizeMb}MB)
+                              <option key={m.modelId} value={m.modelId} disabled={!downloadedLayoutModels.has(m.modelId)}>
+                                {m.displayName} — {m.speedLabel}
                               </option>
                             ))}
                           </Select>
+                          {downloadedLayoutModels.size === 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              暂无已下载的版面模型，请前往{" "}
+                              <Link href="/settings" className="underline">设置</Link>
+                              {" "}下载
+                            </span>
+                          )}
                         </div>
                       )}
                       {settingsSnapshot.parseEngineMode === "remote_ocr" && (
