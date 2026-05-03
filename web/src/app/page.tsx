@@ -21,6 +21,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
+import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
   AIOCR_CHAIN_MODE_LABELS,
   defaultSettings,
@@ -220,7 +221,7 @@ export default function Home() {
     setUsePageRange(false)
   }, [addFiles])
 
-  const { getRootProps, getInputProps, isDragActive, isDragReject, open } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     accept: SUPPORTED_UPLOAD_ACCEPT,
     multiple: true,
     onDrop,
@@ -740,10 +741,6 @@ export default function Home() {
                         <span className="text-sm text-muted-foreground">
                           已选择 {fileCount} 个文件
                         </span>
-                        <Button type="button" variant="outline" size="xs" onClick={() => open()}>
-                          <UploadCloudIcon className="mr-1 size-3" />
-                          添加文件
-                        </Button>
                       </div>
                       <div className="grid gap-2">
                         {uploadFiles.map((entry, index) => (
@@ -798,10 +795,6 @@ export default function Home() {
                         <div className="text-xs text-muted-foreground">{formatBytes(currentPreviewFile.size)}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" size="xs" onClick={() => open()}>
-                          <UploadCloudIcon className="mr-1 size-3" />
-                          添加文件
-                        </Button>
                         <Button type="button" variant="ghost" size="sm" onClick={handleResetAll}>
                           清空
                         </Button>
@@ -1063,6 +1056,29 @@ export default function Home() {
                             <option value="layout_block">{AIOCR_CHAIN_MODE_LABELS.layout_block}</option>
                             <option value="doc_parser">{AIOCR_CHAIN_MODE_LABELS.doc_parser}</option>
                             <option value="direct">{AIOCR_CHAIN_MODE_LABELS.direct}</option>
+                          </Select>
+                        </div>
+                      )}
+                      {settingsSnapshot.parseEngineMode === "remote_ocr" && settingsSnapshot.ocrAiChainMode === "layout_block" && (
+                        <div className="grid gap-1">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>版面模型</span>
+                            <HoverHint text="版面分析模型，用于检测文档中的标题、段落、表格等区域。" />
+                          </div>
+                          <Select
+                            value={settingsSnapshot.ocrAiLayoutModel}
+                            onChange={(e) =>
+                              updateSettingsSnapshot((prev) => ({
+                                ...prev,
+                                ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
+                              }))
+                            }
+                          >
+                            {Object.values(LAYOUT_MODELS).map((m) => (
+                              <option key={m.modelId} value={m.modelId}>
+                                {m.displayName} ({m.sizeMb}MB)
+                              </option>
+                            ))}
                           </Select>
                         </div>
                       )}
