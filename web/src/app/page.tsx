@@ -264,7 +264,9 @@ export default function Home() {
       const mode = settingsSnapshot.parseEngineMode
       const requiredProviders: Array<{ key: string; kind: "local" | "remote"; label: string }> = []
       if (mode === "local_ocr") {
-        requiredProviders.push({ key: "paddleocr", kind: "local", label: "PaddleOCR" })
+        if (settingsSnapshot.ocrProvider === "paddleocr") {
+          requiredProviders.push({ key: "paddleocr", kind: "local", label: "PaddleOCR" })
+        }
       } else if (mode === "remote_ocr") {
         requiredProviders.push({ key: "aiocr", kind: "remote", label: "AIOCR" })
       } else if (mode === "baidu_doc") {
@@ -1042,7 +1044,9 @@ export default function Home() {
                               }))
                             }
                           >
-                            <option value="paddleocr">PaddleOCR</option>
+                            <option value="paddleocr" disabled={!!modelStatus && !modelStatus.local.paddleocr?.ready}>
+                              PaddleOCR{modelStatus && !modelStatus.local.paddleocr?.ready ? " (未就绪)" : ""}
+                            </option>
                             <option value="tesseract">Tesseract</option>
                           </Select>
                         </div>

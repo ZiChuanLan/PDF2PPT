@@ -59,7 +59,7 @@ export function JobDebugPanel({
     <section
       className={cn(
         "grid gap-2",
-        compact && "w-full md:max-w-[18.5rem] justify-self-start",
+        compact && "w-full",
         className
       )}
     >
