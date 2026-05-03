@@ -614,7 +614,7 @@ export default function Home() {
                           parseEngineMode: e.target.value as Settings["parseEngineMode"],
                         }))
                       }
-                      className="h-7 w-28 text-xs"
+                      className="h-7 w-28 py-1 text-xs"
                     >
                       {Object.entries(PARSE_ENGINE_MODE_LABELS).map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
@@ -631,7 +631,7 @@ export default function Home() {
                           ocrProvider: e.target.value as Settings["ocrProvider"],
                         }))
                       }
-                      className="h-7 w-28 text-xs"
+                      className="h-7 w-28 py-1 text-xs"
                     >
                       {Object.entries(ocrProviderLabels).map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
@@ -648,7 +648,7 @@ export default function Home() {
                           pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
                         }))
                       }
-                      className="h-7 w-28 text-xs"
+                      className="h-7 w-28 py-1 text-xs"
                     >
                       <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
                       <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
@@ -661,6 +661,32 @@ export default function Home() {
                   >
                     更多设置
                   </Link>
+                </div>
+
+                {/* MinerU token hint */}
+                {settingsSnapshot.parseEngineMode === "mineru_cloud" && !settingsSnapshot.mineruApiToken && (
+                  <div className="mx-auto mt-2 max-w-3xl text-center text-xs text-amber-600">
+                    云端 MinerU 需要配置 Token，请前往
+                    <Link href="/settings" className="ml-1 text-[#cc0000] hover:underline">设置页面</Link>
+                    填写
+                  </div>
+                )}
+
+                {/* How it works */}
+                <div className="mx-auto mt-10 grid max-w-3xl grid-cols-3 gap-6 text-center">
+                  {[
+                    { step: "1", title: "上传文件", desc: "拖拽或点击选择 PDF / 图片" },
+                    { step: "2", title: "自动处理", desc: "解析 → OCR → 排版全自动" },
+                    { step: "3", title: "下载 PPT", desc: "生成标准 PPTX 文件" },
+                  ].map(({ step, title, desc }) => (
+                    <div key={step}>
+                      <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full border-2 border-[#cc0000] text-sm font-bold text-[#cc0000]">
+                        {step}
+                      </div>
+                      <div className="text-sm font-medium">{title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
