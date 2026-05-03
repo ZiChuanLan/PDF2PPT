@@ -1017,6 +1017,7 @@ export default function Home() {
                           <ModelStatusBadge
                             status={modelStatus}
                             isLoading={isModelStatusLoading}
+                            parseEngineMode={settingsSnapshot.parseEngineMode}
                             onStatusChange={() => void refetchModelStatus()}
                           />
                         </div>

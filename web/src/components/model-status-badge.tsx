@@ -17,6 +17,7 @@ import type { ModelProviderStatus, ModelStatusResponse } from "@/hooks/use-model
 // ---------------------------------------------------------------------------
 
 export type ProviderKind = "local" | "remote"
+export type ParseEngineMode = "local_ocr" | "remote_ocr" | "baidu_doc" | "mineru_cloud"
 
 interface ProviderDisplay {
   key: string
@@ -24,7 +25,7 @@ interface ProviderDisplay {
   label: string
 }
 
-// Provider definitions — determines display order and labels.
+// All provider definitions — determines display order and labels.
 const PROVIDER_DISPLAY: ProviderDisplay[] = [
   { key: "tesseract", kind: "local", label: "Tesseract" },
   { key: "paddleocr", kind: "local", label: "PaddleOCR" },
@@ -33,6 +34,21 @@ const PROVIDER_DISPLAY: ProviderDisplay[] = [
   { key: "baidu_doc", kind: "remote", label: "百度文档解析" },
   { key: "mineru", kind: "remote", label: "MinerU" },
 ]
+
+// Map parse engine mode → relevant provider keys.
+const ENGINE_PROVIDER_MAP: Record<ParseEngineMode, string[]> = {
+  local_ocr: ["tesseract", "paddleocr"],
+  remote_ocr: ["pp_doclayout", "aiocr"],
+  baidu_doc: ["baidu_doc"],
+  mineru_cloud: ["mineru"],
+}
+
+function getProvidersForEngine(mode?: ParseEngineMode): ProviderDisplay[] {
+  if (!mode) return PROVIDER_DISPLAY
+  const keys = ENGINE_PROVIDER_MAP[mode]
+  if (!keys) return PROVIDER_DISPLAY
+  return PROVIDER_DISPLAY.filter((p) => keys.includes(p.key))
+}
 
 // Downloadable local models.
 const DOWNLOADABLE_MODELS: Record<string, string> = {
@@ -55,10 +71,11 @@ function getProviderStatus(
 }
 
 function getOverallStatus(
-  status: ModelStatusResponse | null
+  status: ModelStatusResponse | null,
+  providers: ProviderDisplay[]
 ): "ready" | "partial" | "unknown" {
   if (!status) return "unknown"
-  const all = PROVIDER_DISPLAY.map((p) =>
+  const all = providers.map((p) =>
     getProviderStatus(status, p.key, p.kind)
   ).filter(Boolean) as ModelProviderStatus[]
   if (all.length === 0) return "unknown"
@@ -78,9 +95,10 @@ function getDotColor(
 }
 
 function getOverallDotColor(
-  status: ModelStatusResponse | null
+  status: ModelStatusResponse | null,
+  providers: ProviderDisplay[]
 ): string {
-  const overall = getOverallStatus(status)
+  const overall = getOverallStatus(status, providers)
   if (overall === "ready") return "bg-emerald-500"
   if (overall === "partial") return "bg-amber-500"
   return "bg-muted-foreground/40"
@@ -182,12 +200,14 @@ function ProviderRow({
 
 function DetailsPanel({
   status,
+  providers,
   downloading,
   onDownload,
   triggerRect,
   onClose,
 }: {
   status: ModelStatusResponse | null
+  providers: ProviderDisplay[]
   downloading: string | null
   onDownload: (model: string) => void
   triggerRect: DOMRect
@@ -235,33 +255,44 @@ function DetailsPanel({
       className="w-64 rounded border border-border bg-background p-2.5 shadow-md"
       style={style}
     >
-      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        本地模型
-      </div>
-      {PROVIDER_DISPLAY.filter((p) => p.kind === "local").map((display) => (
-        <ProviderRow
-          key={display.key}
-          display={display}
-          provStatus={getProviderStatus(status, display.key, display.kind)}
-          onDownload={onDownload}
-          downloading={downloading === display.key}
-        />
-      ))}
+      {providers.filter((p) => p.kind === "local").length > 0 && (
+        <>
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            本地模型
+          </div>
+          {providers.filter((p) => p.kind === "local").map((display) => (
+            <ProviderRow
+              key={display.key}
+              display={display}
+              provStatus={getProviderStatus(status, display.key, display.kind)}
+              onDownload={onDownload}
+              downloading={downloading === display.key}
+            />
+          ))}
+        </>
+      )}
 
-      <div className="my-1.5 border-t border-border" />
+      {providers.filter((p) => p.kind === "local").length > 0 &&
+        providers.filter((p) => p.kind === "remote").length > 0 && (
+          <div className="my-1.5 border-t border-border" />
+        )}
 
-      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        远程 API
-      </div>
-      {PROVIDER_DISPLAY.filter((p) => p.kind === "remote").map((display) => (
-        <ProviderRow
-          key={display.key}
-          display={display}
-          provStatus={getProviderStatus(status, display.key, display.kind)}
-          onDownload={onDownload}
-          downloading={downloading === display.key}
-        />
-      ))}
+      {providers.filter((p) => p.kind === "remote").length > 0 && (
+        <>
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            远程 API
+          </div>
+          {providers.filter((p) => p.kind === "remote").map((display) => (
+            <ProviderRow
+              key={display.key}
+              display={display}
+              provStatus={getProviderStatus(status, display.key, display.kind)}
+              onDownload={onDownload}
+              downloading={downloading === display.key}
+            />
+          ))}
+        </>
+      )}
 
       <div className="mt-2 border-t border-border pt-1.5">
         <Link href="/settings">
@@ -289,6 +320,8 @@ export interface ModelStatusBadgeProps {
   status: ModelStatusResponse | null
   /** Whether status is currently loading. */
   isLoading?: boolean
+  /** Current parse engine mode — filters displayed providers. */
+  parseEngineMode?: ParseEngineMode
   /** Called after a successful download to refresh status. */
   onStatusChange?: () => void
   /** Additional CSS class. */
@@ -307,9 +340,14 @@ export interface ModelStatusBadgeProps {
 export function ModelStatusBadge({
   status,
   isLoading = false,
+  parseEngineMode,
   onStatusChange,
   className,
 }: ModelStatusBadgeProps) {
+  const providers = React.useMemo(
+    () => getProvidersForEngine(parseEngineMode),
+    [parseEngineMode]
+  )
   const [expanded, setExpanded] = React.useState(false)
   const [downloading, setDownloading] = React.useState<string | null>(null)
   const [triggerRect, setTriggerRect] = React.useState<DOMRect | null>(null)
@@ -350,8 +388,8 @@ export function ModelStatusBadge({
     [onStatusChange]
   )
 
-  const overallColor = getOverallDotColor(status)
-  const overall = getOverallStatus(status)
+  const overallColor = getOverallDotColor(status, providers)
+  const overall = getOverallStatus(status, providers)
 
   return (
     <span className={cn("relative inline-flex items-center", className)}>
@@ -376,6 +414,7 @@ export function ModelStatusBadge({
       {expanded && triggerRect && (
         <DetailsPanel
           status={status}
+          providers={providers}
           downloading={downloading}
           onDownload={handleDownload}
           triggerRect={triggerRect}
