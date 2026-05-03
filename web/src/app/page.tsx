@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import {
+  AlertCircleIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckIcon,
@@ -1028,29 +1029,37 @@ export default function Home() {
                             <span>OCR 模型</span>
                             <HoverHint text="选择用于文字识别的 AI 模型。" />
                           </div>
-                          <Select
-                            value={
-                              ["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel)
-                                ? settingsSnapshot.ocrAiModel
-                                : "__custom__"
-                            }
-                            onChange={(e) => {
-                              const val = e.target.value
-                              updateSettingsSnapshot((prev) => ({
-                                ...prev,
-                                ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
-                              }))
-                            }}
-                          >
-                            <option value="Qwen/Qwen2.5-VL-7B-Instruct">Qwen2.5-VL-7B</option>
-                            <option value="Qwen/Qwen2.5-VL-32B-Instruct">Qwen2.5-VL-32B</option>
-                            <option value="paddleocr/PaddleOCR-VL-1.5">PaddleOCR-VL</option>
-                            <option value="deepseek-ai/DeepSeek-OCR">DeepSeek-OCR</option>
-                            <option value="openai/gpt-4o-mini">GPT-4o-mini</option>
-                            {(!["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()) && (
-                              <option value="__custom__">{settingsSnapshot.ocrAiModel}</option>
-                            )}
-                          </Select>
+                          {settingsSnapshot.ocrAiApiKey.trim() && settingsSnapshot.ocrAiBaseUrl.trim() ? (
+                            <Select
+                              value={
+                                ["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel)
+                                  ? settingsSnapshot.ocrAiModel
+                                  : "__custom__"
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value
+                                updateSettingsSnapshot((prev) => ({
+                                  ...prev,
+                                  ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
+                                }))
+                              }}
+                            >
+                              <option value="Qwen/Qwen2.5-VL-7B-Instruct">Qwen2.5-VL-7B</option>
+                              <option value="Qwen/Qwen2.5-VL-32B-Instruct">Qwen2.5-VL-32B</option>
+                              <option value="paddleocr/PaddleOCR-VL-1.5">PaddleOCR-VL</option>
+                              <option value="deepseek-ai/DeepSeek-OCR">DeepSeek-OCR</option>
+                              <option value="openai/gpt-4o-mini">GPT-4o-mini</option>
+                              {(!["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()) && (
+                                <option value="__custom__">{settingsSnapshot.ocrAiModel}</option>
+                              )}
+                            </Select>
+                          ) : (
+                            <div className="flex items-center gap-2 text-xs text-amber-600">
+                              <AlertCircleIcon className="size-3.5" />
+                              <span>请先配置 API Key 和 Base URL</span>
+                              <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
+                            </div>
+                          )}
                         </div>
                       )}
                       <label className="flex items-center gap-2 text-xs">
