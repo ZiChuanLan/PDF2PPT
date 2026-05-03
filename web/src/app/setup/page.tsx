@@ -16,6 +16,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import {
+  LAYOUT_MODELS,
+  DEFAULT_LAYOUT_MODEL,
+  type LayoutModelInfo,
+} from "@/lib/layout-models"
 
 type DeployMode = "self" | "public"
 
@@ -30,7 +35,7 @@ type ModelStatusResponse = {
   remote: Record<string, ModelProviderStatus>
 }
 
-const STEPS = ["欢迎", "部署模式", "创建管理员", "模型检测", "完成"]
+const STEPS = ["欢迎", "部署模式", "创建管理员", "模型检测", "版面模型", "完成"]
 
 export default function SetupPage() {
   const router = useRouter()
@@ -183,8 +188,11 @@ export default function SetupPage() {
       setStep(3)
       void handleCreateAdmin()
     } else if (step === 3) {
-      // Model detection → complete
+      // Model detection → layout model selection
       setStep(4)
+    } else if (step === 4) {
+      // Layout model selection → complete
+      setStep(5)
       void handleComplete()
     }
   }, [step, username, password, confirmPassword, handleCreateAdmin, handleComplete])
@@ -416,11 +424,11 @@ export default function SetupPage() {
                         {[
                           { key: "tesseract", label: "Tesseract OCR" },
                           { key: "paddleocr", label: "PaddleOCR" },
-                          { key: "pp_doclayout", label: "PP-DocLayout" },
+                          { key: "pp_doclayout_v3", label: "PP-DocLayoutV3（默认）" },
                         ].map(({ key, label }) => {
                           const prov = modelStatus.local[key]
                           const isReady = prov?.ready ?? false
-                          const isDownloadable = key === "pp_doclayout" || key === "paddleocr"
+                          const isDownloadable = key === "pp_doclayout_v3" || key === "paddleocr"
                           return (
                             <div
                               key={key}
@@ -524,10 +532,10 @@ export default function SetupPage() {
                       onClick={() => setStep(4)}
                       className="flex-1"
                     >
-                      跳过
+                      跳过模型下载
                     </Button>
                     <Button onClick={() => setStep(4)} className="flex-1">
-                      完成设置
+                      选择版面模型
                     </Button>
                   </div>
                 </div>
@@ -535,8 +543,91 @@ export default function SetupPage() {
             </div>
           )}
 
-          {/* Step 4: Completion */}
+          {/* Step 4: Layout Model Selection */}
           {step === 4 && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                选择版面分析模型。下载后可用于本地版面切块识别，未下载的模型不影响其他功能。
+              </p>
+
+              <div className="space-y-2">
+                {Object.values(LAYOUT_MODELS).map((model: LayoutModelInfo) => {
+                  const isDownloaded = modelStatus?.local?.[model.modelId]?.ready ?? false
+                  return (
+                    <div
+                      key={model.modelId}
+                      className="flex items-center justify-between rounded border border-border px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-block size-2 rounded-full ${
+                              isDownloaded ? "bg-emerald-500" : "bg-muted-foreground/40"
+                            }`}
+                          />
+                          <span className="text-sm font-medium">{model.displayName}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {model.sizeMb} MB
+                          </span>
+                          {model.recommended ? (
+                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                              推荐
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-0.5 pl-4 text-[11px] text-muted-foreground">
+                          {model.description} · {model.speedLabel} · {model.accuracy}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {isDownloaded ? (
+                          <span className="flex items-center gap-1 text-xs text-emerald-600">
+                            <CheckIcon className="size-3" />
+                            已下载
+                          </span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => void handleDownloadModel(model.modelId)}
+                            disabled={downloadingModel === model.modelId}
+                          >
+                            {downloadingModel === model.modelId ? (
+                              <Loader2Icon className="size-3 animate-spin" />
+                            ) : (
+                              <DownloadIcon className="size-3" />
+                            )}
+                            下载
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                模型下载后可在「设置」页面切换。未下载的模型在使用时会提示下载。
+              </p>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setStep(5)}
+                  className="flex-1"
+                >
+                  跳过
+                </Button>
+                <Button onClick={() => setStep(5)} className="flex-1">
+                  完成设置
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5: Completion */}
+          {step === 5 && (
             <div className="space-y-4 py-6 text-center">
               {isSubmitting ? (
                 <>

@@ -9,7 +9,12 @@ export type OcrProvider =
   | "machine"
 export type OcrAiProvider = "auto" | "openai" | "siliconflow" | "deepseek" | "ppio" | "novita"
 export type OcrAiChainMode = "direct" | "doc_parser" | "layout_block"
-export type OcrAiLayoutModel = "pp_doclayout_v3"
+export type OcrAiLayoutModel =
+  | "pp_doclayout_v3"
+  | "pp_doclayout_s"
+  | "pp_doclayout_m"
+  | "pp_doclayout_l"
+  | "doclayout_yolo"
 export type OcrAiPromptPreset =
   | "auto"
   | "generic_vision"
@@ -375,7 +380,13 @@ export function loadStoredSettings(): Settings {
   if (!validOcrAiChainModes.includes(merged.ocrAiChainMode)) {
     merged.ocrAiChainMode = DEFAULT_AIOCR_CHAIN_MODE
   }
-  const validOcrAiLayoutModels: OcrAiLayoutModel[] = ["pp_doclayout_v3"]
+  const validOcrAiLayoutModels: OcrAiLayoutModel[] = [
+    "pp_doclayout_v3",
+    "pp_doclayout_s",
+    "pp_doclayout_m",
+    "pp_doclayout_l",
+    "doclayout_yolo",
+  ]
   if (!validOcrAiLayoutModels.includes(merged.ocrAiLayoutModel)) {
     merged.ocrAiLayoutModel = "pp_doclayout_v3"
   }

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
 import { toast } from "sonner"
 import type { ModelProviderStatus, ModelStatusResponse } from "@/hooks/use-model-status"
+import { LAYOUT_MODELS, DEFAULT_LAYOUT_MODEL } from "@/lib/layout-models"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,7 +30,12 @@ interface ProviderDisplay {
 const PROVIDER_DISPLAY: ProviderDisplay[] = [
   { key: "tesseract", kind: "local", label: "Tesseract" },
   { key: "paddleocr", kind: "local", label: "PaddleOCR" },
-  { key: "pp_doclayout", kind: "local", label: "PP-DocLayout" },
+  // Layout models are now shown as a group
+  ...Object.values(LAYOUT_MODELS).map((m) => ({
+    key: m.modelId,
+    kind: "local" as ProviderKind,
+    label: m.displayName,
+  })),
   { key: "aiocr", kind: "remote", label: "AIOCR" },
   { key: "baidu_doc", kind: "remote", label: "百度文档解析" },
   { key: "mineru", kind: "remote", label: "MinerU" },
@@ -38,7 +44,8 @@ const PROVIDER_DISPLAY: ProviderDisplay[] = [
 // Map parse engine mode → relevant provider keys.
 const ENGINE_PROVIDER_MAP: Record<ParseEngineMode, string[]> = {
   local_ocr: ["tesseract", "paddleocr"],
-  remote_ocr: ["pp_doclayout", "aiocr"],
+  // For remote_ocr, show all layout models + aiocr
+  remote_ocr: [...Object.keys(LAYOUT_MODELS), "aiocr"],
   baidu_doc: ["baidu_doc"],
   mineru_cloud: ["mineru"],
 }
@@ -52,7 +59,7 @@ function getProvidersForEngine(mode?: ParseEngineMode): ProviderDisplay[] {
 
 // Downloadable local models.
 const DOWNLOADABLE_MODELS: Record<string, string> = {
-  pp_doclayout: "pp_doclayout",
+  ...Object.fromEntries(Object.keys(LAYOUT_MODELS).map((id) => [id, id])),
   paddleocr: "paddleocr",
 }
 
@@ -143,6 +150,7 @@ function ProviderRow({
 }) {
   const isDownloadable = display.kind === "local" && DOWNLOADABLE_MODELS[display.key]
   const needsConfig = display.kind === "remote" && provStatus && !provStatus.configured
+  const layoutModelInfo = LAYOUT_MODELS[display.key]
 
   return (
     <div className="flex items-start justify-between gap-2 py-1.5">
@@ -152,10 +160,20 @@ function ProviderRow({
           <span className="font-mono text-[11px] text-foreground">
             {display.label}
           </span>
+          {layoutModelInfo ? (
+            <span className="text-[10px] text-muted-foreground">
+              {layoutModelInfo.sizeMb} MB
+            </span>
+          ) : null}
           <Badge variant="outline" className="px-1 py-0 text-[9px]">
             {display.kind === "local" ? "本地" : "远程"}
           </Badge>
         </div>
+        {layoutModelInfo && (
+          <div className="mt-0.5 pl-3.5 text-[10px] text-muted-foreground">
+            {layoutModelInfo.description}
+          </div>
+        )}
         {provStatus && provStatus.issues.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1 pl-3.5">
             {provStatus.issues.slice(0, 3).map((issue) => (
@@ -249,18 +267,28 @@ function DetailsPanel({
     zIndex: 9999,
   }
 
+  // Separate layout models from other providers
+  const layoutModelKeys = new Set(Object.keys(LAYOUT_MODELS))
+  const nonLayoutLocal = providers.filter(
+    (p) => p.kind === "local" && !layoutModelKeys.has(p.key)
+  )
+  const layoutModels = providers.filter(
+    (p) => p.kind === "local" && layoutModelKeys.has(p.key)
+  )
+  const remoteProviders = providers.filter((p) => p.kind === "remote")
+
   return createPortal(
     <div
       ref={panelRef}
-      className="w-64 rounded border border-border bg-background p-2.5 shadow-md"
+      className="w-72 rounded border border-border bg-background p-2.5 shadow-md"
       style={style}
     >
-      {providers.filter((p) => p.kind === "local").length > 0 && (
+      {nonLayoutLocal.length > 0 && (
         <>
           <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             本地模型
           </div>
-          {providers.filter((p) => p.kind === "local").map((display) => (
+          {nonLayoutLocal.map((display) => (
             <ProviderRow
               key={display.key}
               display={display}
@@ -272,17 +300,33 @@ function DetailsPanel({
         </>
       )}
 
-      {providers.filter((p) => p.kind === "local").length > 0 &&
-        providers.filter((p) => p.kind === "remote").length > 0 && (
-          <div className="my-1.5 border-t border-border" />
-        )}
-
-      {providers.filter((p) => p.kind === "remote").length > 0 && (
+      {layoutModels.length > 0 && (
         <>
+          {nonLayoutLocal.length > 0 && <div className="my-1.5 border-t border-border" />}
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            版面分析模型
+          </div>
+          {layoutModels.map((display) => (
+            <ProviderRow
+              key={display.key}
+              display={display}
+              provStatus={getProviderStatus(status, display.key, display.kind)}
+              onDownload={onDownload}
+              downloading={downloading === display.key}
+            />
+          ))}
+        </>
+      )}
+
+      {remoteProviders.length > 0 && (
+        <>
+          {(nonLayoutLocal.length > 0 || layoutModels.length > 0) && (
+            <div className="my-1.5 border-t border-border" />
+          )}
           <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             远程 API
           </div>
-          {providers.filter((p) => p.kind === "remote").map((display) => (
+          {remoteProviders.map((display) => (
             <ProviderRow
               key={display.key}
               display={display}

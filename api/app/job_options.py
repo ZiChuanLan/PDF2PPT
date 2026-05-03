@@ -19,7 +19,13 @@ VALID_OCR_AI_PROVIDERS = {
     "novita",
 }
 VALID_OCR_AI_CHAIN_MODES = {"direct", "doc_parser", "layout_block"}
-VALID_OCR_AI_LAYOUT_MODELS = {"pp_doclayout_v3"}
+VALID_OCR_AI_LAYOUT_MODELS = {
+    "pp_doclayout_v3",
+    "pp_doclayout_s",
+    "pp_doclayout_m",
+    "pp_doclayout_l",
+    "doclayout_yolo",
+}
 VALID_OCR_GEOMETRY_MODES = {"auto", "local_tesseract", "direct_ai"}
 VALID_TEXT_ERASE_MODES = {"smart", "fill"}
 VALID_SCANNED_PAGE_MODES = {"segmented", "fullpage"}
@@ -78,6 +84,14 @@ OCR_AI_LAYOUT_MODEL_ALIASES = VALID_OCR_AI_LAYOUT_MODELS | {
     "pp_doclayoutv3",
     "pp_doclayout",
     "pp-doclayout-v3",
+    "pp-doclayout-s",
+    "pp_doclayouts",
+    "pp-doclayout-m",
+    "pp_doclayoutm",
+    "pp-doclayout-l",
+    "pp_doclayoutl",
+    "doclayout-yolo",
+    "doclayoutyolo",
 }
 PPT_GENERATION_MODE_ALIASES = VALID_PPT_GENERATION_MODES | {
     "default",
@@ -174,8 +188,21 @@ def normalize_ai_ocr_chain_mode(value: str | None) -> str:
 
 def normalize_ai_ocr_layout_model(value: str | None) -> str:
     model = (clean_str(_unwrap_form_default(value)) or "pp_doclayout_v3").lower()
+    # Aliases for pp_doclayout_v3
     if model in {"pp-doclayoutv3", "pp_doclayoutv3", "pp_doclayout", "pp-doclayout-v3"}:
         return "pp_doclayout_v3"
+    # Aliases for pp_doclayout_s
+    if model in {"pp-doclayout-s", "pp_doclayouts"}:
+        return "pp_doclayout_s"
+    # Aliases for pp_doclayout_m
+    if model in {"pp-doclayout-m", "pp_doclayoutm"}:
+        return "pp_doclayout_m"
+    # Aliases for pp_doclayout_l
+    if model in {"pp-doclayout-l", "pp_doclayoutl"}:
+        return "pp_doclayout_l"
+    # Aliases for doclayout_yolo
+    if model in {"doclayout-yolo", "doclayoutyolo"}:
+        return "doclayout_yolo"
     return model if model in VALID_OCR_AI_LAYOUT_MODELS else "pp_doclayout_v3"
 
 

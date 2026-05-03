@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import {
   CheckIcon,
   ChevronDownIcon,
+  DownloadIcon,
   EyeIcon,
   EyeOffIcon,
   KeyRoundIcon,
@@ -26,11 +27,16 @@ import {
   BAIDU_DOC_PARSE_TYPE_LABELS,
   isPaddleOcrVlModelName,
   type BaiduDocParseType,
+  type OcrAiLayoutModel,
   type OcrAiPromptPreset,
   defaultSettings,
   type OcrAiProvider,
   type Settings,
 } from "@/lib/settings"
+import {
+  LAYOUT_MODELS,
+  DEFAULT_LAYOUT_MODEL,
+} from "@/lib/layout-models"
 import {
   applyParseEngineMode,
   getMainProviderConfig,
@@ -50,6 +56,7 @@ import {
   setStoredApiOrigin,
 } from "@/lib/api"
 import { useSettings } from "@/hooks/use-settings"
+import { useModelStatus } from "@/hooks/use-model-status"
 
 function FieldLabel({
   htmlFor,
@@ -220,8 +227,13 @@ const ocrAiChainModeOptions: Array<{ id: Settings["ocrAiChainMode"]; label: stri
   { id: "doc_parser", label: "内置文档解析（PaddleOCR-VL）" },
 ]
 
-const ocrAiLayoutModelOptions: Array<{ id: Settings["ocrAiLayoutModel"]; label: string }> = [
-  { id: "pp_doclayout_v3", label: "PP-DocLayoutV3" },
+const ocrAiLayoutModelOptions: Array<{ id: Settings["ocrAiLayoutModel"]; label: string; sizeMb: number; description: string }> = [
+  ...Object.values(LAYOUT_MODELS).map((m) => ({
+    id: m.modelId as Settings["ocrAiLayoutModel"],
+    label: m.displayName,
+    sizeMb: m.sizeMb,
+    description: m.description,
+  })),
 ]
 
 const ocrAiPromptPresetOptions: Array<{ id: OcrAiPromptPreset; label: string }> = [
@@ -315,6 +327,7 @@ export default function SettingsPage() {
     save: saveSettings,
     clear: clearSettings,
   } = useSettings()
+  const { data: modelStatusData, refetch: refetchModelStatus } = useModelStatus()
   const [showAdvanced, setShowAdvanced] = React.useState(false)
   const [showOcrPromptExperiment, setShowOcrPromptExperiment] = React.useState(false)
   const [showOcrModelSuggestions, setShowOcrModelSuggestions] = React.useState(false)
@@ -1718,26 +1731,98 @@ export default function SettingsPage() {
                       <div className="grid gap-2">
                         <FieldLabel
                           htmlFor="ocr-ai-layout-model"
-                          hint="本地切块识别会先用它做版面切块。"
+                          hint="本地切块识别会先用它做版面切块。未下载的模型会提示下载。"
                         >
                           版面切块模型
                         </FieldLabel>
-                        <Select
-                          id="ocr-ai-layout-model"
-                          value={settings.ocrAiLayoutModel}
-                          onChange={(e) =>
-                            setSettings((s) => ({
-                              ...s,
-                              ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
-                            }))
-                          }
-                        >
-                          {ocrAiLayoutModelOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </Select>
+                        <div className="grid gap-2">
+                          {ocrAiLayoutModelOptions.map((option) => {
+                            const isDownloaded = modelStatusData?.local?.[option.id]?.ready ?? false
+                            const isSelected = settings.ocrAiLayoutModel === option.id
+                            return (
+                              <div
+                                key={option.id}
+                                className={`flex items-center justify-between rounded border px-3 py-2 transition-colors ${
+                                  isSelected
+                                    ? "border-foreground bg-muted/50"
+                                    : "border-border hover:border-muted-foreground/50"
+                                }`}
+                              >
+                                <label
+                                  htmlFor={`layout-model-${option.id}`}
+                                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
+                                >
+                                  <input
+                                    type="radio"
+                                    id={`layout-model-${option.id}`}
+                                    name="ocr-ai-layout-model"
+                                    value={option.id}
+                                    checked={isSelected}
+                                    onChange={(e) =>
+                                      setSettings((s) => ({
+                                        ...s,
+                                        ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
+                                      }))
+                                    }
+                                    disabled={!isDownloaded}
+                                    className="h-4 w-4 accent-[#111111]"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium">{option.label}</span>
+                                      <span className="text-[11px] text-muted-foreground">
+                                        {option.sizeMb} MB
+                                      </span>
+                                      {LAYOUT_MODELS[option.id]?.recommended ? (
+                                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                                          推荐
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                      {option.description}
+                                    </div>
+                                  </div>
+                                </label>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {isDownloaded ? (
+                                    <span className="flex items-center gap-1 text-xs text-emerald-600">
+                                      <CheckIcon className="size-3" />
+                                      已下载
+                                    </span>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={async () => {
+                                        try {
+                                          const res = await apiFetch("/models/download", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ model: option.id }),
+                                          })
+                                          if (!res.ok) {
+                                            const body = await res.json().catch(() => null)
+                                            throw new Error(body?.message || "下载失败")
+                                          }
+                                          toast.success(`${option.label} 下载完成`)
+                                          void refetchModelStatus()
+                                        } catch (e) {
+                                          toast.error(normalizeFetchError(e, "模型下载失败"))
+                                        }
+                                      }}
+                                    >
+                                      <DownloadIcon className="size-3" />
+                                      下载
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
                     ) : null}
 

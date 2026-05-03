@@ -10,6 +10,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.convert.ocr.layout_models import (
+    LAYOUT_MODELS,
+    download_model as download_layout_model,
+    is_model_downloaded,
+)
 from app.convert.ocr.runtime_probe import (
     probe_local_paddleocr,
     probe_local_tesseract,
@@ -105,37 +110,22 @@ def _check_local_providers() -> dict[str, ModelProviderStatus]:
             ready=False, issues=[f"probe_failed:{e}"]
         )
 
-    # PP-DocLayout — check if model is downloaded
-    # The model is ready if PaddleOCR is ready (auto-downloads on first use)
-    # or if OCR_PADDLE_LAYOUT_PREWARM=true was used at startup.
-    pp_doclayout_ready = False
-    pp_doclayout_issues: list[str] = []
-    try:
-        import paddlex  # noqa: F401
+    # Per-model layout model status — report each model individually
+    for model_id, model_info in LAYOUT_MODELS.items():
+        model_issues: list[str] = []
+        try:
+            downloaded = is_model_downloaded(model_id)
+            if not downloaded:
+                model_issues.append("not_downloaded")
+        except Exception as e:
+            downloaded = False
+            model_issues.append(f"check_failed:{e}")
 
-        # If paddlex is available, the model *can* be downloaded on demand.
-        # For status, we check if the paddle runtime is available (which
-        # implies the model can be used).
-        paddle_probe = probe_local_paddleocr(language="ch")
-        if paddle_probe.get("ready"):
-            pp_doclayout_ready = True
-        else:
-            pp_doclayout_issues.append("paddleocr_not_ready")
-    except ImportError:
-        pp_doclayout_issues.append("paddlex_not_installed")
-    except Exception as e:
-        pp_doclayout_issues.append(f"check_failed:{e}")
-
-    # Check env flag for explicit prewarm
-    from app.convert.ocr.base import _env_flag
-
-    layout_prewarm_enabled = _env_flag("OCR_PADDLE_LAYOUT_PREWARM", default=False)
-    if layout_prewarm_enabled and not pp_doclayout_ready:
-        pp_doclayout_issues.append("prewarm_enabled_but_not_ready")
-
-    providers["pp_doclayout"] = ModelProviderStatus(
-        ready=pp_doclayout_ready, issues=pp_doclayout_issues
-    )
+        providers[model_id] = ModelProviderStatus(
+            ready=downloaded,
+            issues=model_issues,
+            provider=model_info.provider,
+        )
 
     return providers
 
@@ -212,8 +202,10 @@ async def get_model_status(db: Session = Depends(get_db)):
         local = {
             "tesseract": ModelProviderStatus(ready=False, issues=[f"check_failed:{e}"]),
             "paddleocr": ModelProviderStatus(ready=False, issues=[f"check_failed:{e}"]),
-            "pp_doclayout": ModelProviderStatus(ready=False, issues=[f"check_failed:{e}"]),
         }
+        # Add per-model layout status with error
+        for model_id in LAYOUT_MODELS:
+            local[model_id] = ModelProviderStatus(ready=False, issues=[f"check_failed:{e}"])
 
     try:
         remote = await asyncio.to_thread(_check_remote_providers, db)
@@ -226,39 +218,6 @@ async def get_model_status(db: Session = Depends(get_db)):
         }
 
     return ModelStatusResponse(local=local, remote=remote)
-
-
-def _download_pp_doclayout() -> bool:
-    """Download PP-DocLayout model weights."""
-    try:
-        import paddlex
-
-        model_name = "PP-DocLayoutV3"
-        # Check env for override
-        from app.convert.ocr.base import _clean_str
-        import os
-
-        env_model = _clean_str(os.getenv("OCR_PADDLE_LAYOUT_PREWARM_MODEL"))
-        if env_model:
-            model_name = env_model
-
-        logger.info("Starting PP-DocLayout download: %s", model_name)
-        paddlex.create_model(model_name)
-        logger.info("PP-DocLayout download complete: %s", model_name)
-        return True
-    except ImportError:
-        raise AppException(
-            code=ErrorCode.VALIDATION_ERROR,
-            message="paddlex package is not installed. Install it with: pip install paddlex",
-            status_code=400,
-        )
-    except Exception as e:
-        logger.exception("PP-DocLayout download failed: %s", e)
-        raise AppException(
-            code=ErrorCode.INTERNAL_ERROR,
-            message=f"PP-DocLayout download failed: {e}",
-            status_code=500,
-        )
 
 
 def _download_paddleocr_models() -> bool:
@@ -295,19 +254,59 @@ async def download_model(
     """Trigger local model download (admin only).
 
     Supported models:
-    - pp_doclayout: PP-DocLayout layout detection model
+    - pp_doclayout: PP-DocLayout layout detection model (legacy alias → pp_doclayout_v3)
+    - pp_doclayout_s / pp_doclayout_m / pp_doclayout_l / pp_doclayout_v3: specific variants
+    - doclayout_yolo: DocLayout-YOLO model
     - paddleocr: PaddleOCR det/rec/cls models
     """
     model = payload.model.strip().lower()
 
-    if model in {"pp_doclayout", "pp-doclayout", "layout"}:
-        await asyncio.to_thread(_download_pp_doclayout)
+    # Map legacy aliases to canonical IDs
+    layout_model_aliases = {
+        "pp_doclayout": "pp_doclayout_v3",
+        "pp-doclayout": "pp_doclayout_v3",
+        "layout": "pp_doclayout_v3",
+        "pp-doclayoutv3": "pp_doclayout_v3",
+        "pp_doclayoutv3": "pp_doclayout_v3",
+        "pp-doclayout-v3": "pp_doclayout_v3",
+        "pp-doclayout-s": "pp_doclayout_s",
+        "pp_doclayouts": "pp_doclayout_s",
+        "pp-doclayout-m": "pp_doclayout_m",
+        "pp_doclayoutm": "pp_doclayout_m",
+        "pp-doclayout-l": "pp_doclayout_l",
+        "pp_doclayoutl": "pp_doclayout_l",
+        "doclayout-yolo": "doclayout_yolo",
+        "doclayoutyolo": "doclayout_yolo",
+    }
+
+    canonical_id = layout_model_aliases.get(model)
+
+    # Check if it's a known layout model
+    if canonical_id or model in LAYOUT_MODELS:
+        target_id = canonical_id or model
+        if target_id not in LAYOUT_MODELS:
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"Unknown layout model: {payload.model}",
+                details={"model": payload.model},
+                status_code=400,
+            )
+        try:
+            await asyncio.to_thread(download_layout_model, target_id)
+        except RuntimeError as e:
+            raise AppException(
+                code=ErrorCode.INTERNAL_ERROR,
+                message=str(e),
+                status_code=500,
+            )
+        model_info = LAYOUT_MODELS[target_id]
         return ModelDownloadResponse(
             ok=True,
-            model="pp_doclayout",
-            message="PP-DocLayout model downloaded successfully",
+            model=target_id,
+            message=f"{model_info.display_name} downloaded successfully",
         )
-    elif model in {"paddleocr", "paddle", "paddle_ocr"}:
+
+    if model in {"paddleocr", "paddle", "paddle_ocr"}:
         await asyncio.to_thread(_download_paddleocr_models)
         return ModelDownloadResponse(
             ok=True,
@@ -315,9 +314,10 @@ async def download_model(
             message="PaddleOCR models downloaded successfully",
         )
     else:
+        supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr"
         raise AppException(
             code=ErrorCode.VALIDATION_ERROR,
-            message=f"Unsupported model for download: {payload.model}. Use 'pp_doclayout' or 'paddleocr'.",
+            message=f"Unsupported model for download: {payload.model}. Supported: {supported}",
             details={"model": payload.model},
             status_code=400,
         )

@@ -288,23 +288,20 @@ def _build_layout_image_region_payload(
 
 
 def _normalize_ai_layout_model_name(value: Any) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in {
-        "",
-        "pp_doclayout_v3",
-        "pp-doclayout-v3",
-        "pp_doclayout",
-        "pp-doclayoutv3",
-        "pp_doclayoutv3",
-    }:
-        return "pp_doclayout_v3"
-    return "pp_doclayout_v3"
+    """Normalize layout model name using the centralized registry."""
+    from app.convert.ocr.layout_models import normalize_layout_model_id
+
+    return normalize_layout_model_id(str(value) if value is not None else None)
 
 
 def _resolve_paddlex_layout_model_name(value: Any) -> str:
-    normalized = _normalize_ai_layout_model_name(value)
-    if normalized == "pp_doclayout_v3":
-        return "PP-DocLayoutV3"
+    """Resolve a layout model ID to its PaddleX model name."""
+    from app.convert.ocr.layout_models import LAYOUT_MODELS, normalize_layout_model_id
+
+    normalized = normalize_layout_model_id(str(value) if value is not None else None)
+    info = LAYOUT_MODELS.get(normalized)
+    if info and info.paddlex_model_name:
+        return info.paddlex_model_name
     return "PP-DocLayoutV3"
 
 
