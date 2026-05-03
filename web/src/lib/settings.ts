@@ -120,6 +120,12 @@ export const PARSE_ENGINE_MODE_LABELS: Record<ParseEngineMode, string> = {
   mineru_cloud: "云端 MinerU",
 }
 
+export const AIOCR_CHAIN_MODE_LABELS: Record<OcrAiChainMode, string> = {
+  layout_block: "版面切块",
+  doc_parser: "文档解析",
+  direct: "直出",
+}
+
 export const defaultSettings: Settings = {
   provider: "openai",
   preferredMainProvider: "openai",

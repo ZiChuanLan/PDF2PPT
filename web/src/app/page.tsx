@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
 import {
+  AIOCR_CHAIN_MODE_LABELS,
   defaultSettings,
   loadStoredSettings,
   PARSE_ENGINE_MODE_LABELS,
@@ -1002,11 +1003,11 @@ export default function Home() {
                               updateSettingsSnapshot((prev) => ({
                                 ...prev,
                                 parseEngineMode: mode,
-                                ocrProvider:
-                                  mode === "remote_ocr" ? "aiocr"
-                                  : mode === "baidu_doc" ? "baidu"
-                                  : mode === "mineru_cloud" ? "auto"
-                                  : "machine",
+                                // Only auto-set ocrProvider for non-local modes; keep user's choice for local_ocr
+                                ...(mode === "remote_ocr" ? { ocrProvider: "aiocr" as const }
+                                  : mode === "baidu_doc" ? { ocrProvider: "baidu" as const }
+                                  : mode === "mineru_cloud" ? { ocrProvider: "auto" as const }
+                                  : {}),
                               }))
                             }}
                           >
@@ -1023,6 +1024,47 @@ export default function Home() {
                           />
                         </div>
                       </div>
+                      {settingsSnapshot.parseEngineMode === "local_ocr" && (
+                        <div className="grid gap-1">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>OCR 提供方</span>
+                            <HoverHint text="PaddleOCR 识别精度更高；Tesseract 兼容性更好。" />
+                          </div>
+                          <Select
+                            value={settingsSnapshot.ocrProvider}
+                            onChange={(e) =>
+                              updateSettingsSnapshot((prev) => ({
+                                ...prev,
+                                ocrProvider: e.target.value as Settings["ocrProvider"],
+                              }))
+                            }
+                          >
+                            <option value="paddleocr">PaddleOCR</option>
+                            <option value="tesseract">Tesseract</option>
+                          </Select>
+                        </div>
+                      )}
+                      {settingsSnapshot.parseEngineMode === "remote_ocr" && (
+                        <div className="grid gap-1">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>识别链路</span>
+                            <HoverHint text="版面切块：先切块再逐块识别，推荐默认。文档解析：调用内置文档解析器。直出：整页直接送模型识别。" />
+                          </div>
+                          <Select
+                            value={settingsSnapshot.ocrAiChainMode}
+                            onChange={(e) =>
+                              updateSettingsSnapshot((prev) => ({
+                                ...prev,
+                                ocrAiChainMode: e.target.value as Settings["ocrAiChainMode"],
+                              }))
+                            }
+                          >
+                            <option value="layout_block">{AIOCR_CHAIN_MODE_LABELS.layout_block}</option>
+                            <option value="doc_parser">{AIOCR_CHAIN_MODE_LABELS.doc_parser}</option>
+                            <option value="direct">{AIOCR_CHAIN_MODE_LABELS.direct}</option>
+                          </Select>
+                        </div>
+                      )}
                       {settingsSnapshot.parseEngineMode === "remote_ocr" && (
                         <div className="grid gap-1">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
