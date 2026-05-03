@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { SettingsIcon, DownloadIcon, Loader2Icon } from "lucide-react"
 import Link from "next/link"
 
@@ -176,6 +177,110 @@ function ProviderRow({
 }
 
 // ---------------------------------------------------------------------------
+// Portal-based details panel
+// ---------------------------------------------------------------------------
+
+function DetailsPanel({
+  status,
+  downloading,
+  onDownload,
+  triggerRect,
+  onClose,
+}: {
+  status: ModelStatusResponse | null
+  downloading: string | null
+  onDownload: (model: string) => void
+  triggerRect: DOMRect
+  onClose: () => void
+}) {
+  const panelRef = React.useRef<HTMLDivElement>(null)
+
+  // Close on click outside
+  React.useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    // Delay to avoid the opening click from immediately closing the panel
+    const id = setTimeout(() => {
+      document.addEventListener("mousedown", handleClick)
+    }, 0)
+    return () => {
+      clearTimeout(id)
+      document.removeEventListener("mousedown", handleClick)
+    }
+  }, [onClose])
+
+  // Close on Escape
+  React.useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", handleKey)
+    return () => document.removeEventListener("keydown", handleKey)
+  }, [onClose])
+
+  // Position: below the trigger, left-aligned, clamped to viewport
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: triggerRect.bottom + 4,
+    left: Math.max(8, Math.min(triggerRect.left, window.innerWidth - 272)),
+    zIndex: 9999,
+  }
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      className="w-64 rounded border border-border bg-background p-2.5 shadow-md"
+      style={style}
+    >
+      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        本地模型
+      </div>
+      {PROVIDER_DISPLAY.filter((p) => p.kind === "local").map((display) => (
+        <ProviderRow
+          key={display.key}
+          display={display}
+          provStatus={getProviderStatus(status, display.key, display.kind)}
+          onDownload={onDownload}
+          downloading={downloading === display.key}
+        />
+      ))}
+
+      <div className="my-1.5 border-t border-border" />
+
+      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        远程 API
+      </div>
+      {PROVIDER_DISPLAY.filter((p) => p.kind === "remote").map((display) => (
+        <ProviderRow
+          key={display.key}
+          display={display}
+          provStatus={getProviderStatus(status, display.key, display.kind)}
+          onDownload={onDownload}
+          downloading={downloading === display.key}
+        />
+      ))}
+
+      <div className="mt-2 border-t border-border pt-1.5">
+        <Link href="/settings">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-full justify-center text-[10px]"
+          >
+            <SettingsIcon className="size-3" />
+            打开设置页
+          </Button>
+        </Link>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -195,6 +300,9 @@ export interface ModelStatusBadgeProps {
  *
  * Shows a colored dot (green/yellow/gray) that expands on click to reveal
  * per-provider readiness, issue details, and action buttons (configure/download).
+ *
+ * Uses a React Portal to render the expanded panel outside any overflow:hidden
+ * ancestor containers.
  */
 export function ModelStatusBadge({
   status,
@@ -204,6 +312,19 @@ export function ModelStatusBadge({
 }: ModelStatusBadgeProps) {
   const [expanded, setExpanded] = React.useState(false)
   const [downloading, setDownloading] = React.useState<string | null>(null)
+  const [triggerRect, setTriggerRect] = React.useState<DOMRect | null>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+
+  const handleToggle = React.useCallback(() => {
+    if (!expanded && triggerRef.current) {
+      setTriggerRect(triggerRef.current.getBoundingClientRect())
+    }
+    setExpanded((v) => !v)
+  }, [expanded])
+
+  const handleClose = React.useCallback(() => {
+    setExpanded(false)
+  }, [])
 
   const handleDownload = React.useCallback(
     async (model: string) => {
@@ -233,12 +354,13 @@ export function ModelStatusBadge({
   const overall = getOverallStatus(status)
 
   return (
-    <div className={cn("relative inline-flex items-start", className)}>
+    <span className={cn("relative inline-flex items-center", className)}>
       {/* Trigger — colored dot + label */}
       <button
+        ref={triggerRef}
         type="button"
         className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={handleToggle}
       >
         {isLoading ? (
           <Loader2Icon className="size-3 animate-spin" />
@@ -250,51 +372,16 @@ export function ModelStatusBadge({
         </span>
       </button>
 
-      {/* Expanded details panel — absolutely positioned to avoid layout shift */}
-      {expanded && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded border border-border bg-background p-2.5 shadow-md">
-          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            本地模型
-          </div>
-          {PROVIDER_DISPLAY.filter((p) => p.kind === "local").map((display) => (
-            <ProviderRow
-              key={display.key}
-              display={display}
-              provStatus={getProviderStatus(status, display.key, display.kind)}
-              onDownload={handleDownload}
-              downloading={downloading === display.key}
-            />
-          ))}
-
-          <div className="my-1.5 border-t border-border" />
-
-          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            远程 API
-          </div>
-          {PROVIDER_DISPLAY.filter((p) => p.kind === "remote").map((display) => (
-            <ProviderRow
-              key={display.key}
-              display={display}
-              provStatus={getProviderStatus(status, display.key, display.kind)}
-              onDownload={handleDownload}
-              downloading={downloading === display.key}
-            />
-          ))}
-
-          <div className="mt-2 border-t border-border pt-1.5">
-            <Link href="/settings">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-full justify-center text-[10px]"
-              >
-                <SettingsIcon className="size-3" />
-                打开设置页
-              </Button>
-            </Link>
-          </div>
-        </div>
+      {/* Expanded details — rendered via portal to bypass overflow:hidden ancestors */}
+      {expanded && triggerRect && (
+        <DetailsPanel
+          status={status}
+          downloading={downloading}
+          onDownload={handleDownload}
+          triggerRect={triggerRect}
+          onClose={handleClose}
+        />
       )}
-    </div>
+    </span>
   )
 }
