@@ -673,20 +673,21 @@ export default function Home() {
                 )}
 
                 {/* How it works */}
-                <div className="mx-auto mt-10 grid max-w-3xl grid-cols-3 gap-6 text-center">
-                  {[
-                    { step: "1", title: "上传文件", desc: "拖拽或点击选择 PDF / 图片" },
-                    { step: "2", title: "自动处理", desc: "解析 → OCR → 排版全自动" },
-                    { step: "3", title: "下载 PPT", desc: "生成标准 PPTX 文件" },
-                  ].map(({ step, title, desc }) => (
-                    <div key={step}>
-                      <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full border-2 border-[#cc0000] text-sm font-bold text-[#cc0000]">
-                        {step}
-                      </div>
-                      <div className="text-sm font-medium">{title}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
-                    </div>
-                  ))}
+                <div className="mx-auto mt-10 flex max-w-lg items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-base font-semibold text-[#cc0000]">1</span>
+                    <span>上传文件</span>
+                  </div>
+                  <div className="h-px flex-1 bg-border mx-2" />
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-base font-semibold text-[#cc0000]">2</span>
+                    <span>自动处理</span>
+                  </div>
+                  <div className="h-px flex-1 bg-border mx-2" />
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-base font-semibold text-[#cc0000]">3</span>
+                    <span>下载 PPT</span>
+                  </div>
                 </div>
               </div>
             </div>
