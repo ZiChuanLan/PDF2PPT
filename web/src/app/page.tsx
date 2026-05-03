@@ -9,12 +9,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   DownloadIcon,
-  FileTextIcon,
   FileIcon,
   Loader2Icon,
-  ScanIcon,
-  SparklesIcon,
-  LayersIcon,
   XIcon,
   UploadCloudIcon,
 } from "lucide-react"
@@ -27,6 +23,7 @@ import { useAuth } from "@/components/auth-provider"
 import {
   defaultSettings,
   loadStoredSettings,
+  PARSE_ENGINE_MODE_LABELS,
   PPT_GENERATION_MODE_LABELS,
   SETTINGS_STORAGE_KEY,
   type Settings,
@@ -570,12 +567,12 @@ export default function Home() {
                 {/* Subtle gradient backdrop */}
                 <div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-gradient-to-b from-[#cc0000]/[0.03] to-transparent" />
 
-                <div className="mb-8 text-center">
-                  <h1 className="font-serif text-4xl font-semibold tracking-tight md:text-5xl">
-                    PDF 转 PPT，一键搞定
+                <div className="mb-6 text-center">
+                  <h1 className="font-serif text-3xl font-semibold tracking-tight md:text-4xl">
+                    PDF2PPT
                   </h1>
-                  <p className="mt-3 text-base text-muted-foreground">
-                    上传 PDF 或图片，AI 智能解析，自动生成演示文稿
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    上传 PDF 或图片，自动生成演示文稿
                   </p>
                 </div>
 
@@ -650,39 +647,32 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Feature highlights */}
-              <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-3 md:grid-cols-4">
-                {[
-                  { icon: ScanIcon, title: "智能 OCR", desc: "多种引擎，精准识别扫描文档" },
-                  { icon: SparklesIcon, title: "AI 排版", desc: "智能分析结构，自动生成幻灯片" },
-                  { icon: LayersIcon, title: "批量处理", desc: "多文件同时上传，并发转换" },
-                  { icon: FileTextIcon, title: "多格式输出", desc: "PPTX 标准格式，兼容所有软件" },
-                ].map(({ icon: Icon, title, desc }) => (
-                  <div
-                    key={title}
-                    className="group rounded-lg border bg-card/50 p-4 transition-all hover:border-[#cc0000]/30 hover:shadow-sm"
-                  >
-                    <Icon className="mb-2 size-5 text-[#cc0000] transition-transform group-hover:scale-110" />
-                    <div className="text-sm font-medium">{title}</div>
-                    <div className="mt-1 text-xs text-muted-foreground leading-relaxed">{desc}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Trust bar */}
-              <div className="mx-auto mt-8 flex max-w-3xl items-center justify-center gap-6 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block size-1.5 rounded-full bg-[#cc0000]" />
-                  快速转换
+              {/* Current config summary */}
+              <div className="mx-auto mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+                <span>
+                  解析引擎{" "}
+                  <span className="font-medium text-foreground">
+                    {PARSE_ENGINE_MODE_LABELS[settingsSnapshot.parseEngineMode]}
+                  </span>
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block size-1.5 rounded-full bg-[#cc0000]" />
-                  精准识别
+                <span>
+                  OCR{" "}
+                  <span className="font-medium text-foreground">
+                    {ocrProviderLabels[settingsSnapshot.ocrProvider]}
+                  </span>
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block size-1.5 rounded-full bg-[#cc0000]" />
-                  安全处理
+                <span>
+                  生成模式{" "}
+                  <span className="font-medium text-foreground">
+                    {PPT_GENERATION_MODE_LABELS[settingsSnapshot.pptGenerationMode]}
+                  </span>
                 </span>
+                <Link
+                  href="/settings"
+                  className="text-[#cc0000] hover:underline"
+                >
+                  更改
+                </Link>
               </div>
             </div>
           )}
