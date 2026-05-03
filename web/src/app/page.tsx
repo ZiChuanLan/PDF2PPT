@@ -602,26 +602,26 @@ export default function Home() {
                   ) : null}
                 </div>
 
-                {/* Quick config */}
-                <div className="mt-5 flex flex-wrap items-center justify-center gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">模式</span>
+                {/* Config selects below upload */}
+                <div className="mx-auto mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">解析引擎</span>
                     <Select
-                      value={settingsSnapshot.pptGenerationMode}
+                      value={settingsSnapshot.parseEngineMode}
                       onChange={(e) =>
                         updateSettingsSnapshot((prev) => ({
                           ...prev,
-                          pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
+                          parseEngineMode: e.target.value as Settings["parseEngineMode"],
                         }))
                       }
-                      className="h-9 w-28"
+                      className="h-7 w-28 text-xs"
                     >
-                      <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
-                      <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
-                      <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
+                      {Object.entries(PARSE_ENGINE_MODE_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
                     </Select>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">OCR</span>
                     <Select
                       value={settingsSnapshot.ocrProvider}
@@ -631,48 +631,37 @@ export default function Home() {
                           ocrProvider: e.target.value as Settings["ocrProvider"],
                         }))
                       }
-                      className="h-9 w-32"
+                      className="h-7 w-28 text-xs"
                     >
                       {Object.entries(ocrProviderLabels).map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </Select>
                   </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">生成模式</span>
+                    <Select
+                      value={settingsSnapshot.pptGenerationMode}
+                      onChange={(e) =>
+                        updateSettingsSnapshot((prev) => ({
+                          ...prev,
+                          pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
+                        }))
+                      }
+                      className="h-7 w-28 text-xs"
+                    >
+                      <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
+                      <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
+                      <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
+                    </Select>
+                  </div>
                   <Link
                     href="/settings"
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground"
                   >
-                    高级设置 <ArrowRightIcon className="size-3" />
+                    更多设置
                   </Link>
                 </div>
-              </div>
-
-              {/* Current config summary */}
-              <div className="mx-auto mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-                <span>
-                  解析引擎{" "}
-                  <span className="font-medium text-foreground">
-                    {PARSE_ENGINE_MODE_LABELS[settingsSnapshot.parseEngineMode]}
-                  </span>
-                </span>
-                <span>
-                  OCR{" "}
-                  <span className="font-medium text-foreground">
-                    {ocrProviderLabels[settingsSnapshot.ocrProvider]}
-                  </span>
-                </span>
-                <span>
-                  生成模式{" "}
-                  <span className="font-medium text-foreground">
-                    {PPT_GENERATION_MODE_LABELS[settingsSnapshot.pptGenerationMode]}
-                  </span>
-                </span>
-                <Link
-                  href="/settings"
-                  className="text-[#cc0000] hover:underline"
-                >
-                  更改
-                </Link>
               </div>
             </div>
           )}
