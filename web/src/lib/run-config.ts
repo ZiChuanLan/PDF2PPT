@@ -89,6 +89,8 @@ export const OCR_PROVIDER_LABELS: Record<OcrProvider, string> = {
   aiocr: "AIOCR",
   machine: "本地 OCR",
   baidu: "百度 OCR",
+  tesseract: "Tesseract",
+  paddleocr: "PaddleOCR",
 }
 
 const OCR_CONFIG_SOURCE_LABELS: Record<OcrConfigSource, string> = {
@@ -105,7 +107,7 @@ export const PARSE_ENGINE_OPTIONS: Array<{ id: ParseEngineMode; label: string }>
   { id: "mineru_cloud", label: PARSE_ENGINE_MODE_LABELS.mineru_cloud },
 ]
 
-export const LOCAL_PARSE_OCR_PROVIDERS: OcrProvider[] = ["machine"]
+export const LOCAL_PARSE_OCR_PROVIDERS: OcrProvider[] = ["paddleocr", "tesseract"]
 
 export const REMOTE_PARSE_OCR_PROVIDERS: OcrProvider[] = ["aiocr"]
 export const BAIDU_DOC_PARSE_OCR_PROVIDERS: OcrProvider[] = []
@@ -165,14 +167,17 @@ function getResolvedMainProvider(settings: Settings): MainProvider {
 
 function getPreferredLocalOcrProvider(settings: Settings): OcrProvider {
   const rawProvider = (settings.ocrProvider || "").trim().toLowerCase()
-  if (rawProvider === "machine") {
-    return rawProvider
+  if (rawProvider === "tesseract" || rawProvider === "paddleocr") {
+    return rawProvider as OcrProvider
   }
-  // Backward compat: old tesseract/paddle_local → machine
-  if (rawProvider === "tesseract" || rawProvider === "paddle_local") {
+  if (rawProvider === "machine") {
     return "machine"
   }
-  return "machine"
+  // Backward compat: old paddle_local → paddleocr
+  if (rawProvider === "paddle_local") {
+    return "paddleocr"
+  }
+  return "paddleocr"
 }
 
 function resolveParseEngineMode(settings: Settings): ParseEngineMode {

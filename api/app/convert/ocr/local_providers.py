@@ -1153,9 +1153,9 @@ class OcrManager:
         # paddle → aiocr (identical code path as aiocr+doc_parser)
         if provider_id == "paddle":
             provider_id = "aiocr"
-        # tesseract/paddle_local → machine (merged local OCR provider)
-        if provider_id in {"tesseract", "paddle_local"}:
-            provider_id = "machine"
+        # paddle_local → paddleocr (new canonical name)
+        if provider_id == "paddle_local":
+            provider_id = "paddleocr"
         if provider_id not in {
             "auto",
             "aiocr",
@@ -1164,7 +1164,7 @@ class OcrManager:
             "tesseract",
             "local",
             "paddle",
-            "paddle_local",
+            "paddleocr",
         }:
             raise ValueError(f"Unsupported OCR provider: {provider_id}")
         self.provider_id = provider_id
@@ -1323,6 +1323,12 @@ class OcrManager:
             self.providers.append(self.paddle_provider)
             logger.info("Using local PaddleOCR (explicit, lang=%s)", paddle_lang)
             _maybe_add_tesseract_fallback(reason="paddle_local")
+        if provider_id == "paddleocr":
+            paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
+            self.paddle_provider = PaddleOcrClient(language=paddle_lang)
+            self.providers.append(self.paddle_provider)
+            logger.info("Using local PaddleOCR (explicit, lang=%s)", paddle_lang)
+            _maybe_add_tesseract_fallback(reason="paddleocr")
         if provider_id == "paddle":
             if not ai_api_key:
                 raise ValueError("Paddle OCR requires api_key")
@@ -1559,7 +1565,7 @@ class OcrManager:
                         allow_merge=True,
                     )
                 return normalized
-            if self.provider_id in {"paddle_local", "machine"}:
+            if self.provider_id in {"paddle_local", "machine", "paddleocr"}:
                 # PaddleOCR local output format varies across versions/models.
                 # Some pipelines emit per-word boxes (very fragmented), which
                 # leads to thousands of PPT shapes and poor line wrapping/font

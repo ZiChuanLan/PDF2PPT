@@ -91,7 +91,7 @@ def build_ocr_route_plan(
             force_disable_linebreak=True,
         )
 
-    if requested_ocr_provider in {"paddle_local", "machine"}:
+    if requested_ocr_provider in {"paddle_local", "machine", "paddleocr"}:
         return OcrRoutePlan(
             requested_provider=requested_ocr_provider,
             runtime_provider=requested_ocr_provider,

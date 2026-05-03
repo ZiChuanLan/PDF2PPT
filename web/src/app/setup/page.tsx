@@ -124,6 +124,15 @@ export default function SetupPage() {
   }, [deployMode, username, password, refetch])
 
   const handleDownloadModel = React.useCallback(async (model: string) => {
+    const modelInfo = LAYOUT_MODELS[model]
+    const label = modelInfo?.displayName ?? model
+    const sizeMb = modelInfo?.sizeMb
+    const confirmMsg = sizeMb
+      ? `下载 ${label}（${sizeMb}MB）？\n下载完成后可在设置中切换使用。`
+      : `下载 ${label}？\n下载完成后可在设置中切换使用。`
+    if (!window.confirm(confirmMsg)) {
+      return
+    }
     setDownloadingModel(model)
     try {
       const res = await apiFetch("/models/download", {

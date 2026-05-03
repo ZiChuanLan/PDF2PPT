@@ -7,6 +7,8 @@ export type OcrProvider =
   | "aiocr"
   | "baidu"
   | "machine"
+  | "tesseract"
+  | "paddleocr"
 export type OcrAiProvider = "auto" | "openai" | "siliconflow" | "deepseek" | "ppio" | "novita"
 export type OcrAiChainMode = "direct" | "doc_parser" | "layout_block"
 export type OcrAiLayoutModel =
@@ -296,15 +298,17 @@ export function loadStoredSettings(): Settings {
   if (legacyProvider === "paddle-local" || legacyProvider === "local_paddle") {
     merged.ocrProvider = "machine"
   }
-  // Migrate old tesseract/paddle_local → machine
-  if (legacyProvider === "tesseract" || legacyProvider === "paddle_local") {
-    merged.ocrProvider = "machine"
+  // Migrate old paddle_local → paddleocr
+  if (legacyProvider === "paddle_local") {
+    merged.ocrProvider = "paddleocr"
   }
   const validOcrProviders: OcrProvider[] = [
     "auto",
     "aiocr",
     "baidu",
     "machine",
+    "tesseract",
+    "paddleocr",
   ]
   if (!validOcrProviders.includes(merged.ocrProvider)) {
     merged.ocrProvider = merged.provider === "mineru" ? "auto" : "machine"

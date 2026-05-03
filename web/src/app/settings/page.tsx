@@ -255,6 +255,8 @@ const ocrProviderLabels: Record<Settings["ocrProvider"], string> = {
   aiocr: "AIOCR",
   machine: "本地 OCR",
   baidu: "百度 OCR",
+  tesseract: "Tesseract",
+  paddleocr: "PaddleOCR",
 }
 
 type LocalOcrCheckResult = {
@@ -1797,6 +1799,9 @@ export default function SettingsPage() {
                                       size="sm"
                                       className="h-7 text-xs"
                                       onClick={async () => {
+                                        if (!window.confirm(`下载 ${option.label}（${option.sizeMb}MB）？\n下载完成后可在设置中切换使用。`)) {
+                                          return
+                                        }
                                         try {
                                           const res = await apiFetch("/models/download", {
                                             method: "POST",

@@ -288,15 +288,13 @@ def _is_paddlex_model_cached(info: LayoutModelInfo) -> bool:
     if not paddlex_cache.exists():
         return False
 
-    # Model directory name pattern: lowercase with hyphens
-    model_dir_name = (info.paddlex_model_name or "").lower().replace("-", "_")
-    model_dir = paddlex_cache / model_dir_name
-    if model_dir.exists() and any(model_dir.iterdir()):
-        return True
-
-    # Fallback: check for any directory matching the model name pattern
+    # Match by model name (case-insensitive), e.g. "PP-DocLayoutV3" or "pp_doclayoutv3"
+    target = (info.paddlex_model_name or "").lower().replace("-", "_").replace(" ", "")
     for d in paddlex_cache.iterdir():
-        if d.is_dir() and model_dir_name in d.name.lower():
+        if not d.is_dir():
+            continue
+        normalized = d.name.lower().replace("-", "_").replace(" ", "")
+        if normalized == target or target in normalized:
             if any(d.iterdir()):
                 return True
 
