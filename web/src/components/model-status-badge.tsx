@@ -233,7 +233,7 @@ export function ModelStatusBadge({
   const overall = getOverallStatus(status)
 
   return (
-    <div className={cn("inline-flex flex-col items-start", className)}>
+    <div className={cn("relative inline-flex items-start", className)}>
       {/* Trigger — colored dot + label */}
       <button
         type="button"
@@ -250,9 +250,9 @@ export function ModelStatusBadge({
         </span>
       </button>
 
-      {/* Expanded details panel */}
+      {/* Expanded details panel — absolutely positioned to avoid layout shift */}
       {expanded && (
-        <div className="mt-1 w-64 rounded border border-border bg-background p-2.5 shadow-md">
+        <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded border border-border bg-background p-2.5 shadow-md">
           <div className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             本地模型
           </div>
