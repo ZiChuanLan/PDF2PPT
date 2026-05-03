@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboardIcon, ListChecksIcon, Settings2Icon } from "lucide-react"
+import { LayoutDashboardIcon, ListChecksIcon, Settings2Icon, HistoryIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { UserMenu } from "@/components/user-menu"
@@ -18,6 +18,12 @@ const workbenchNavItems = [
     label: "首页",
     description: "上传与执行",
     icon: LayoutDashboardIcon,
+  },
+  {
+    href: "/jobs",
+    label: "任务记录",
+    description: "历史任务管理",
+    icon: HistoryIcon,
   },
   {
     href: "/tracking",
@@ -71,7 +77,7 @@ export function WorkbenchNav() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              PDF 编排台
+              PDF2PPT
             </div>
             <Badge variant="outline" className="font-sans text-[11px] uppercase tracking-[0.12em]">
               {deployMode === "public" ? "公开模式" : "自用模式"}

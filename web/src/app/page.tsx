@@ -3,14 +3,20 @@
 import * as React from "react"
 import Link from "next/link"
 import {
+  ArrowLeftIcon,
   ArrowRightIcon,
+  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   DownloadIcon,
   FileTextIcon,
-  Trash2Icon,
+  FileIcon,
+  Loader2Icon,
+  ScanIcon,
+  SparklesIcon,
+  LayersIcon,
+  XIcon,
   UploadCloudIcon,
-  XCircleIcon,
 } from "lucide-react"
 import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
@@ -27,16 +33,10 @@ import {
 } from "@/lib/settings"
 import {
   buildJobConfig,
-  createJobFormData,
-  getRunParseEngineLabel,
-  resolveRunConfig,
   validateRunConfig,
 } from "@/lib/run-config"
 import {
-  getJobStageFlowStage,
   getJobStageFlowIndex,
-  JOB_STAGE_COMPACT_LABELS,
-  JOB_STAGE_FLOW,
   JOB_STAGE_LABELS,
   JOB_STATUS_LABELS,
   normalizeJobListResponse,
@@ -49,14 +49,6 @@ import {
 } from "@/lib/job-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { JobDebugPanel } from "@/components/job-debug-panel"
 import { HoverHint } from "@/components/ui/hover-hint"
 import { Input } from "@/components/ui/input"
@@ -75,6 +67,14 @@ type JobStatusFetchError = Error & {
   errorCode?: string
 }
 
+type FileJobState = {
+  file: File
+  jobId: string | null
+  status: JobStatusResponse | null
+  error: string | null
+  isSubmitting: boolean
+}
+
 const ocrProviderLabels: Record<Settings["ocrProvider"], string> = {
   auto: "自动",
   aiocr: "AIOCR",
@@ -90,19 +90,6 @@ const SUPPORTED_UPLOAD_ACCEPT = {
   "image/webp": [".webp"],
 } as const
 const SUPPORTED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"] as const
-
-function formatDateTime(iso: string) {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return iso
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Shanghai",
-  }).format(date)
-}
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B"
@@ -140,21 +127,25 @@ export default function Home() {
   const { user, isLoading: isAuthLoading } = useAuth()
   const [settingsSnapshot, setSettingsSnapshot] = React.useState<Settings>(defaultSettings)
   const {
+    files: uploadFiles,
     file,
-    setFile,
+    fileCount,
     pageStartInput,
     setPageStartInput,
     pageEndInput,
     setPageEndInput,
+    addFiles,
+    removeFile,
     clearUpload,
   } = useUploadSession()
 
-  const [jobId, setJobId] = React.useState<string | null>(null)
-  const [activeJob, setActiveJob] = React.useState<JobStatusResponse | null>(null)
-  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [fileJobs, setFileJobs] = React.useState<FileJobState[]>([])
+  const [queueSize, setQueueSize] = React.useState(0)
+  const [isJobIdHydrated, setIsJobIdHydrated] = React.useState(true)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [previewPageInput, setPreviewPageInput] = React.useState("1")
   const [previewPageCount, setPreviewPageCount] = React.useState(0)
+  const [previewFileIndex, setPreviewFileIndex] = React.useState(0)
   const [usePageRange, setUsePageRange] = React.useState(
     Boolean(pageStartInput.trim() || pageEndInput.trim())
   )
@@ -162,11 +153,6 @@ export default function Home() {
   const [showHomeLog, setShowHomeLog] = React.useState(false)
 
   const [jobs, setJobs] = React.useState<JobListItem[]>([])
-  const [queueSize, setQueueSize] = React.useState(0)
-  const [jobsLoading, setJobsLoading] = React.useState(false)
-  const [deletingJobId, setDeletingJobId] = React.useState<string | null>(null)
-  const [isJobIdHydrated, setIsJobIdHydrated] = React.useState(false)
-  const jobIdRef = React.useRef<string | null>(null)
   const lastTerminalToastRef = React.useRef<{
     jobId: string | null
     status: JobStatusValue | null
@@ -174,21 +160,6 @@ export default function Home() {
     jobId: null,
     status: null,
   })
-
-  const runConfig = React.useMemo(() => resolveRunConfig(settingsSnapshot), [settingsSnapshot])
-  const runParseEngineLabel = React.useMemo(
-    () => getRunParseEngineLabel(runConfig),
-    [runConfig]
-  )
-  const runOcrSummaryLabel = React.useMemo(() => {
-    if (runConfig.parseProvider === "mineru") {
-      return "MinerU 自身"
-    }
-    if (runConfig.parseProvider === "baidu_doc") {
-      return "百度解析"
-    }
-    return ocrProviderLabels[runConfig.effectiveOcrProvider]
-  }, [runConfig])
 
   const refreshSettingsSnapshot = React.useCallback(() => {
     setSettingsSnapshot(loadStoredSettings())
@@ -208,7 +179,6 @@ export default function Home() {
   )
 
   const fetchJobs = React.useCallback(async (silent = true) => {
-    if (!silent) setJobsLoading(true)
     try {
       const response = await apiFetch("/jobs?limit=50")
       if (!response.ok) {
@@ -219,32 +189,10 @@ export default function Home() {
       const rows = normalized.jobs
       setJobs(rows)
       setQueueSize(normalized.queueSize)
-
-      const currentJobId = jobIdRef.current
-      if (currentJobId) {
-        const matched = rows.find((row) => row.job_id === currentJobId)
-        if (matched) {
-          setActiveJob((previous) => {
-            const normalizedStatus = normalizeJobStatusResponse(matched)
-            if (previous?.job_id === matched.job_id && previous.debug_events.length) {
-              return {
-                ...normalizedStatus,
-                debug_events: previous.debug_events,
-              }
-            }
-            return normalizedStatus
-          })
-          if (TERMINAL_JOB_STATUSES.has(matched.status)) {
-            setIsSubmitting(false)
-          }
-        }
-      }
     } catch (e) {
       if (!silent) {
         setActionError(normalizeFetchError(e, "加载任务列表失败"))
       }
-    } finally {
-      if (!silent) setJobsLoading(false)
     }
   }, [])
 
@@ -268,37 +216,26 @@ export default function Home() {
   }, [])
 
   const onDrop = React.useCallback((accepted: File[]) => {
-    const next = accepted[0] ?? null
-    const nextIsImage = isImageUploadFile(next)
-    setFile(next)
+    if (accepted.length === 0) return
+    addFiles(accepted)
     setActionError(null)
-    if (next) {
-      setPageStartInput("")
-      setPageEndInput("")
-      setPreviewPageInput("1")
-      setPreviewPageCount(nextIsImage ? 1 : 0)
-      setUsePageRange(false)
-    } else {
-      clearUpload()
-      setPreviewPageInput("1")
-      setPreviewPageCount(0)
-      setUsePageRange(false)
-    }
-  }, [clearUpload, setFile, setPageEndInput, setPageStartInput])
+    setPreviewPageInput("1")
+    setPreviewPageCount(0)
+    setPreviewFileIndex(0)
+    setUsePageRange(false)
+  }, [addFiles])
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     accept: SUPPORTED_UPLOAD_ACCEPT,
-    multiple: false,
-    disabled: isSubmitting,
+    multiple: true,
     onDrop,
   })
 
-  const isImageInput = isImageUploadFile(file)
+  const currentPreviewFile = uploadFiles[previewFileIndex]?.file ?? null
+  const isImageInput = isImageUploadFile(currentPreviewFile)
 
-  const handleConvert = React.useCallback(async () => {
-    if (!file) return
-
-    // Check authentication
+  const handleConvertAll = React.useCallback(async () => {
+    if (fileCount === 0) return
     if (!user) {
       setActionError("请先登录后再创建任务")
       return
@@ -324,70 +261,87 @@ export default function Home() {
       return
     }
 
-    setIsSubmitting(true)
-    setJobId(null)
-    setActiveJob(null)
+    const initialJobs: FileJobState[] = uploadFiles.map((entry) => ({
+      file: entry.file,
+      jobId: null,
+      status: null,
+      error: null,
+      isSubmitting: true,
+    }))
+    setFileJobs(initialJobs)
 
-    try {
-      const jobConfig = buildJobConfig(settingsSnapshot, pageStart, pageEnd, {
-        retainProcessArtifacts,
-      })
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("config", JSON.stringify(jobConfig))
-      const response = await apiFetch("/jobs/v2", {
-        method: "POST",
-        body: formData,
-      })
+    const jobConfig = buildJobConfig(settingsSnapshot, pageStart, pageEnd, {
+      retainProcessArtifacts,
+    })
 
-      if (!response.ok) {
-        throw new Error(await readResponseErrorMessage(response, "创建任务失败"))
-      }
+    let successCount = 0
+    let failCount = 0
 
-      const body = (await response.json().catch(() => null)) as { job_id?: string } | null
-      const nextJobId = typeof body?.job_id === "string" ? body.job_id : ""
-      if (!nextJobId) {
-        throw new Error("创建任务失败：未返回任务号")
-      }
-
-      setJobId(nextJobId)
-      toast.success("任务创建成功，正在处理中")
-
+    const submitOne = async (entry: FileJobState, index: number) => {
       try {
-        const status = await fetchJobStatus(nextJobId)
-        setActiveJob(status)
-      } catch {
-        // ignore immediate poll failure
+        const formData = new FormData()
+        formData.append("file", entry.file)
+        formData.append("config", JSON.stringify(jobConfig))
+        const response = await apiFetch("/jobs/v2", {
+          method: "POST",
+          body: formData,
+        })
+        if (!response.ok) {
+          throw new Error(await readResponseErrorMessage(response, "创建任务失败"))
+        }
+        const body = (await response.json().catch(() => null)) as { job_id?: string } | null
+        const nextJobId = typeof body?.job_id === "string" ? body.job_id : ""
+        if (!nextJobId) {
+          throw new Error("创建任务失败：未返回任务号")
+        }
+        setFileJobs((prev) =>
+          prev.map((j, i) =>
+            i === index ? { ...j, jobId: nextJobId, isSubmitting: false } : j
+          )
+        )
+        successCount++
+      } catch (e) {
+        const msg = normalizeFetchError(e, "创建任务失败")
+        setFileJobs((prev) =>
+          prev.map((j, i) =>
+            i === index ? { ...j, error: msg, isSubmitting: false } : j
+          )
+        )
+        failCount++
       }
-
-      void fetchJobs(true)
-    } catch (e) {
-      setActionError(normalizeFetchError(e, "创建任务失败"))
-      setIsSubmitting(false)
     }
+
+    await Promise.all(uploadFiles.map((_, i) => submitOne(initialJobs[i], i)))
+
+    if (successCount > 0) {
+      toast.success(`已提交 ${successCount} 个任务${failCount > 0 ? `，${failCount} 个失败` : ""}`)
+    } else if (failCount > 0) {
+      toast.error(`全部 ${failCount} 个任务提交失败`)
+    }
+
+    void fetchJobs(true)
   }, [
-    fetchJobStatus,
-    fetchJobs,
-    file,
-    isImageInput,
-    pageEndInput,
-    pageStartInput,
-    retainProcessArtifacts,
+    fileCount,
+    user,
     settingsSnapshot,
     usePageRange,
-    user,
+    isImageInput,
+    pageStartInput,
+    pageEndInput,
+    retainProcessArtifacts,
+    uploadFiles,
+    fetchJobs,
   ])
 
-  const handleCancelCurrentJob = React.useCallback(async () => {
-    if (!jobId) return
+  const handleCancelJob = React.useCallback(async (targetJobId: string) => {
     try {
-      await apiFetch(`/jobs/${jobId}/cancel`, { method: "POST" })
+      await apiFetch(`/jobs/${targetJobId}/cancel`, { method: "POST" })
       toast("已发送取消请求")
       void fetchJobs(true)
     } catch {
       toast.error("取消请求失败")
     }
-  }, [fetchJobs, jobId])
+  }, [fetchJobs])
 
   const handleDownload = React.useCallback(async (targetJobId: string) => {
     const response = await apiFetch(`/jobs/${targetJobId}/download`)
@@ -406,85 +360,88 @@ export default function Home() {
     window.URL.revokeObjectURL(url)
   }, [])
 
-  const handleCancelById = React.useCallback(
-    async (targetJobId: string) => {
+  const handleDownloadAll = React.useCallback(async () => {
+    const completedJobs = fileJobs.filter((j) => j.status?.status === "completed" && j.jobId)
+    if (completedJobs.length === 0) return
+    for (const job of completedJobs) {
       try {
-        await apiFetch(`/jobs/${targetJobId}/cancel`, { method: "POST" })
-        toast("取消请求已发送")
-        void fetchJobs(true)
-      } catch {
-        toast.error("取消失败")
-      }
-    },
-    [fetchJobs]
-  )
-
-  const handleDeleteById = React.useCallback(
-    async (targetJobId: string) => {
-      if (!window.confirm(`确定删除任务 ${targetJobId.slice(0, 8)} 吗？这会移除任务记录和本地产物。`)) {
-        return
-      }
-      setDeletingJobId(targetJobId)
-      try {
-        const response = await apiFetch(`/jobs/${targetJobId}`, { method: "DELETE" })
-        const body = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(body?.message || `删除失败（HTTP ${response.status}）`)
-        }
-        if (jobIdRef.current === targetJobId) {
-          setJobId(null)
-          setActiveJob(null)
-          setIsSubmitting(false)
-          setActionError(null)
-        }
-        setJobs((prev) => prev.filter((row) => row.job_id !== targetJobId))
-        toast.success("任务已删除")
-        void fetchJobs(true)
+        await handleDownload(job.jobId!)
       } catch (e) {
-        toast.error(normalizeFetchError(e, "删除任务失败"))
-      } finally {
-        setDeletingJobId((current) => (current === targetJobId ? null : current))
+        toast.error(`${job.file.name}: ${normalizeFetchError(e, "下载失败")}`)
       }
-    },
-    [fetchJobs]
-  )
+    }
+  }, [fileJobs, handleDownload])
 
   const handleResetAll = React.useCallback(() => {
     clearUpload()
-    setJobId(null)
-    setActiveJob(null)
-    setIsSubmitting(false)
+    setFileJobs([])
     setActionError(null)
     setRetainProcessArtifacts(false)
     setPreviewPageInput("1")
     setPreviewPageCount(0)
+    setPreviewFileIndex(0)
     setUsePageRange(false)
     setPageStartInput("")
     setPageEndInput("")
   }, [clearUpload, setPageEndInput, setPageStartInput])
 
-  React.useEffect(() => {
-    jobIdRef.current = jobId
-  }, [jobId])
+  const hasActiveJobs = fileJobs.some(
+    (j) => j.isSubmitting || (j.jobId && j.status && !TERMINAL_JOB_STATUSES.has(j.status.status))
+  )
+  const allCompleted = fileJobs.length > 0 && fileJobs.every(
+    (j) => j.status?.status === "completed" || j.error
+  )
+  const completedCount = fileJobs.filter((j) => j.status?.status === "completed").length
+  const failedCount = fileJobs.filter((j) => j.error || j.status?.status === "failed").length
 
+  // Poll all active jobs
   React.useEffect(() => {
-    if (typeof window === "undefined") return
-    const storedJobId = window.localStorage.getItem(HOME_ACTIVE_JOB_STORAGE_KEY)
-    if (storedJobId) {
-      setJobId((prev) => prev || storedJobId)
-    }
-    setIsJobIdHydrated(true)
-  }, [])
+    const activeJobIds = fileJobs
+      .filter((j) => j.jobId && j.isSubmitting === false && (!j.status || !TERMINAL_JOB_STATUSES.has(j.status.status)))
+      .map((j) => j.jobId!)
+    if (activeJobIds.length === 0) return
 
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-    if (!isJobIdHydrated) return
-    if (jobId) {
-      window.localStorage.setItem(HOME_ACTIVE_JOB_STORAGE_KEY, jobId)
-    } else {
-      window.localStorage.removeItem(HOME_ACTIVE_JOB_STORAGE_KEY)
+    let mounted = true
+    const timer = window.setInterval(async () => {
+      if (!mounted) return
+      for (const jid of activeJobIds) {
+        try {
+          const status = await fetchJobStatus(jid)
+          if (!mounted) return
+          setFileJobs((prev) =>
+            prev.map((j) =>
+              j.jobId === jid ? { ...j, status } : j
+            )
+          )
+        } catch {
+          // ignore poll errors
+        }
+      }
+    }, 2000)
+
+    return () => {
+      mounted = false
+      window.clearInterval(timer)
     }
-  }, [isJobIdHydrated, jobId])
+  }, [fileJobs, fetchJobStatus])
+
+  // Toast on terminal states
+  React.useEffect(() => {
+    const newlyCompleted = fileJobs.filter(
+      (j) => j.status?.status === "completed" && j.jobId
+    )
+    if (newlyCompleted.length > 0 && newlyCompleted.length === completedCount && completedCount > 0) {
+      const key = newlyCompleted.map((j) => j.jobId).join(",")
+      if (lastTerminalToastRef.current.jobId !== key) {
+        lastTerminalToastRef.current = { jobId: key, status: "completed" }
+        if (newlyCompleted.length === fileJobs.length) {
+          toast.success("全部转换完成！")
+        } else {
+          toast.success(`${newlyCompleted.length} 个文件转换完成`)
+        }
+      }
+    }
+  }, [fileJobs, completedCount])
 
   React.useEffect(() => {
     refreshSettingsSnapshot()
@@ -506,110 +463,25 @@ export default function Home() {
     }
   }, [fetchJobs, refreshSettingsSnapshot])
 
-  React.useEffect(() => {
-    if (!jobId) return
-
-    let mounted = true
-    let timer: number | null = null
-
-    const stopPolling = () => {
-      if (timer !== null) {
-        window.clearInterval(timer)
-        timer = null
-      }
-    }
-
-    const poll = async () => {
-      try {
-        const status = await fetchJobStatus(jobId)
-        if (!mounted) return
-        setActiveJob(status)
-        if (TERMINAL_JOB_STATUSES.has(status.status)) {
-          setIsSubmitting(false)
-          stopPolling()
-          void fetchJobs(true)
-        }
-      } catch (error) {
-        if (!mounted) return
-        const pollingError = error as JobStatusFetchError
-        const isJobNotFound =
-          pollingError?.statusCode === 404 || pollingError?.errorCode === "JOB_NOT_FOUND"
-        if (!isJobNotFound) {
-          return
-        }
-
-        stopPolling()
-        setIsSubmitting(false)
-        setActiveJob(null)
-        setJobId(null)
-        setActionError("任务状态不存在或已过期，请重新提交任务")
-        void fetchJobs(true)
-      }
-    }
-
-    void poll()
-    timer = window.setInterval(() => {
-      void poll()
-    }, 2000)
-
-    return () => {
-      mounted = false
-      stopPolling()
-    }
-  }, [fetchJobStatus, fetchJobs, jobId])
-
-  React.useEffect(() => {
-    if (!activeJob) return
-    if (!TERMINAL_JOB_STATUSES.has(activeJob.status)) return
-
-    const hasNotified =
-      lastTerminalToastRef.current.jobId === activeJob.job_id &&
-      lastTerminalToastRef.current.status === activeJob.status
-    if (hasNotified) return
-
-    lastTerminalToastRef.current = {
-      jobId: activeJob.job_id,
-      status: activeJob.status,
-    }
-
-    if (activeJob.status === "completed") {
-      toast.success("转换完成，可下载 PPTX")
-    } else if (activeJob.status === "failed") {
-      toast.error(activeJob.error?.message || "转换失败")
-    } else if (activeJob.status === "cancelled") {
-      toast("任务已取消")
-    }
-  }, [activeJob])
-
-  const progressValue = Math.max(0, Math.min(100, Number(activeJob?.progress || 0)))
-  const currentStatus: JobStatusValue | null = activeJob?.status || (isSubmitting ? "processing" : null)
-  const currentStageCode = activeJob?.stage || (isSubmitting ? "queued" : "")
-  const currentStageFlowCode = getJobStageFlowStage(currentStageCode)
-  const currentStageLabel = activeJob?.stage
-    ? (JOB_STAGE_LABELS[activeJob.stage] ?? activeJob.stage)
-    : "等待开始"
-  const stageFlowIndex = getJobStageFlowIndex(currentStageCode)
-  const stageLiveText = activeJob
-    ? `任务状态 ${JOB_STATUS_LABELS[currentStatus as JobStatusValue] || currentStatus}，阶段 ${currentStageLabel}，进度 ${progressValue}%`
-    : "尚无进行中的任务"
+  const overallProgress = fileJobs.length > 0
+    ? Math.round(fileJobs.reduce((sum, j) => sum + (j.status?.progress || 0), 0) / fileJobs.length)
+    : 0
   const inFlightJobs = jobs.filter((row) => row.status === "pending" || row.status === "processing").length
-  const failedJobs = jobs.filter((row) => row.status === "failed").length
-  const completedJobs = jobs.filter((row) => row.status === "completed").length
-  const canStart = Boolean(file) && !isSubmitting && Boolean(user)
+  const canStart = fileCount > 0 && !hasActiveJobs && Boolean(user)
+
   const [filePreviewUrl, setFilePreviewUrl] = React.useState("")
   React.useEffect(() => {
-    if (!file) {
+    if (!currentPreviewFile) {
       setFilePreviewUrl("")
       return
     }
-
-    const nextUrl = URL.createObjectURL(file)
+    const nextUrl = URL.createObjectURL(currentPreviewFile)
     setFilePreviewUrl(nextUrl)
-
     return () => {
       URL.revokeObjectURL(nextUrl)
     }
-  }, [file])
+  }, [currentPreviewFile])
+
   const previewPage = clampPositiveInt(toIntOrUndefined(previewPageInput) || 1, previewPageCount || undefined)
   const handlePreviewPageCommit = React.useCallback(
     (value: string) => {
@@ -625,616 +497,812 @@ export default function Home() {
       String(clampPositiveInt(toIntOrUndefined(prev) || 1, count))
     )
   }, [])
+
   const editionDate = new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     timeZone: "Asia/Shanghai",
   }).format(new Date())
-  const currentStatusLabel = currentStatus ? JOB_STATUS_LABELS[currentStatus] || currentStatus : "空闲中"
-  const hasCurrentJob = Boolean(jobId || isSubmitting || activeJob)
+
+  // Stage logic
+  const stage: "upload" | "preview" | "converting" = (() => {
+    if (fileJobs.length > 0) return "converting"
+    if (fileCount > 0) return "preview"
+    return "upload"
+  })()
+
+  // Stepped progress for multi-file
+  const stageSteps = React.useMemo(() => {
+    const STEPS = [
+      { code: "parsing", label: "解析" },
+      { code: "ocr", label: "OCR" },
+      { code: "generating", label: "生成" },
+      { code: "done", label: "完成" },
+    ] as const
+
+    // Use the "average" stage across all active jobs
+    const activeStatuses = fileJobs.filter((j) => j.status).map((j) => j.status!)
+    if (activeStatuses.length === 0) {
+      return STEPS.map((step, i) => ({ ...step, isDone: false, isCurrent: i === 0 }))
+    }
+
+    const avgFlowIndex = activeStatuses.reduce((sum, s) => sum + getJobStageFlowIndex(s.stage), 0) / activeStatuses.length
+    const flowToStep = [0, 0, 1, 2, 2, 3, 3, 3]
+    const currentStepIndex = avgFlowIndex >= 0 ? flowToStep[Math.round(avgFlowIndex)] ?? -1 : -1
+
+    return STEPS.map((step, i) => {
+      const isDone = currentStepIndex >= 0 && i < currentStepIndex
+      const isCurrent = i === currentStepIndex
+      return { ...step, isDone, isCurrent }
+    })
+  }, [fileJobs])
 
   return (
     <div className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
-        <header className="editorial-page-header newsprint-texture page-enter border border-border bg-background">
-          <div className="px-5 py-5 md:px-6 md:py-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-                {editionDate} · 文档工作台
-              </div>
-              <Badge variant="outline" className="font-sans text-[11px] uppercase tracking-[0.12em]">
-                轻量首页
-              </Badge>
-            </div>
-            <h1 className="mt-3 max-w-4xl font-serif text-4xl leading-[0.92] tracking-tight md:text-6xl">
-              PDF / 图片 处理工作台
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground md:text-[15px] xl:max-w-none xl:whitespace-nowrap">
-              上传 PDF 或单张图片后即可预览并开始处理；复杂参数在设置页，结果核对在跟踪页。
-            </p>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge variant="outline">当前文件：{file ? file.name : "未选择"}</Badge>
-              <Badge className="editorial-pill">{hasCurrentJob ? currentStatusLabel : "等待开始"}</Badge>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-              <span>解析：{runParseEngineLabel}</span>
-              <span>OCR：{runOcrSummaryLabel}</span>
-              <span>队列：{queueSize}</span>
-              <span>执行中：{inFlightJobs}</span>
-            </div>
+        <header className="flex items-center justify-between py-4">
+          <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+            {editionDate} · 文档工作台
+          </div>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="text-xs">
+              队列 {queueSize} · 执行中 {inFlightJobs}
+            </Badge>
+            <Button type="button" variant="ghost" size="sm" asChild>
+              <Link href="/settings">设置</Link>
+            </Button>
           </div>
         </header>
 
         <p className="sr-only" role="status" aria-live="polite">
-          {stageLiveText}
+          {fileJobs.length > 0
+            ? `已提交 ${fileJobs.length} 个任务，完成 ${completedCount} 个`
+            : "尚无进行中的任务"}
         </p>
 
-        <main className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-stretch">
-          <Card className="home-card editorial-panel page-enter page-enter-delay-1 border-border xl:h-full">
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <div className="home-section-kicker">开始处理</div>
-                  <CardTitle className="mt-2 text-[1.3rem]">上传与预览</CardTitle>
-                  <CardDescription className="mt-1 max-w-xl text-sm leading-6">
-                    选择 PDF 或单张图片后可直接预览；PDF 可做整份处理，图片默认按单页处理。
-                  </CardDescription>
-                </div>
-                <Badge variant="outline">支持 PDF 与单张图片</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div
-                {...getRootProps()}
-                className={cn(
-                  "home-dropzone cursor-pointer text-center",
-                  isDragActive && !isDragReject && "bg-accent/50",
-                  isDragReject && "border-destructive bg-destructive/10",
-                  (isSubmitting || (!user && !isAuthLoading)) && "pointer-events-none opacity-60"
-                )}
-              >
-                <input {...getInputProps()} />
-                <UploadCloudIcon className="mx-auto size-8 text-muted-foreground" />
-                <p className="mt-3 text-sm font-medium">
-                  {isDragActive ? "松开以上传文件" : "拖拽 PDF 或图片到这里，或点击选择文件"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  支持 .pdf .png .jpg .jpeg .webp
-                </p>
-                {!user && !isAuthLoading ? (
-                  <p className="mt-2 text-xs text-destructive">
-                    请先登录后再上传文件
+        <main className="mt-2">
+          {/* ── Stage 1: Upload (empty state) ── */}
+          {stage === "upload" && (
+            <div>
+              {/* Hero section */}
+              <div className="relative mx-auto max-w-3xl py-8 md:py-14">
+                {/* Subtle gradient backdrop */}
+                <div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-gradient-to-b from-[#cc0000]/[0.03] to-transparent" />
+
+                <div className="mb-8 text-center">
+                  <h1 className="font-serif text-4xl font-semibold tracking-tight md:text-5xl">
+                    PDF 转 PPT，一键搞定
+                  </h1>
+                  <p className="mt-3 text-base text-muted-foreground">
+                    上传 PDF 或图片，AI 智能解析，自动生成演示文稿
                   </p>
-                ) : null}
+                </div>
+
+                <div
+                  {...getRootProps()}
+                  className={cn(
+                    "group flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-all",
+                    "min-h-[240px]",
+                    isDragActive && !isDragReject && "border-[#cc0000] bg-[#cc0000]/5 scale-[1.01]",
+                    isDragReject && "border-destructive bg-destructive/10",
+                    !isDragActive && !isDragReject && "border-border hover:border-[#cc0000]/50 hover:bg-muted/30",
+                    (!user && !isAuthLoading) && "pointer-events-none opacity-60"
+                  )}
+                >
+                  <input {...getInputProps()} />
+                  <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-[#cc0000]/10 transition-transform group-hover:scale-110">
+                    <UploadCloudIcon className="size-7 text-[#cc0000]" />
+                  </div>
+                  <p className="text-lg font-medium">
+                    {isDragActive ? "松开以上传文件" : "拖拽文件到这里"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    支持同时上传多个文件 · PDF / PNG / JPG / WebP
+                  </p>
+                  {!user && !isAuthLoading ? (
+                    <p className="mt-3 text-xs text-destructive">请先登录后再上传文件</p>
+                  ) : null}
+                </div>
+
+                {/* Quick config */}
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">模式</span>
+                    <Select
+                      value={settingsSnapshot.pptGenerationMode}
+                      onChange={(e) =>
+                        updateSettingsSnapshot((prev) => ({
+                          ...prev,
+                          pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
+                        }))
+                      }
+                      className="h-9 w-28"
+                    >
+                      <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
+                      <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
+                      <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">OCR</span>
+                    <Select
+                      value={settingsSnapshot.ocrProvider}
+                      onChange={(e) =>
+                        updateSettingsSnapshot((prev) => ({
+                          ...prev,
+                          ocrProvider: e.target.value as Settings["ocrProvider"],
+                        }))
+                      }
+                      className="h-9 w-32"
+                    >
+                      {Object.entries(ocrProviderLabels).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Link
+                    href="/settings"
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    高级设置 <ArrowRightIcon className="size-3" />
+                  </Link>
+                </div>
               </div>
 
-              {file ? (
-                <div className="home-inline-panel flex items-center justify-between gap-3 px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{file.name}</div>
-                    <div className="text-xs text-muted-foreground">{formatBytes(file.size)}</div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      clearUpload()
-                      setPreviewPageInput("1")
-                      setPreviewPageCount(0)
-                      setUsePageRange(false)
-                    }}
+              {/* Feature highlights */}
+              <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  { icon: ScanIcon, title: "智能 OCR", desc: "多种引擎，精准识别扫描文档" },
+                  { icon: SparklesIcon, title: "AI 排版", desc: "智能分析结构，自动生成幻灯片" },
+                  { icon: LayersIcon, title: "批量处理", desc: "多文件同时上传，并发转换" },
+                  { icon: FileTextIcon, title: "多格式输出", desc: "PPTX 标准格式，兼容所有软件" },
+                ].map(({ icon: Icon, title, desc }) => (
+                  <div
+                    key={title}
+                    className="group rounded-lg border bg-card/50 p-4 transition-all hover:border-[#cc0000]/30 hover:shadow-sm"
                   >
-                    清空
-                  </Button>
-                </div>
-              ) : null}
+                    <Icon className="mb-2 size-5 text-[#cc0000] transition-transform group-hover:scale-110" />
+                    <div className="text-sm font-medium">{title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground leading-relaxed">{desc}</div>
+                  </div>
+                ))}
+              </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="home-section-kicker">文档预览</div>
-                    <div className="mt-1 text-sm text-muted-foreground">
-                      PDF 预览页与单页试跑保持一致；图片输入固定为单页。
+              {/* Trust bar */}
+              <div className="mx-auto mt-8 flex max-w-3xl items-center justify-center gap-6 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block size-1.5 rounded-full bg-[#cc0000]" />
+                  快速转换
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block size-1.5 rounded-full bg-[#cc0000]" />
+                  精准识别
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block size-1.5 rounded-full bg-[#cc0000]" />
+                  安全处理
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* ── Stage 2: Preview + Config (files uploaded) ── */}
+          {stage === "preview" && (
+            <div className="py-4">
+              {/* Back to upload */}
+              <div className="mb-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetAll}
+                >
+                  <ArrowLeftIcon className="mr-1 size-4" />
+                  重新选择文件
+                </Button>
+              </div>
+
+              {/* Dual-column layout */}
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+                {/* Left: File list + PDF preview */}
+                <div>
+                  {/* File list */}
+                  {fileCount > 1 && (
+                    <div className="mb-4 space-y-2">
+                      <div className="text-sm text-muted-foreground">
+                        已选择 {fileCount} 个文件
+                      </div>
+                      <div className="grid gap-2">
+                        {uploadFiles.map((entry, index) => (
+                          <div
+                            key={entry.file.name}
+                            className={cn(
+                              "flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors",
+                              index === previewFileIndex
+                                ? "border-[#cc0000]/40 bg-[#cc0000]/5"
+                                : "hover:bg-muted/30"
+                            )}
+                          >
+                            <button
+                              type="button"
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                              onClick={() => {
+                                setPreviewFileIndex(index)
+                                setPreviewPageInput("1")
+                                setPreviewPageCount(0)
+                              }}
+                            >
+                              <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="truncate text-sm">{entry.file.name}</span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {formatBytes(entry.file.size)}
+                              </span>
+                            </button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => {
+                                removeFile(index)
+                                if (previewFileIndex >= fileCount - 1) {
+                                  setPreviewFileIndex(Math.max(0, fileCount - 2))
+                                }
+                              }}
+                            >
+                              <XIcon className="size-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Single file info (when only 1 file) */}
+                  {fileCount === 1 && currentPreviewFile && (
+                    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{currentPreviewFile.name}</div>
+                        <div className="text-xs text-muted-foreground">{formatBytes(currentPreviewFile.size)}</div>
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" onClick={handleResetAll}>
+                        清空
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* PDF preview */}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm text-muted-foreground">
+                      文档预览
+                      {fileCount > 1 && (
+                        <span className="ml-2 text-xs">
+                          ({previewFileIndex + 1}/{fileCount})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-xs"
+                        disabled={previewPage <= 1}
+                        onClick={() => {
+                          setPreviewPageInput(String(clampPositiveInt(previewPage - 1, previewPageCount || undefined)))
+                        }}
+                        aria-label="预览上一页"
+                      >
+                        <ChevronLeftIcon className="size-3" />
+                      </Button>
+                      <Input
+                        inputMode="numeric"
+                        value={previewPageInput}
+                        onChange={(e) => setPreviewPageInput(e.target.value)}
+                        onBlur={(e) => handlePreviewPageCommit(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handlePreviewPageCommit((e.target as HTMLInputElement).value)
+                          }
+                        }}
+                        className="h-8 w-20 text-center"
+                        aria-label="当前预览页"
+                      />
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">
+                        / {previewPageCount || "?"}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-xs"
+                        disabled={previewPageCount > 0 ? previewPage >= previewPageCount : true}
+                        onClick={() => {
+                          setPreviewPageInput(String(clampPositiveInt(previewPage + 1, previewPageCount || undefined)))
+                        }}
+                        aria-label="预览下一页"
+                      >
+                        <ChevronRightIcon className="size-3" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-xs"
-                      disabled={previewPage <= 1}
-                      onClick={() => {
-                        setPreviewPageInput(String(clampPositiveInt(previewPage - 1, previewPageCount || undefined)))
-                      }}
-                      aria-label="预览上一页"
-                    >
-                      <ChevronLeftIcon className="size-3" />
-                    </Button>
-                    <Input
-                      inputMode="numeric"
-                      value={previewPageInput}
-                      onChange={(e) => setPreviewPageInput(e.target.value)}
-                      onBlur={(e) => handlePreviewPageCommit(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault()
-                          handlePreviewPageCommit((e.target as HTMLInputElement).value)
-                        }
-                      }}
-                      className="h-8 w-20 text-center"
-                      aria-label="当前预览页"
-                    />
-                    <span className="w-14 text-right font-mono text-xs text-muted-foreground">
-                      / {previewPageCount || "?"}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-xs"
-                      disabled={previewPageCount > 0 ? previewPage >= previewPageCount : true}
-                      onClick={() => {
-                        setPreviewPageInput(String(clampPositiveInt(previewPage + 1, previewPageCount || undefined)))
-                      }}
-                      aria-label="预览下一页"
-                    >
-                      <ChevronRightIcon className="size-3" />
-                    </Button>
-                  </div>
+
+                  {filePreviewUrl ? (
+                    <div className="home-preview-stage">
+                      <PdfCanvasPreview
+                        fileUrl={filePreviewUrl}
+                        mimeType={currentPreviewFile?.type}
+                        page={previewPage}
+                        className="w-full"
+                        onPageCountChange={handlePreviewPageCountChange}
+                      />
+                    </div>
+                  ) : (
+                    <div className="home-preview-stage home-preview-empty">
+                      上传 PDF 或图片后会在这里显示预览
+                    </div>
+                  )}
                 </div>
 
-                {filePreviewUrl ? (
-                  <div className="home-preview-stage">
-                    <PdfCanvasPreview
-                      fileUrl={filePreviewUrl}
-                      mimeType={file?.type}
-                      page={previewPage}
-                      className="w-full"
-                      onPageCountChange={handlePreviewPageCountChange}
-                    />
-                  </div>
-                ) : (
-                  <div className="home-preview-stage home-preview-empty">
-                    上传 PDF 或图片后会在这里显示预览
-                  </div>
-                )}
-
-                <div className="home-inline-panel grid gap-3 px-4 py-3">
-                  {isImageInput ? (
-                    <p className="text-xs leading-6 text-muted-foreground">
-                      图片输入会自动包装成单页 PDF 再进入现有流程，所以这里不需要再设置页码范围。
-                    </p>
-                  ) : (
-                    <>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-[#111111]"
-                            checked={usePageRange}
-                            onChange={(e) => {
-                              const enabled = e.target.checked
-                              setUsePageRange(enabled)
-                              if (!enabled) {
+                {/* Right: Config + actions */}
+                <div className="space-y-4">
+                  {/* Page range */}
+                  <div className="home-inline-panel px-4 py-3">
+                    {isImageInput ? (
+                      <p className="text-xs leading-6 text-muted-foreground">
+                        图片输入自动包装成单页 PDF，无需设置页码范围。
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-[#111111]"
+                              checked={usePageRange}
+                              onChange={(e) => {
+                                const enabled = e.target.checked
+                                setUsePageRange(enabled)
+                                if (!enabled) {
+                                  setPageStartInput("")
+                                  setPageEndInput("")
+                                }
+                              }}
+                            />
+                            限定页码范围
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="xs"
+                              disabled={!currentPreviewFile}
+                              onClick={() => {
+                                setUsePageRange(true)
+                                const current = String(previewPage)
+                                setPageStartInput(current)
+                                setPageEndInput(current)
+                              }}
+                            >
+                              单页试跑
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => {
+                                setUsePageRange(false)
                                 setPageStartInput("")
                                 setPageEndInput("")
-                              }
-                            }}
-                          />
-                          限定页码范围
-                        </label>
-                        <div className="flex flex-wrap gap-2">
+                              }}
+                            >
+                              整份
+                            </Button>
+                          </div>
+                        </div>
+                        {usePageRange ? (
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div className="grid gap-1">
+                              <label className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                                起始页
+                              </label>
+                              <Input
+                                inputMode="numeric"
+                                placeholder="1"
+                                value={pageStartInput}
+                                onChange={(e) => setPageStartInput(e.target.value)}
+                                className="h-9"
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                                结束页
+                              </label>
+                              <Input
+                                inputMode="numeric"
+                                placeholder="5"
+                                value={pageEndInput}
+                                onChange={(e) => setPageEndInput(e.target.value)}
+                                className="h-9"
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Quick config */}
+                  <div className="home-inline-panel px-4 py-3">
+                    <div className="grid gap-3">
+                      <div className="grid gap-1">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span>PPT 生成模式</span>
+                          <HoverHint text="极速优先抢时间；快速适合日常转换；精准适合效果优先。" />
+                        </div>
+                        <Select
+                          value={settingsSnapshot.pptGenerationMode}
+                          onChange={(e) =>
+                            updateSettingsSnapshot((prev) => ({
+                              ...prev,
+                              pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
+                            }))
+                          }
+                        >
+                          <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
+                          <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
+                          <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
+                        </Select>
+                      </div>
+                      <div className="grid gap-1">
+                        <div className="text-xs text-muted-foreground">OCR 方式</div>
+                        <Select
+                          value={settingsSnapshot.ocrProvider}
+                          onChange={(e) =>
+                            updateSettingsSnapshot((prev) => ({
+                              ...prev,
+                              ocrProvider: e.target.value as Settings["ocrProvider"],
+                            }))
+                          }
+                        >
+                          {Object.entries(ocrProviderLabels).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </Select>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[#111111]"
+                          checked={retainProcessArtifacts}
+                          onChange={(e) => setRetainProcessArtifacts(e.target.checked)}
+                        />
+                        <span className="flex items-center gap-1.5">
+                          保留过程图
+                          <HoverHint text="保留每页处理过程图，便于核对中间效果或排查问题。" />
+                        </span>
+                      </label>
+                      <Link
+                        href="/settings"
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        高级设置 <ArrowRightIcon className="size-3" />
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="space-y-2">
+                    {!user && !isAuthLoading ? (
+                      <Button type="button" variant="outline" className="w-full" asChild>
+                        <Link href="/login">登录后创建任务</Link>
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          type="button"
+                          className="w-full"
+                          onClick={handleConvertAll}
+                          disabled={!canStart}
+                        >
+                          {fileCount > 1 ? `全部转换 (${fileCount} 个文件)` : "开始转换"}
+                        </Button>
+                        {fileCount === 1 && (
                           <Button
                             type="button"
                             variant="outline"
-                            size="xs"
-                            disabled={!file}
+                            className="w-full"
                             onClick={() => {
                               setUsePageRange(true)
                               const current = String(previewPage)
                               setPageStartInput(current)
                               setPageEndInput(current)
+                              void handleConvertAll()
                             }}
+                            disabled={!canStart}
                           >
                             单页试跑（当前页）
                           </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {actionError ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      {actionError}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Stage 3: Progress + Download (converting/done) ── */}
+          {stage === "converting" && (
+            <div className="mx-auto max-w-2xl py-8 md:py-12">
+              {/* Back button */}
+              <div className="mb-6">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (!hasActiveJobs) {
+                      handleResetAll()
+                    }
+                  }}
+                  disabled={hasActiveJobs}
+                >
+                  <ArrowLeftIcon className="mr-1 size-4" />
+                  返回
+                </Button>
+              </div>
+
+              {/* Stepped progress indicator (for single file or aggregate) */}
+              {fileJobs.length === 1 && (
+                <div className="mb-8">
+                  <div className="flex items-center">
+                    {stageSteps.map((step, index) => {
+                      const isDone = step.isDone
+                      const isCurrent = step.isCurrent
+                      const isLast = index === stageSteps.length - 1
+                      return (
+                        <React.Fragment key={step.code}>
+                          <div className="flex flex-col items-center">
+                            <div
+                              className={cn(
+                                "flex size-8 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors",
+                                isDone
+                                  ? "border-[#cc0000] bg-[#cc0000] text-white"
+                                  : isCurrent
+                                    ? "border-[#cc0000] bg-white text-[#cc0000] animate-pulse"
+                                    : "border-border bg-background text-muted-foreground"
+                              )}
+                            >
+                              {isDone ? (
+                                <CheckIcon className="size-4" />
+                              ) : isCurrent ? (
+                                <Loader2Icon className="size-4 animate-spin" />
+                              ) : (
+                                <span>{index + 1}</span>
+                              )}
+                            </div>
+                            <span
+                              className={cn(
+                                "mt-2 text-xs",
+                                isDone
+                                  ? "font-medium text-[#cc0000]"
+                                  : isCurrent
+                                    ? "font-medium text-foreground"
+                                    : "text-muted-foreground"
+                              )}
+                            >
+                              {step.label}
+                            </span>
+                          </div>
+                          {!isLast ? (
+                            <div
+                              className={cn(
+                                "mx-1 mb-5 h-0.5 flex-1",
+                                isDone ? "bg-[#cc0000]" : "bg-border"
+                              )}
+                            />
+                          ) : null}
+                        </React.Fragment>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Overall progress bar */}
+              <Progress value={overallProgress} className="mb-3 h-2" />
+              <div className="mb-6 text-center text-sm text-muted-foreground">
+                {overallProgress}% · {completedCount}/{fileJobs.length} 完成
+                {failedCount > 0 && <span className="ml-2 text-destructive">· {failedCount} 失败</span>}
+              </div>
+
+              {/* File job list */}
+              <div className="mb-6 space-y-2">
+                {fileJobs.map((fj, index) => {
+                  const isDone = fj.status?.status === "completed"
+                  const isFailed = Boolean(fj.error) || fj.status?.status === "failed"
+                  const isCancelled = fj.status?.status === "cancelled"
+                  const isActive = fj.isSubmitting || (fj.status && !TERMINAL_JOB_STATUSES.has(fj.status.status))
+                  const stageLabel = fj.status?.stage
+                    ? (JOB_STAGE_LABELS[fj.status.stage] ?? fj.status.stage)
+                    : fj.isSubmitting ? "提交中…" : "等待中"
+
+                  return (
+                    <div
+                      key={`${fj.file.name}-${index}`}
+                      className={cn(
+                        "flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors",
+                        isDone && "border-green-200 bg-green-50/50",
+                        isFailed && "border-destructive/30 bg-destructive/5",
+                        isCancelled && "border-muted bg-muted/30",
+                        isActive && "border-[#cc0000]/20 bg-[#cc0000]/[0.02]",
+                        !isDone && !isFailed && !isCancelled && !isActive && "bg-muted/10"
+                      )}
+                    >
+                      {/* Status icon */}
+                      <div className="shrink-0">
+                        {fj.isSubmitting ? (
+                          <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+                        ) : isDone ? (
+                          <div className="flex size-4 items-center justify-center rounded-full bg-green-500">
+                            <CheckIcon className="size-3 text-white" />
+                          </div>
+                        ) : isFailed ? (
+                          <XIcon className="size-4 text-destructive" />
+                        ) : isActive ? (
+                          <Loader2Icon className="size-4 animate-spin text-[#cc0000]" />
+                        ) : (
+                          <div className="size-4 rounded-full border-2 border-muted-foreground/30" />
+                        )}
+                      </div>
+
+                      {/* File info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm">{fj.file.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {stageLabel}
+                          {fj.status?.progress != null && fj.status.progress > 0 && ` · ${fj.status.progress}%`}
+                        </div>
+                      </div>
+
+                      {/* Progress or actions */}
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        {isDone && fj.jobId && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={async () => {
+                              try {
+                                await handleDownload(fj.jobId!)
+                              } catch (e) {
+                                toast.error(normalizeFetchError(e, "下载失败"))
+                              }
+                            }}
+                          >
+                            <DownloadIcon className="mr-1 size-3" />
+                            下载
+                          </Button>
+                        )}
+                        {isActive && fj.jobId && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="xs"
-                            onClick={() => {
-                              setUsePageRange(false)
-                              setPageStartInput("")
-                              setPageEndInput("")
-                            }}
+                            onClick={() => handleCancelJob(fj.jobId!)}
                           >
-                            整份处理
+                            取消
                           </Button>
-                        </div>
-                      </div>
-
-                      {usePageRange ? (
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="grid gap-2">
-                            <label className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                              起始页
-                            </label>
-                            <Input
-                              inputMode="numeric"
-                              placeholder="例如 1"
-                              value={pageStartInput}
-                              onChange={(e) => setPageStartInput(e.target.value)}
-                            />
-                          </div>
-                          <div className="grid gap-2">
-                            <label className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                              结束页
-                            </label>
-                            <Input
-                              inputMode="numeric"
-                              placeholder="例如 5"
-                              value={pageEndInput}
-                              onChange={(e) => setPageEndInput(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs leading-6 text-muted-foreground">
-                          当前将处理整份文档。如果只是想快速确认效果，直接点击“单页试跑（当前页）”即可。
-                        </p>
-                      )}
-                    </>
-                  )}
-
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_260px]">
-                    <div className="grid gap-2 border border-border/70 bg-muted/20 px-3 py-3">
-                      <label className="flex items-start gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 h-4 w-4 accent-[#111111]"
-                          checked={retainProcessArtifacts}
-                          onChange={(e) => setRetainProcessArtifacts(e.target.checked)}
-                        />
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-1.5 font-medium text-foreground">
-                            <span>保留过程图</span>
-                            <HoverHint text="保留每页处理过程图，便于核对中间效果或排查问题。" />
+                        )}
+                        {(isFailed || isCancelled) && (
+                          <span className="text-xs text-muted-foreground">
+                            {fj.error || fj.status?.error?.message || (isCancelled ? "已取消" : "失败")}
                           </span>
-                          <span className="mt-1 block text-xs leading-6 text-muted-foreground">
-                            只在需要核对中间效果时开启即可。
-                          </span>
-                        </span>
-                      </label>
-                    </div>
-
-                    <div className="grid gap-2 border border-border/70 bg-muted/20 px-3 py-3">
-                      <div className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                        <label htmlFor="home-ppt-generation-mode">PPT 生成模式</label>
-                        <HoverHint text="极速优先抢时间；快速适合日常转换；精准适合效果优先。" />
+                        )}
                       </div>
-                      <Select
-                        id="home-ppt-generation-mode"
-                        value={settingsSnapshot.pptGenerationMode}
-                        onChange={(e) =>
-                          updateSettingsSnapshot((previous) => ({
-                            ...previous,
-                            pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
-                          }))
-                        }
-                      >
-                        <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
-                        <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
-                        <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
-                      </Select>
                     </div>
-                  </div>
+                  )
+                })}
+              </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
-                    <div className="flex gap-2">
-                      <Button type="button" onClick={handleConvert} disabled={!canStart}>
-                        开始转换
+              {/* Action buttons */}
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {allCompleted && completedCount > 0 && (
+                  <>
+                    {completedCount > 1 ? (
+                      <Button type="button" size="lg" onClick={handleDownloadAll}>
+                        <DownloadIcon className="mr-2 size-5" />
+                        全部下载 ({completedCount})
                       </Button>
-                      <Button type="button" variant="outline" onClick={handleResetAll}>
-                        重置
-                      </Button>
-                    </div>
-                    {!user && !isAuthLoading ? (
-                      <Button type="button" variant="outline" asChild>
-                        <Link href="/login">登录后创建任务</Link>
-                      </Button>
-                    ) : null}
-                    {jobId && currentStatus && !TERMINAL_JOB_STATUSES.has(currentStatus) ? (
-                      <Button type="button" variant="destructive" onClick={handleCancelCurrentJob}>
-                        <XCircleIcon className="size-4" />
-                        取消当前任务
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-          <div className="grid min-w-0 gap-5 xl:h-full xl:grid-rows-[auto_minmax(0,1fr)]">
-            <Card className="home-card-muted editorial-panel page-enter page-enter-delay-2 min-w-0 border border-border">
-              <CardHeader className="pb-3">
-                <div className="home-section-kicker">当前配置</div>
-                <CardTitle className="mt-2 text-xl">处理参数</CardTitle>
-                <CardDescription className="mt-1 text-sm leading-6">
-                  当前页面只展示必要配置，细调项仍在设置页统一管理。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="min-w-0 space-y-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <Badge variant="outline">解析：{runParseEngineLabel}</Badge>
-                  <Badge variant="outline">OCR：{runOcrSummaryLabel}</Badge>
-                  <Badge variant="outline">PPT：{PPT_GENERATION_MODE_LABELS[settingsSnapshot.pptGenerationMode]}</Badge>
-                  <Badge variant="outline">
-                    过程图：{retainProcessArtifacts ? "保留" : "不保留"}
-                  </Badge>
-                </div>
-                <Button type="button" variant="ghost" asChild>
-                  <Link href="/settings">
-                    前往设置页
-                    <ArrowRightIcon className="size-4" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="home-card-muted editorial-panel page-enter page-enter-delay-2 min-w-0 border border-border xl:flex xl:min-h-0 xl:flex-col">
-              <CardHeader className="pb-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="home-section-kicker">任务状态</div>
-                    <CardTitle className="mt-2 text-xl">当前任务</CardTitle>
-                    <CardDescription className="mt-1 text-sm leading-6">
-                      处理开始后，这里会持续刷新状态和进度。
-                    </CardDescription>
-                  </div>
-                  <Badge
-                    variant={currentStatus === "failed" ? "destructive" : currentStatus === "completed" ? "secondary" : "outline"}
-                  >
-                    {currentStatusLabel}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="min-w-0 space-y-3.5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <Badge variant="outline">阶段：{currentStageLabel}</Badge>
-                  {jobId ? (
-                    <Badge variant="outline" className="max-w-full whitespace-normal break-all">
-                      任务号：{jobId}
-                    </Badge>
-                  ) : null}
-                </div>
-
-                <Progress value={progressValue} className="h-2" />
-
-                {hasCurrentJob ? (
-                  <div className="pb-1">
-                    <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 xl:grid-cols-4">
-                      {JOB_STAGE_FLOW.map((stage, index) => {
-                        const isDone = stageFlowIndex >= index && stageFlowIndex >= 0
-                        const isCurrent = currentStageFlowCode === stage
-                        return (
-                          <div
-                            key={stage}
-                            title={JOB_STAGE_LABELS[stage] || stage}
-                            aria-label={JOB_STAGE_LABELS[stage] || stage}
-                            className={cn(
-                              "min-w-0 border px-2 py-1 text-center font-sans text-[11px] font-medium leading-tight tracking-[0.02em] transition-colors",
-                              isCurrent
-                                ? "border-[#cc0000] bg-[#cc0000] text-[#f9f9f7]"
-                                : isDone
-                                  ? "border-border bg-muted/60 text-foreground"
-                                  : "border-border/70 bg-background/70 text-muted-foreground"
-                            )}
-                          >
-                            {JOB_STAGE_COMPACT_LABELS[stage] || JOB_STAGE_LABELS[stage] || stage}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="text-sm leading-6 text-muted-foreground">
-                  {activeJob?.message || (isSubmitting ? "任务已提交，正在等待状态更新…" : "尚未开始任务")}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="home-stat-cell">
-                    <div className="home-stat-label">队列总数</div>
-                    <div className="home-stat-value">{queueSize}</div>
-                  </div>
-                  <div className="home-stat-cell">
-                    <div className="home-stat-label">执行中</div>
-                    <div className="home-stat-value">{inFlightJobs}</div>
-                  </div>
-                  <div className="home-stat-cell">
-                    <div className="home-stat-label">已完成</div>
-                    <div className="home-stat-value">{completedJobs}</div>
-                  </div>
-                  <div className="home-stat-cell">
-                    <div className="home-stat-label">失败</div>
-                    <div className="home-stat-value">{failedJobs}</div>
-                  </div>
-                </div>
-
-                {!jobId ? (
-                  <div className="home-note">
-                    暂无当前任务。上传 PDF 后点击“开始转换”，这里会自动显示最新进度。
-                  </div>
-                ) : null}
-
-                {hasCurrentJob ? (
-                  <div className="grid gap-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/10 px-3 py-2">
-                      <div className="text-xs leading-5 text-muted-foreground">
-                        处理日志默认收起，仅在排查问题时查看。
-                      </div>
+                    ) : (
                       <Button
                         type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowHomeLog((previous) => !previous)}
+                        size="lg"
+                        onClick={async () => {
+                          const done = fileJobs.find((j) => j.status?.status === "completed" && j.jobId)
+                          if (done?.jobId) {
+                            try {
+                              await handleDownload(done.jobId)
+                            } catch (e) {
+                              toast.error(normalizeFetchError(e, "下载失败"))
+                            }
+                          }
+                        }}
                       >
-                        {showHomeLog ? "收起处理日志" : "查看处理日志"}
+                        <DownloadIcon className="mr-2 size-5" />
+                        下载 PPTX
                       </Button>
-                    </div>
-                    {showHomeLog ? (
-                      <JobDebugPanel
-                        events={activeJob?.debug_events || []}
-                        compact
-                        className="animate-in fade-in slide-in-from-top-2 duration-300"
-                      />
-                    ) : null}
-                  </div>
-                ) : null}
+                    )}
+                  </>
+                )}
+                {!hasActiveJobs && (
+                  <Button type="button" variant="outline" size="sm" onClick={handleResetAll}>
+                    处理下一批文件
+                  </Button>
+                )}
+              </div>
 
-                {actionError ? (
-                  <div className="text-xs leading-6 text-muted-foreground">
-                    {actionError}
-                  </div>
-                ) : null}
-
-                {jobId && currentStatus === "completed" ? (
+              {/* Cancel all button */}
+              {hasActiveJobs && (
+                <div className="mt-4 flex justify-center">
                   <Button
                     type="button"
+                    variant="destructive"
+                    size="sm"
                     onClick={async () => {
-                      try {
-                        await handleDownload(jobId)
-                      } catch (e) {
-                        toast.error(normalizeFetchError(e, "下载失败"))
+                      const activeIds = fileJobs
+                        .filter((j) => j.jobId && j.status && !TERMINAL_JOB_STATUSES.has(j.status.status))
+                        .map((j) => j.jobId!)
+                      for (const jid of activeIds) {
+                        await handleCancelJob(jid)
                       }
                     }}
                   >
-                    <DownloadIcon className="size-4" />
-                    下载 PPTX
+                    取消所有任务
                   </Button>
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
-        </main>
+                </div>
+              )}
 
-        <Card className="home-card editorial-panel page-enter page-enter-delay-2 mt-6 border-border">
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="home-section-kicker">任务记录</div>
-                <CardTitle className="mt-2 text-[1.3rem]">最近任务</CardTitle>
-                <CardDescription className="mt-1 text-sm leading-6">
-                  近期任务会保留在这里，需要更细的核对时再进入跟踪页。
-                </CardDescription>
-              </div>
-              <Button type="button" variant="outline" onClick={() => void fetchJobs(false)} disabled={jobsLoading}>
-                刷新列表
-              </Button>
+              {/* Debug log toggle */}
+              {fileJobs.some((j) => j.status?.debug_events?.length) ? (
+                <div className="mt-6">
+                  <div className="flex items-center justify-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowHomeLog((prev) => !prev)}
+                    >
+                      {showHomeLog ? "收起处理日志" : "查看处理日志"}
+                    </Button>
+                  </div>
+                  {showHomeLog ? (
+                    <div className="mt-3">
+                      {fileJobs
+                        .filter((j) => j.status?.debug_events?.length)
+                        .map((j) => (
+                          <div key={j.jobId} className="mb-3">
+                            <div className="mb-1 text-xs text-muted-foreground">{j.file.name}</div>
+                            <JobDebugPanel
+                              events={j.status?.debug_events || []}
+                              compact
+                              className="animate-in fade-in slide-in-from-top-2 duration-300"
+                            />
+                          </div>
+                        ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="home-table-shell overflow-x-auto border border-border">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead className="bg-muted/25 text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3">任务</th>
-                    <th className="px-4 py-3">状态</th>
-                    <th className="px-4 py-3">进度</th>
-                    <th className="px-4 py-3">阶段</th>
-                    <th className="px-4 py-3">时间</th>
-                    <th className="px-4 py-3 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobs.length ? (
-                    jobs.map((row) => {
-                      const stageLabel = JOB_STAGE_LABELS[row.stage] || row.stage
-                      const canCancel = row.status === "pending" || row.status === "processing"
-                      const canDownload = row.status === "completed"
-                      const canDelete =
-                        row.status === "completed" ||
-                        row.status === "failed" ||
-                        row.status === "cancelled"
-                      return (
-                        <tr
-                          key={row.job_id}
-                          className={cn(
-                            "motion-row border-t border-border/80 transition-colors hover:bg-muted/20",
-                            row.job_id === jobId && "bg-muted/35"
-                          )}
-                        >
-                          <td className="px-4 py-3 font-mono text-xs">{row.job_id}</td>
-                          <td className="px-4 py-3">
-                            <Badge variant={row.status === "failed" ? "destructive" : row.status === "completed" ? "secondary" : "outline"}>
-                              {JOB_STATUS_LABELS[row.status]}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3">{Math.max(0, Math.min(100, row.progress || 0))}%</td>
-                          <td className="px-4 py-3">{stageLabel}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{formatDateTime(row.created_at)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end gap-2">
-                              <Button type="button" variant="ghost" asChild>
-                                <Link href={`/tracking?job=${encodeURIComponent(row.job_id)}`}>跟踪</Link>
-                              </Button>
-                              {canDownload ? (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={async () => {
-                                    try {
-                                      await handleDownload(row.job_id)
-                                    } catch (e) {
-                                      toast.error(normalizeFetchError(e, "下载失败"))
-                                    }
-                                  }}
-                                >
-                                  下载
-                                </Button>
-                              ) : null}
-                              {canCancel ? (
-                                <Button
-                                  type="button"
-                                  variant="destructive"
-                                  onClick={() => void handleCancelById(row.job_id)}
-                                >
-                                  取消
-                                </Button>
-                              ) : null}
-                              {canDelete ? (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  disabled={deletingJobId === row.job_id}
-                                  onClick={() => void handleDeleteById(row.job_id)}
-                                >
-                                  <Trash2Icon className="size-4" />
-                                  {deletingJobId === row.job_id ? "删除中..." : "删除"}
-                                </Button>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                        暂无任务记录
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-          <CardFooter className="border-t border-border/80 text-xs text-muted-foreground">
-            <FileTextIcon className="mr-2 size-4" />
-            任务默认保留 24 小时自动清理；过程图默认不保留，需要排查时再临时开启。
-          </CardFooter>
-        </Card>
+          )}
+        </main>
       </div>
     </div>
   )

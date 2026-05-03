@@ -8,7 +8,7 @@ import { AuthProvider } from "@/components/auth-provider"
 import { WorkbenchNav } from "@/components/workbench-nav"
 
 export const metadata: Metadata = {
-  title: "PDF / 图片 转 PPT",
+  title: "PDF2PPT",
   description: "上传 PDF 或图片，自动生成可编辑 PPT",
 }
 

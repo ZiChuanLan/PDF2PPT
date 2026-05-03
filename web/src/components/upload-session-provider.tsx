@@ -2,13 +2,22 @@
 
 import * as React from "react"
 
-type UploadSessionValue = {
-  file: File | null
-  setFile: React.Dispatch<React.SetStateAction<File | null>>
+type UploadFileEntry = {
+  file: File
   pageStartInput: string
-  setPageStartInput: React.Dispatch<React.SetStateAction<string>>
   pageEndInput: string
+}
+
+type UploadSessionValue = {
+  files: UploadFileEntry[]
+  file: File | null
+  fileCount: number
+  pageStartInput: string
+  pageEndInput: string
+  setPageStartInput: React.Dispatch<React.SetStateAction<string>>
   setPageEndInput: React.Dispatch<React.SetStateAction<string>>
+  addFiles: (newFiles: File[]) => void
+  removeFile: (index: number) => void
   clearUpload: () => void
 }
 
@@ -19,27 +28,48 @@ export function UploadSessionProvider({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const [file, setFile] = React.useState<File | null>(null)
+  const [files, setFiles] = React.useState<UploadFileEntry[]>([])
   const [pageStartInput, setPageStartInput] = React.useState("")
   const [pageEndInput, setPageEndInput] = React.useState("")
 
+  const addFiles = React.useCallback((newFiles: File[]) => {
+    setFiles((prev) => {
+      const existingNames = new Set(prev.map((e) => e.file.name))
+      const entries: UploadFileEntry[] = []
+      for (const f of newFiles) {
+        if (!existingNames.has(f.name)) {
+          entries.push({ file: f, pageStartInput: "", pageEndInput: "" })
+          existingNames.add(f.name)
+        }
+      }
+      return [...prev, ...entries]
+    })
+  }, [])
+
+  const removeFile = React.useCallback((index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
   const clearUpload = React.useCallback(() => {
-    setFile(null)
+    setFiles([])
     setPageStartInput("")
     setPageEndInput("")
   }, [])
 
   const value = React.useMemo<UploadSessionValue>(
     () => ({
-      file,
-      setFile,
+      files,
+      file: files.length > 0 ? files[0].file : null,
+      fileCount: files.length,
       pageStartInput,
-      setPageStartInput,
       pageEndInput,
+      setPageStartInput,
       setPageEndInput,
+      addFiles,
+      removeFile,
       clearUpload,
     }),
-    [file, pageEndInput, pageStartInput, clearUpload]
+    [files, pageEndInput, pageStartInput, addFiles, removeFile, clearUpload]
   )
 
   return <UploadSessionContext.Provider value={value}>{children}</UploadSessionContext.Provider>
