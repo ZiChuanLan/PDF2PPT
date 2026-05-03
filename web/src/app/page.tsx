@@ -691,22 +691,23 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* How it works */}
-                <div className="mx-auto mt-10 flex max-w-lg items-center justify-between text-xs text-muted-foreground">
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-base font-semibold text-[#cc0000]">1</span>
-                    <span>上传文件</span>
-                  </div>
-                  <div className="h-px flex-1 bg-border mx-2" />
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-base font-semibold text-[#cc0000]">2</span>
-                    <span>自动处理</span>
-                  </div>
-                  <div className="h-px flex-1 bg-border mx-2" />
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-base font-semibold text-[#cc0000]">3</span>
-                    <span>下载 PPT</span>
-                  </div>
+                {/* Config summary */}
+                <div className="mx-auto mt-6 flex max-w-md items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <span>{PARSE_ENGINE_MODE_LABELS[settingsSnapshot.parseEngineMode]}</span>
+                  {settingsSnapshot.parseEngineMode === "local_ocr" && (
+                    <>
+                      <span className="text-border">·</span>
+                      <span>{settingsSnapshot.ocrProvider === "paddleocr" ? "PaddleOCR" : "Tesseract"}</span>
+                    </>
+                  )}
+                  {settingsSnapshot.parseEngineMode === "remote_ocr" && (
+                    <>
+                      <span className="text-border">·</span>
+                      <span>{AIOCR_CHAIN_MODE_LABELS[settingsSnapshot.ocrAiChainMode]}</span>
+                    </>
+                  )}
+                  <span className="text-border">·</span>
+                  <span>{PPT_GENERATION_MODE_LABELS[settingsSnapshot.pptGenerationMode]}</span>
                 </div>
               </div>
             </div>
