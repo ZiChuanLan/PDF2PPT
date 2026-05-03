@@ -16,7 +16,7 @@ from app.logging_config import (
     setup_logging,
 )
 from app.models.error import AppException, ErrorCode, ErrorResponse
-from app.routers import admin_router, auth_router, config_router, jobs_router, models_router, setup_router
+from app.routers import admin_router, auth_router, config_router, jobs_router, model_status_router, models_router, setup_router
 from app.services.job_cleanup import start_job_cleanup_daemon
 from app.services.redis_service import get_redis_service
 
@@ -89,6 +89,7 @@ app.add_middleware(
 # Include routers
 app.include_router(jobs_router)
 app.include_router(models_router)
+app.include_router(model_status_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(config_router)

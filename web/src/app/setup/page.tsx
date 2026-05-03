@@ -3,8 +3,9 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { CheckIcon, DownloadIcon, Loader2Icon } from "lucide-react"
 
-import { apiFetch, readResponseErrorMessage } from "@/lib/api"
+import { apiFetch, readResponseErrorMessage, normalizeFetchError } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,7 +19,18 @@ import { Input } from "@/components/ui/input"
 
 type DeployMode = "self" | "public"
 
-const STEPS = ["欢迎", "部署模式", "创建管理员", "完成"]
+type ModelProviderStatus = {
+  ready: boolean
+  issues: string[]
+  configured?: boolean
+}
+
+type ModelStatusResponse = {
+  local: Record<string, ModelProviderStatus>
+  remote: Record<string, ModelProviderStatus>
+}
+
+const STEPS = ["欢迎", "部署模式", "创建管理员", "模型检测", "完成"]
 
 export default function SetupPage() {
   const router = useRouter()
@@ -31,6 +43,9 @@ export default function SetupPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [needsSetup, setNeedsSetup] = React.useState<boolean | null>(null)
+  const [modelStatus, setModelStatus] = React.useState<ModelStatusResponse | null>(null)
+  const [modelStatusLoading, setModelStatusLoading] = React.useState(false)
+  const [downloadingModel, setDownloadingModel] = React.useState<string | null>(null)
 
   // Check if setup is needed
   React.useEffect(() => {
@@ -58,6 +73,81 @@ export default function SetupPage() {
       router.replace("/")
     }
   }, [user, isLoading, router])
+
+  const handleCreateAdmin = React.useCallback(async () => {
+    setIsSubmitting(true)
+    setError(null)
+    try {
+      const res = await apiFetch("/setup/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deploy_mode: deployMode,
+          username: username.trim(),
+          password,
+        }),
+      })
+
+      if (!res.ok) {
+        const message = await readResponseErrorMessage(res, "设置失败")
+        throw new Error(message)
+      }
+
+      // Admin created successfully — now fetch model status
+      await refetch()
+
+      // Fetch model status for the prewarm step
+      setModelStatusLoading(true)
+      try {
+        const statusRes = await apiFetch("/models/status")
+        if (statusRes.ok) {
+          const statusData = (await statusRes.json()) as ModelStatusResponse
+          setModelStatus(statusData)
+        }
+      } catch {
+        // Non-fatal — user can skip model setup
+      } finally {
+        setModelStatusLoading(false)
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "设置失败"
+      setError(message)
+      setStep(2) // Go back to form
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [deployMode, username, password, refetch])
+
+  const handleDownloadModel = React.useCallback(async (model: string) => {
+    setDownloadingModel(model)
+    try {
+      const res = await apiFetch("/models/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.message || "下载失败")
+      }
+      toast.success("模型下载完成")
+      // Refresh model status
+      const statusRes = await apiFetch("/models/status")
+      if (statusRes.ok) {
+        const statusData = (await statusRes.json()) as ModelStatusResponse
+        setModelStatus(statusData)
+      }
+    } catch (e) {
+      toast.error(normalizeFetchError(e, "模型下载失败"))
+    } finally {
+      setDownloadingModel(null)
+    }
+  }, [])
+
+  const handleComplete = React.useCallback(async () => {
+    toast.success("设置完成")
+    router.replace("/")
+  }, [router])
 
   const handleNext = React.useCallback(() => {
     setError(null)
@@ -89,41 +179,15 @@ export default function SetupPage() {
         setError("两次输入的密码不一致")
         return
       }
+      // Create admin account first, then go to model detection
       setStep(3)
+      void handleCreateAdmin()
+    } else if (step === 3) {
+      // Model detection → complete
+      setStep(4)
       void handleComplete()
     }
-  }, [step, username, password, confirmPassword])
-
-  const handleComplete = React.useCallback(async () => {
-    setIsSubmitting(true)
-    setError(null)
-    try {
-      const res = await apiFetch("/setup/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deploy_mode: deployMode,
-          username: username.trim(),
-          password,
-        }),
-      })
-
-      if (!res.ok) {
-        const message = await readResponseErrorMessage(res, "设置失败")
-        throw new Error(message)
-      }
-
-      toast.success("设置完成")
-      await refetch()
-      router.replace("/")
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "设置失败"
-      setError(message)
-      setStep(2) // Go back to form
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [deployMode, username, password, refetch, router])
+  }, [step, username, password, confirmPassword, handleCreateAdmin, handleComplete])
 
   if (isLoading || needsSetup === null) {
     return (
@@ -316,8 +380,163 @@ export default function SetupPage() {
             </div>
           )}
 
-          {/* Step 3: Completion */}
+          {/* Step 3: Model Detection */}
           {step === 3 && (
+            <div className="space-y-4">
+              {isSubmitting ? (
+                <div className="space-y-3 py-4 text-center">
+                  <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
+                  <p className="text-sm text-muted-foreground">正在创建管理员账号...</p>
+                </div>
+              ) : error ? (
+                <div className="space-y-3 py-4 text-center">
+                  <p className="text-sm text-destructive">{error}</p>
+                  <Button onClick={() => setStep(2)} className="mt-4">
+                    返回修改
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    管理员账号已创建。以下是模型就绪状态，本地模型可按需下载。
+                  </p>
+
+                  {modelStatusLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      检测模型状态...
+                    </div>
+                  ) : modelStatus ? (
+                    <div className="space-y-3">
+                      {/* Local models */}
+                      <div className="space-y-2">
+                        <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                          本地模型
+                        </div>
+                        {[
+                          { key: "tesseract", label: "Tesseract OCR" },
+                          { key: "paddleocr", label: "PaddleOCR" },
+                          { key: "pp_doclayout", label: "PP-DocLayout" },
+                        ].map(({ key, label }) => {
+                          const prov = modelStatus.local[key]
+                          const isReady = prov?.ready ?? false
+                          const isDownloadable = key === "pp_doclayout" || key === "paddleocr"
+                          return (
+                            <div
+                              key={key}
+                              className="flex items-center justify-between rounded border border-border px-3 py-2"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`inline-block size-2 rounded-full ${
+                                    isReady ? "bg-emerald-500" : "bg-red-500"
+                                  }`}
+                                />
+                                <span className="text-sm">{label}</span>
+                              </div>
+                              {isReady ? (
+                                <span className="flex items-center gap-1 text-xs text-emerald-600">
+                                  <CheckIcon className="size-3" />
+                                  就绪
+                                </span>
+                              ) : isDownloadable ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => void handleDownloadModel(key)}
+                                  disabled={downloadingModel === key}
+                                >
+                                  {downloadingModel === key ? (
+                                    <Loader2Icon className="size-3 animate-spin" />
+                                  ) : (
+                                    <DownloadIcon className="size-3" />
+                                  )}
+                                  下载
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  需安装系统包
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Remote APIs */}
+                      <div className="space-y-2">
+                        <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                          远程 API
+                        </div>
+                        {[
+                          { key: "aiocr", label: "AIOCR" },
+                          { key: "baidu_doc", label: "百度文档解析" },
+                          { key: "mineru", label: "MinerU" },
+                        ].map(({ key, label }) => {
+                          const prov = modelStatus.remote[key]
+                          const isReady = prov?.ready ?? false
+                          const isConfigured = prov?.configured ?? false
+                          return (
+                            <div
+                              key={key}
+                              className="flex items-center justify-between rounded border border-border px-3 py-2"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`inline-block size-2 rounded-full ${
+                                    isReady
+                                      ? "bg-emerald-500"
+                                      : isConfigured
+                                        ? "bg-amber-500"
+                                        : "bg-muted-foreground/40"
+                                  }`}
+                                />
+                                <span className="text-sm">{label}</span>
+                              </div>
+                              <span
+                                className={`text-xs ${
+                                  isReady
+                                    ? "text-emerald-600"
+                                    : isConfigured
+                                      ? "text-amber-600"
+                                      : "text-muted-foreground"
+                                }`}
+                              >
+                                {isReady ? "就绪" : isConfigured ? "需要配置" : "未配置"}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        远程 API 的密钥可在「设置」页面配置。本地模型下载后即可离线使用。
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">无法获取模型状态，可稍后在设置页查看。</p>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setStep(4)}
+                      className="flex-1"
+                    >
+                      跳过
+                    </Button>
+                    <Button onClick={() => setStep(4)} className="flex-1">
+                      完成设置
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 4: Completion */}
+          {step === 4 && (
             <div className="space-y-4 py-6 text-center">
               {isSubmitting ? (
                 <>

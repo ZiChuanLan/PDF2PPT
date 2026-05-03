@@ -26,6 +26,7 @@ import {
   PARSE_ENGINE_MODE_LABELS,
   PPT_GENERATION_MODE_LABELS,
   SETTINGS_STORAGE_KEY,
+  type ParseEngineMode,
   type Settings,
 } from "@/lib/settings"
 import {
@@ -53,6 +54,8 @@ import { Progress } from "@/components/ui/progress"
 import { PdfCanvasPreview } from "@/components/pdf-canvas-preview"
 import { Select } from "@/components/ui/select"
 import { useUploadSession } from "@/components/upload-session-provider"
+import { ModelStatusBadge } from "@/components/model-status-badge"
+import { useModelStatus } from "@/hooks/use-model-status"
 
 type JobApiErrorBody = {
   code?: string
@@ -70,13 +73,6 @@ type FileJobState = {
   status: JobStatusResponse | null
   error: string | null
   isSubmitting: boolean
-}
-
-const ocrProviderLabels: Record<Settings["ocrProvider"], string> = {
-  auto: "自动",
-  aiocr: "AIOCR",
-  baidu: "百度 OCR",
-  machine: "本地 OCR",
 }
 
 const HOME_ACTIVE_JOB_STORAGE_KEY = "ppt-opencode:home:active-job-id"
@@ -222,7 +218,7 @@ export default function Home() {
     setUsePageRange(false)
   }, [addFiles])
 
-  const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, isDragReject, open } = useDropzone({
     accept: SUPPORTED_UPLOAD_ACCEPT,
     multiple: true,
     onDrop,
@@ -230,6 +226,10 @@ export default function Home() {
 
   const currentPreviewFile = uploadFiles[previewFileIndex]?.file ?? null
   const isImageInput = isImageUploadFile(currentPreviewFile)
+
+  const { data: modelStatus, isLoading: isModelStatusLoading, refetch: refetchModelStatus } = useModelStatus()
+  const [preflightWarning, setPreflightWarning] = React.useState<string | null>(null)
+  const [preflightAcknowledged, setPreflightAcknowledged] = React.useState(false)
 
   const handleConvertAll = React.useCallback(async () => {
     if (fileCount === 0) return
@@ -239,12 +239,38 @@ export default function Home() {
     }
 
     setActionError(null)
+    setPreflightWarning(null)
 
     const validation = validateRunConfig(settingsSnapshot)
     if (!validation.ok) {
       setActionError(validation.message || "配置校验失败")
       return
     }
+
+    // Pre-flight check: warn if required models aren't ready
+    if (modelStatus && !preflightAcknowledged) {
+      const mode = settingsSnapshot.parseEngineMode
+      const requiredProviders: Array<{ key: string; kind: "local" | "remote"; label: string }> = []
+      if (mode === "local_ocr") {
+        requiredProviders.push({ key: "paddleocr", kind: "local", label: "PaddleOCR" })
+      } else if (mode === "remote_ocr") {
+        requiredProviders.push({ key: "aiocr", kind: "remote", label: "AIOCR" })
+      } else if (mode === "baidu_doc") {
+        requiredProviders.push({ key: "baidu_doc", kind: "remote", label: "百度文档解析" })
+      } else if (mode === "mineru_cloud") {
+        requiredProviders.push({ key: "mineru", kind: "remote", label: "MinerU" })
+      }
+      const notReady = requiredProviders.filter((p) => {
+        const bucket = p.kind === "local" ? modelStatus.local : modelStatus.remote
+        return bucket[p.key] && !bucket[p.key].ready
+      })
+      if (notReady.length > 0) {
+        const names = notReady.map((p) => p.label).join("、")
+        setPreflightWarning(`${names} 未就绪，任务可能在运行时失败。是否继续？`)
+        return
+      }
+    }
+    setPreflightAcknowledged(false)
 
     const effectiveUsePageRange = usePageRange && !isImageInput
     const pageStart = effectiveUsePageRange ? toIntOrUndefined(pageStartInput) : undefined
@@ -328,6 +354,8 @@ export default function Home() {
     retainProcessArtifacts,
     uploadFiles,
     fetchJobs,
+    modelStatus,
+    preflightAcknowledged,
   ])
 
   const handleCancelJob = React.useCallback(async (targetJobId: string) => {
@@ -608,32 +636,21 @@ export default function Home() {
                     <span className="text-muted-foreground">解析引擎</span>
                     <Select
                       value={settingsSnapshot.parseEngineMode}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const mode = e.target.value as ParseEngineMode
                         updateSettingsSnapshot((prev) => ({
                           ...prev,
-                          parseEngineMode: e.target.value as Settings["parseEngineMode"],
+                          parseEngineMode: mode,
+                          ocrProvider:
+                            mode === "remote_ocr" ? "aiocr"
+                            : mode === "baidu_doc" ? "baidu"
+                            : mode === "mineru_cloud" ? "auto"
+                            : "machine",
                         }))
-                      }
+                      }}
                       className="h-7 w-28 py-1 text-xs"
                     >
                       {Object.entries(PARSE_ENGINE_MODE_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">OCR</span>
-                    <Select
-                      value={settingsSnapshot.ocrProvider}
-                      onChange={(e) =>
-                        updateSettingsSnapshot((prev) => ({
-                          ...prev,
-                          ocrProvider: e.target.value as Settings["ocrProvider"],
-                        }))
-                      }
-                      className="h-7 w-28 py-1 text-xs"
-                    >
-                      {Object.entries(ocrProviderLabels).map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </Select>
@@ -659,7 +676,7 @@ export default function Home() {
                     href="/settings"
                     className="text-muted-foreground hover:text-foreground"
                   >
-                    更多设置
+                    高级设置
                   </Link>
                 </div>
 
@@ -716,8 +733,14 @@ export default function Home() {
                   {/* File list */}
                   {fileCount > 1 && (
                     <div className="mb-4 space-y-2">
-                      <div className="text-sm text-muted-foreground">
-                        已选择 {fileCount} 个文件
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">
+                          已选择 {fileCount} 个文件
+                        </span>
+                        <Button type="button" variant="outline" size="xs" onClick={() => open()}>
+                          <UploadCloudIcon className="mr-1 size-3" />
+                          添加文件
+                        </Button>
                       </div>
                       <div className="grid gap-2">
                         {uploadFiles.map((entry, index) => (
@@ -771,9 +794,15 @@ export default function Home() {
                         <div className="truncate text-sm font-medium">{currentPreviewFile.name}</div>
                         <div className="text-xs text-muted-foreground">{formatBytes(currentPreviewFile.size)}</div>
                       </div>
-                      <Button type="button" variant="ghost" size="sm" onClick={handleResetAll}>
-                        清空
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="xs" onClick={() => open()}>
+                          <UploadCloudIcon className="mr-1 size-3" />
+                          添加文件
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={handleResetAll}>
+                          清空
+                        </Button>
+                      </div>
                     </div>
                   )}
 
@@ -960,21 +989,69 @@ export default function Home() {
                         </Select>
                       </div>
                       <div className="grid gap-1">
-                        <div className="text-xs text-muted-foreground">OCR 方式</div>
-                        <Select
-                          value={settingsSnapshot.ocrProvider}
-                          onChange={(e) =>
-                            updateSettingsSnapshot((prev) => ({
-                              ...prev,
-                              ocrProvider: e.target.value as Settings["ocrProvider"],
-                            }))
-                          }
-                        >
-                          {Object.entries(ocrProviderLabels).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </Select>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span>解析引擎</span>
+                          <HoverHint text="传统OCR用本地识别；AIOCR用远程模型；百度/MinerU自带解析。" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={settingsSnapshot.parseEngineMode}
+                            onChange={(e) => {
+                              const mode = e.target.value as ParseEngineMode
+                              updateSettingsSnapshot((prev) => ({
+                                ...prev,
+                                parseEngineMode: mode,
+                                ocrProvider:
+                                  mode === "remote_ocr" ? "aiocr"
+                                  : mode === "baidu_doc" ? "baidu"
+                                  : mode === "mineru_cloud" ? "auto"
+                                  : "machine",
+                              }))
+                            }}
+                          >
+                            <option value="local_ocr">{PARSE_ENGINE_MODE_LABELS.local_ocr}</option>
+                            <option value="remote_ocr">{PARSE_ENGINE_MODE_LABELS.remote_ocr}</option>
+                            <option value="baidu_doc">{PARSE_ENGINE_MODE_LABELS.baidu_doc}</option>
+                            <option value="mineru_cloud">{PARSE_ENGINE_MODE_LABELS.mineru_cloud}</option>
+                          </Select>
+                          <ModelStatusBadge
+                            status={modelStatus}
+                            isLoading={isModelStatusLoading}
+                            onStatusChange={() => void refetchModelStatus()}
+                          />
+                        </div>
                       </div>
+                      {settingsSnapshot.parseEngineMode === "remote_ocr" && (
+                        <div className="grid gap-1">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>OCR 模型</span>
+                            <HoverHint text="选择用于文字识别的 AI 模型。" />
+                          </div>
+                          <Select
+                            value={
+                              ["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel)
+                                ? settingsSnapshot.ocrAiModel
+                                : "__custom__"
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value
+                              updateSettingsSnapshot((prev) => ({
+                                ...prev,
+                                ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
+                              }))
+                            }}
+                          >
+                            <option value="Qwen/Qwen2.5-VL-7B-Instruct">Qwen2.5-VL-7B</option>
+                            <option value="Qwen/Qwen2.5-VL-32B-Instruct">Qwen2.5-VL-32B</option>
+                            <option value="paddleocr/PaddleOCR-VL-1.5">PaddleOCR-VL</option>
+                            <option value="deepseek-ai/DeepSeek-OCR">DeepSeek-OCR</option>
+                            <option value="openai/gpt-4o-mini">GPT-4o-mini</option>
+                            {(!["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()) && (
+                              <option value="__custom__">{settingsSnapshot.ocrAiModel}</option>
+                            )}
+                          </Select>
+                        </div>
+                      )}
                       <label className="flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
@@ -998,6 +1075,36 @@ export default function Home() {
 
                   {/* Action buttons */}
                   <div className="space-y-2">
+                    {preflightWarning && (
+                      <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <p className="font-medium">⚠️ {preflightWarning}</p>
+                        <div className="mt-1.5 flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[11px]"
+                            onClick={() => {
+                              setPreflightAcknowledged(true)
+                              setPreflightWarning(null)
+                              void handleConvertAll()
+                            }}
+                          >
+                            仍然转换
+                          </Button>
+                          <Link href="/settings">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[11px]"
+                            >
+                              去设置
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                     {!user && !isAuthLoading ? (
                       <Button type="button" variant="outline" className="w-full" asChild>
                         <Link href="/login">登录后创建任务</Link>
