@@ -2,16 +2,16 @@
 
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { SettingsIcon, DownloadIcon, Loader2Icon } from "lucide-react"
+import { SettingsIcon, Loader2Icon } from "lucide-react"
 import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError } from "@/lib/api"
-import { toast } from "sonner"
 import type { ModelProviderStatus, ModelStatusResponse } from "@/hooks/use-model-status"
-import { LAYOUT_MODELS, DEFAULT_LAYOUT_MODEL } from "@/lib/layout-models"
+import { LAYOUT_MODELS } from "@/lib/layout-models"
+import { useModelDownload, type DownloadStatusItem } from "@/hooks/use-model-download"
+import { DownloadProgressButton } from "@/components/download-progress-button"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -141,16 +141,19 @@ function ProviderRow({
   display,
   provStatus,
   onDownload,
-  downloading,
+  onCancel,
+  downloadState,
 }: {
   display: ProviderDisplay
   provStatus: ModelProviderStatus | null
   onDownload: (model: string) => void
-  downloading: boolean
+  onCancel: (model: string) => void
+  downloadState: DownloadStatusItem | null
 }) {
   const isDownloadable = display.kind === "local" && DOWNLOADABLE_MODELS[display.key]
   const needsConfig = display.kind === "remote" && provStatus && !provStatus.configured
   const layoutModelInfo = LAYOUT_MODELS[display.key]
+  const isDownloading = downloadState?.status === "downloading"
 
   return (
     <div className="flex items-start justify-between gap-2 py-1.5">
@@ -191,21 +194,27 @@ function ProviderRow({
             </Button>
           </Link>
         )}
-        {isDownloadable && provStatus && !provStatus.ready && (
-          <Button
+        {isDownloadable && provStatus && !provStatus.ready && !isDownloading && (
+          <DownloadProgressButton
+            modelId={display.key}
+            downloadState={downloadState}
+            onDownload={onDownload}
+            onCancel={onCancel}
             variant="ghost"
-            size="sm"
+            size="xs"
             className="h-6 px-1.5 text-[10px]"
-            onClick={() => onDownload(display.key)}
-            disabled={downloading}
-          >
-            {downloading ? (
-              <Loader2Icon className="size-3 animate-spin" />
-            ) : (
-              <DownloadIcon className="size-3" />
-            )}
-            下载
-          </Button>
+          />
+        )}
+        {isDownloading && (
+          <DownloadProgressButton
+            modelId={display.key}
+            downloadState={downloadState}
+            onDownload={onDownload}
+            onCancel={onCancel}
+            variant="ghost"
+            size="xs"
+            className="h-6 px-1.5 text-[10px]"
+          />
         )}
       </div>
     </div>
@@ -219,15 +228,17 @@ function ProviderRow({
 function DetailsPanel({
   status,
   providers,
-  downloading,
   onDownload,
+  onCancel,
+  downloadStateMap,
   triggerRect,
   onClose,
 }: {
   status: ModelStatusResponse | null
   providers: ProviderDisplay[]
-  downloading: string | null
   onDownload: (model: string) => void
+  onCancel: (model: string) => void
+  downloadStateMap: Record<string, DownloadStatusItem>
   triggerRect: DOMRect
   onClose: () => void
 }) {
@@ -294,7 +305,8 @@ function DetailsPanel({
               display={display}
               provStatus={getProviderStatus(status, display.key, display.kind)}
               onDownload={onDownload}
-              downloading={downloading === display.key}
+              onCancel={onCancel}
+              downloadState={downloadStateMap[display.key] ?? null}
             />
           ))}
         </>
@@ -312,7 +324,8 @@ function DetailsPanel({
               display={display}
               provStatus={getProviderStatus(status, display.key, display.kind)}
               onDownload={onDownload}
-              downloading={downloading === display.key}
+              onCancel={onCancel}
+              downloadState={downloadStateMap[display.key] ?? null}
             />
           ))}
         </>
@@ -332,7 +345,8 @@ function DetailsPanel({
               display={display}
               provStatus={getProviderStatus(status, display.key, display.kind)}
               onDownload={onDownload}
-              downloading={downloading === display.key}
+              onCancel={onCancel}
+              downloadState={downloadStateMap[display.key] ?? null}
             />
           ))}
         </>
@@ -393,9 +407,11 @@ export function ModelStatusBadge({
     [parseEngineMode]
   )
   const [expanded, setExpanded] = React.useState(false)
-  const [downloading, setDownloading] = React.useState<string | null>(null)
   const [triggerRect, setTriggerRect] = React.useState<DOMRect | null>(null)
   const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const { startDownload, cancelDownload, downloads } = useModelDownload({
+    onDownloadComplete: () => onStatusChange?.(),
+  })
 
   const handleToggle = React.useCallback(() => {
     if (!expanded && triggerRef.current) {
@@ -419,26 +435,9 @@ export function ModelStatusBadge({
       if (!window.confirm(confirmMsg)) {
         return
       }
-      setDownloading(model)
-      try {
-        const res = await apiFetch("/models/download", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model }),
-        })
-        if (!res.ok) {
-          const body = await res.json().catch(() => null)
-          throw new Error(body?.message || "下载失败")
-        }
-        toast.success("模型下载完成")
-        onStatusChange?.()
-      } catch (e) {
-        toast.error(normalizeFetchError(e, "模型下载失败"))
-      } finally {
-        setDownloading(null)
-      }
+      await startDownload(model)
     },
-    [onStatusChange]
+    [startDownload]
   )
 
   const overallColor = getOverallDotColor(status, providers)
@@ -468,8 +467,9 @@ export function ModelStatusBadge({
         <DetailsPanel
           status={status}
           providers={providers}
-          downloading={downloading}
           onDownload={handleDownload}
+          onCancel={cancelDownload}
+          downloadStateMap={downloads}
           triggerRect={triggerRect}
           onClose={handleClose}
         />

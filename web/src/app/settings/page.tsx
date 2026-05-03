@@ -5,7 +5,6 @@ import { createPortal } from "react-dom"
 import {
   CheckIcon,
   ChevronDownIcon,
-  DownloadIcon,
   EyeIcon,
   EyeOffIcon,
   KeyRoundIcon,
@@ -27,7 +26,6 @@ import {
   BAIDU_DOC_PARSE_TYPE_LABELS,
   isPaddleOcrVlModelName,
   type BaiduDocParseType,
-  type OcrAiLayoutModel,
   type OcrAiPromptPreset,
   defaultSettings,
   type OcrAiProvider,
@@ -35,7 +33,6 @@ import {
 } from "@/lib/settings"
 import {
   LAYOUT_MODELS,
-  DEFAULT_LAYOUT_MODEL,
 } from "@/lib/layout-models"
 import {
   applyParseEngineMode,
@@ -57,6 +54,8 @@ import {
 } from "@/lib/api"
 import { useSettings } from "@/hooks/use-settings"
 import { useModelStatus } from "@/hooks/use-model-status"
+import { useModelDownload } from "@/hooks/use-model-download"
+import { DownloadProgressButton } from "@/components/download-progress-button"
 
 function FieldLabel({
   htmlFor,
@@ -330,6 +329,9 @@ export default function SettingsPage() {
     clear: clearSettings,
   } = useSettings()
   const { data: modelStatusData, refetch: refetchModelStatus } = useModelStatus()
+  const { startDownload, cancelDownload, getDownloadState } = useModelDownload({
+    onDownloadComplete: () => void refetchModelStatus(),
+  })
   const [showAdvanced, setShowAdvanced] = React.useState(false)
   const [showOcrPromptExperiment, setShowOcrPromptExperiment] = React.useState(false)
   const [showOcrModelSuggestions, setShowOcrModelSuggestions] = React.useState(false)
@@ -1793,35 +1795,17 @@ export default function SettingsPage() {
                                       已下载
                                     </span>
                                   ) : (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 text-xs"
-                                      onClick={async () => {
+                                    <DownloadProgressButton
+                                      modelId={option.id}
+                                      downloadState={getDownloadState(option.id)}
+                                      onDownload={async (id) => {
                                         if (!window.confirm(`下载 ${option.label}（${option.sizeMb}MB）？\n下载完成后可在设置中切换使用。`)) {
                                           return
                                         }
-                                        try {
-                                          const res = await apiFetch("/models/download", {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ model: option.id }),
-                                          })
-                                          if (!res.ok) {
-                                            const body = await res.json().catch(() => null)
-                                            throw new Error(body?.message || "下载失败")
-                                          }
-                                          toast.success(`${option.label} 下载完成`)
-                                          void refetchModelStatus()
-                                        } catch (e) {
-                                          toast.error(normalizeFetchError(e, "模型下载失败"))
-                                        }
+                                        await startDownload(id)
                                       }}
-                                    >
-                                      <DownloadIcon className="size-3" />
-                                      下载
-                                    </Button>
+                                      onCancel={cancelDownload}
+                                    />
                                   )}
                                 </div>
                               </div>

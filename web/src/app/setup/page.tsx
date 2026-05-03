@@ -3,9 +3,9 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { CheckIcon, DownloadIcon, Loader2Icon } from "lucide-react"
+import { CheckIcon, Loader2Icon } from "lucide-react"
 
-import { apiFetch, readResponseErrorMessage, normalizeFetchError } from "@/lib/api"
+import { apiFetch, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,9 +18,10 @@ import {
 import { Input } from "@/components/ui/input"
 import {
   LAYOUT_MODELS,
-  DEFAULT_LAYOUT_MODEL,
   type LayoutModelInfo,
 } from "@/lib/layout-models"
+import { useModelDownload } from "@/hooks/use-model-download"
+import { DownloadProgressButton } from "@/components/download-progress-button"
 
 type DeployMode = "self" | "public"
 
@@ -50,7 +51,20 @@ export default function SetupPage() {
   const [needsSetup, setNeedsSetup] = React.useState<boolean | null>(null)
   const [modelStatus, setModelStatus] = React.useState<ModelStatusResponse | null>(null)
   const [modelStatusLoading, setModelStatusLoading] = React.useState(false)
-  const [downloadingModel, setDownloadingModel] = React.useState<string | null>(null)
+  const { startDownload, cancelDownload, getDownloadState } = useModelDownload({
+    onDownloadComplete: async () => {
+      // Refresh model status after download
+      try {
+        const statusRes = await apiFetch("/models/status")
+        if (statusRes.ok) {
+          const statusData = (await statusRes.json()) as ModelStatusResponse
+          setModelStatus(statusData)
+        }
+      } catch {
+        // Non-fatal
+      }
+    },
+  })
 
   // Check if setup is needed
   React.useEffect(() => {
@@ -133,30 +147,8 @@ export default function SetupPage() {
     if (!window.confirm(confirmMsg)) {
       return
     }
-    setDownloadingModel(model)
-    try {
-      const res = await apiFetch("/models/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error(body?.message || "下载失败")
-      }
-      toast.success("模型下载完成")
-      // Refresh model status
-      const statusRes = await apiFetch("/models/status")
-      if (statusRes.ok) {
-        const statusData = (await statusRes.json()) as ModelStatusResponse
-        setModelStatus(statusData)
-      }
-    } catch (e) {
-      toast.error(normalizeFetchError(e, "模型下载失败"))
-    } finally {
-      setDownloadingModel(null)
-    }
-  }, [])
+    await startDownload(model)
+  }, [startDownload])
 
   const handleComplete = React.useCallback(async () => {
     toast.success("设置完成")
@@ -457,20 +449,12 @@ export default function SetupPage() {
                                   就绪
                                 </span>
                               ) : isDownloadable ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => void handleDownloadModel(key)}
-                                  disabled={downloadingModel === key}
-                                >
-                                  {downloadingModel === key ? (
-                                    <Loader2Icon className="size-3 animate-spin" />
-                                  ) : (
-                                    <DownloadIcon className="size-3" />
-                                  )}
-                                  下载
-                                </Button>
+                                <DownloadProgressButton
+                                  modelId={key}
+                                  downloadState={getDownloadState(key)}
+                                  onDownload={(id) => void handleDownloadModel(id)}
+                                  onCancel={cancelDownload}
+                                />
                               ) : (
                                 <span className="text-xs text-muted-foreground">
                                   需安装系统包
@@ -595,20 +579,12 @@ export default function SetupPage() {
                             已下载
                           </span>
                         ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => void handleDownloadModel(model.modelId)}
-                            disabled={downloadingModel === model.modelId}
-                          >
-                            {downloadingModel === model.modelId ? (
-                              <Loader2Icon className="size-3 animate-spin" />
-                            ) : (
-                              <DownloadIcon className="size-3" />
-                            )}
-                            下载
-                          </Button>
+                          <DownloadProgressButton
+                            modelId={model.modelId}
+                            downloadState={getDownloadState(model.modelId)}
+                            onDownload={(id) => void handleDownloadModel(id)}
+                            onCancel={cancelDownload}
+                          />
                         )}
                       </div>
                     </div>

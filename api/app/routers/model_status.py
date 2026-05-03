@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+import time
+from dataclasses import dataclass, field
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -12,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.convert.ocr.layout_models import (
     LAYOUT_MODELS,
-    download_model as download_layout_model,
     is_model_downloaded,
 )
 from app.convert.ocr.runtime_probe import (
@@ -27,6 +29,28 @@ from app.models.user import SiteSettingsORM, UserORM
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/models", tags=["models"])
+
+
+# ---------------------------------------------------------------------------
+# Download progress tracking
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DownloadTask:
+    """Tracks the state of a background model download."""
+
+    model_id: str
+    status: str = "downloading"  # "downloading", "completed", "failed", "cancelled"
+    progress: float | None = None  # 0.0-1.0 for huggingface, None for paddlex
+    message: str | None = None
+    started_at: float = field(default_factory=time.time)
+    cancel_requested: bool = False
+
+
+# In-memory download task registry
+_download_tasks: dict[str, DownloadTask] = {}
+_download_tasks_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +82,37 @@ class ModelDownloadRequest(BaseModel):
 
 class ModelDownloadResponse(BaseModel):
     """Download result."""
+
+    ok: bool
+    model: str
+    message: str
+    status: str = "downloading"
+
+
+class DownloadStatusItem(BaseModel):
+    """Status of a single download task."""
+
+    model_id: str
+    status: str  # "downloading", "completed", "failed", "cancelled"
+    progress: float | None = None  # 0.0-1.0 for huggingface, None for paddlex
+    message: str | None = None
+    started_at: float
+
+
+class DownloadStatusResponse(BaseModel):
+    """Response for download status polling."""
+
+    downloads: dict[str, DownloadStatusItem]
+
+
+class DownloadCancelRequest(BaseModel):
+    """Request to cancel a download."""
+
+    model: str = Field(..., description="Model identifier to cancel")
+
+
+class DownloadCancelResponse(BaseModel):
+    """Cancel result."""
 
     ok: bool
     model: str
@@ -246,22 +301,103 @@ def _download_paddleocr_models() -> bool:
         )
 
 
-@router.post("/download", response_model=ModelDownloadResponse)
-async def download_model(
-    payload: ModelDownloadRequest,
-    admin: UserORM = Depends(require_admin),
-):
-    """Trigger local model download (admin only).
+def _get_cancel_checker(model_id: str):
+    """Return a callable that returns True if cancel was requested for this model."""
 
-    Supported models:
-    - pp_doclayout: PP-DocLayout layout detection model (legacy alias → pp_doclayout_v3)
-    - pp_doclayout_s / pp_doclayout_m / pp_doclayout_l / pp_doclayout_v3: specific variants
-    - doclayout_yolo: DocLayout-YOLO model
-    - paddleocr: PaddleOCR det/rec/cls models
-    """
-    model = payload.model.strip().lower()
+    def _check_cancel() -> bool:
+        with _download_tasks_lock:
+            task = _download_tasks.get(model_id)
+            if task and task.cancel_requested:
+                return True
+        return False
 
-    # Map legacy aliases to canonical IDs
+    return _check_cancel
+
+
+def _update_download_progress(model_id: str, progress: float | None, message: str | None = None):
+    """Update the progress of a download task."""
+    with _download_tasks_lock:
+        task = _download_tasks.get(model_id)
+        if task:
+            task.progress = progress
+            if message:
+                task.message = message
+
+
+def _background_download_layout_model(model_id: str):
+    """Background thread function to download a layout model."""
+    try:
+        cancel_check = _get_cancel_checker(model_id)
+
+        def progress_callback(progress: float | None, message: str | None = None):
+            _update_download_progress(model_id, progress, message)
+
+        from app.convert.ocr.layout_models import cancellable_download_layout_model
+
+        success = cancellable_download_layout_model(
+            model_id, cancel_check=cancel_check, progress_callback=progress_callback
+        )
+
+        with _download_tasks_lock:
+            task = _download_tasks.get(model_id)
+            if task:
+                if task.cancel_requested:
+                    task.status = "cancelled"
+                    task.message = "下载已取消"
+                elif success:
+                    task.status = "completed"
+                    task.progress = 1.0
+                    task.message = "下载完成"
+                else:
+                    task.status = "failed"
+                    task.message = "下载失败"
+    except Exception as e:
+        logger.exception("Background download failed for %s: %s", model_id, e)
+        with _download_tasks_lock:
+            task = _download_tasks.get(model_id)
+            if task:
+                task.status = "failed"
+                task.message = f"下载失败: {e}"
+
+
+def _background_download_paddleocr(model_id: str = "paddleocr"):
+    """Background thread function to download PaddleOCR models."""
+    try:
+        cancel_check = _get_cancel_checker(model_id)
+
+        # PaddleOCR download can't be easily cancelled mid-flight,
+        # but we check before starting
+        if cancel_check():
+            with _download_tasks_lock:
+                task = _download_tasks.get(model_id)
+                if task:
+                    task.status = "cancelled"
+                    task.message = "下载已取消"
+            return
+
+        _download_paddleocr_models()
+
+        with _download_tasks_lock:
+            task = _download_tasks.get(model_id)
+            if task:
+                if task.cancel_requested:
+                    task.status = "cancelled"
+                    task.message = "下载已取消"
+                else:
+                    task.status = "completed"
+                    task.progress = 1.0
+                    task.message = "下载完成"
+    except Exception as e:
+        logger.exception("Background PaddleOCR download failed: %s", e)
+        with _download_tasks_lock:
+            task = _download_tasks.get(model_id)
+            if task:
+                task.status = "failed"
+                task.message = f"下载失败: {e}"
+
+
+def _resolve_layout_model_alias(model: str) -> str | None:
+    """Resolve a model name/alias to a canonical layout model ID."""
     layout_model_aliases = {
         "pp_doclayout": "pp_doclayout_v3",
         "pp-doclayout": "pp_doclayout_v3",
@@ -278,46 +414,177 @@ async def download_model(
         "doclayout-yolo": "doclayout_yolo",
         "doclayoutyolo": "doclayout_yolo",
     }
+    canonical = layout_model_aliases.get(model)
+    if canonical:
+        return canonical
+    if model in LAYOUT_MODELS:
+        return model
+    return None
 
-    canonical_id = layout_model_aliases.get(model)
 
-    # Check if it's a known layout model
-    if canonical_id or model in LAYOUT_MODELS:
-        target_id = canonical_id or model
-        if target_id not in LAYOUT_MODELS:
-            raise AppException(
-                code=ErrorCode.VALIDATION_ERROR,
-                message=f"Unknown layout model: {payload.model}",
-                details={"model": payload.model},
-                status_code=400,
-            )
-        try:
-            await asyncio.to_thread(download_layout_model, target_id)
-        except RuntimeError as e:
-            raise AppException(
-                code=ErrorCode.INTERNAL_ERROR,
-                message=str(e),
-                status_code=500,
-            )
+@router.post("/download", response_model=ModelDownloadResponse)
+async def download_model(
+    payload: ModelDownloadRequest,
+    admin: UserORM = Depends(require_admin),
+):
+    """Trigger local model download in background (admin only).
+
+    Returns immediately with download status. Use GET /download/status to poll
+    progress and POST /download/cancel to abort.
+
+    Supported models:
+    - pp_doclayout: PP-DocLayout layout detection model (legacy alias → pp_doclayout_v3)
+    - pp_doclayout_s / pp_doclayout_m / pp_doclayout_l / pp_doclayout_v3: specific variants
+    - doclayout_yolo: DocLayout-YOLO model
+    - paddleocr: PaddleOCR det/rec/cls models
+    """
+    model = payload.model.strip().lower()
+
+    # Resolve layout model aliases
+    target_id = _resolve_layout_model_alias(model)
+
+    if target_id:
+        # Check if already downloading
+        with _download_tasks_lock:
+            existing = _download_tasks.get(target_id)
+            if existing and existing.status == "downloading":
+                return ModelDownloadResponse(
+                    ok=True,
+                    model=target_id,
+                    message="下载已在进行中",
+                    status="downloading",
+                )
+
+        # Start background download
+        with _download_tasks_lock:
+            _download_tasks[target_id] = DownloadTask(model_id=target_id)
+
+        thread = threading.Thread(
+            target=_background_download_layout_model,
+            args=(target_id,),
+            daemon=True,
+        )
+        thread.start()
+
         model_info = LAYOUT_MODELS[target_id]
         return ModelDownloadResponse(
             ok=True,
             model=target_id,
-            message=f"{model_info.display_name} downloaded successfully",
+            message=f"{model_info.display_name} 开始下载",
+            status="downloading",
         )
 
     if model in {"paddleocr", "paddle", "paddle_ocr"}:
-        await asyncio.to_thread(_download_paddleocr_models)
+        paddle_id = "paddleocr"
+        with _download_tasks_lock:
+            existing = _download_tasks.get(paddle_id)
+            if existing and existing.status == "downloading":
+                return ModelDownloadResponse(
+                    ok=True,
+                    model=paddle_id,
+                    message="下载已在进行中",
+                    status="downloading",
+                )
+
+        with _download_tasks_lock:
+            _download_tasks[paddle_id] = DownloadTask(model_id=paddle_id)
+
+        thread = threading.Thread(
+            target=_background_download_paddleocr,
+            args=(paddle_id,),
+            daemon=True,
+        )
+        thread.start()
+
         return ModelDownloadResponse(
             ok=True,
-            model="paddleocr",
-            message="PaddleOCR models downloaded successfully",
+            model=paddle_id,
+            message="PaddleOCR 开始下载",
+            status="downloading",
         )
-    else:
-        supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr"
+
+    supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr"
+    raise AppException(
+        code=ErrorCode.VALIDATION_ERROR,
+        message=f"Unsupported model for download: {payload.model}. Supported: {supported}",
+        details={"model": payload.model},
+        status_code=400,
+    )
+
+
+@router.get("/download/status", response_model=DownloadStatusResponse)
+async def get_download_status():
+    """Get status of all active/recent downloads.
+
+    Returns download state for each model that is currently downloading or
+    recently completed/failed/cancelled. Old entries are cleaned up after 5 minutes.
+    """
+    now = time.time()
+    items: dict[str, DownloadStatusItem] = {}
+
+    with _download_tasks_lock:
+        # Clean up old completed/failed/cancelled tasks (older than 5 minutes)
+        expired_ids = [
+            mid for mid, task in _download_tasks.items()
+            if task.status != "downloading" and (now - task.started_at) > 300
+        ]
+        for mid in expired_ids:
+            del _download_tasks[mid]
+
+        for mid, task in _download_tasks.items():
+            items[mid] = DownloadStatusItem(
+                model_id=task.model_id,
+                status=task.status,
+                progress=task.progress,
+                message=task.message,
+                started_at=task.started_at,
+            )
+
+    return DownloadStatusResponse(downloads=items)
+
+
+@router.post("/download/cancel", response_model=DownloadCancelResponse)
+async def cancel_download(
+    payload: DownloadCancelRequest,
+    admin: UserORM = Depends(require_admin),
+):
+    """Request cancellation of an active download (admin only).
+
+    The download thread checks the cancel flag periodically and will stop
+    as soon as possible. Already-downloaded partial files may remain.
+    """
+    model = payload.model.strip().lower()
+
+    # Resolve aliases
+    target_id = _resolve_layout_model_alias(model)
+    if not target_id and model in {"paddleocr", "paddle", "paddle_ocr"}:
+        target_id = "paddleocr"
+
+    if not target_id:
         raise AppException(
             code=ErrorCode.VALIDATION_ERROR,
-            message=f"Unsupported model for download: {payload.model}. Supported: {supported}",
-            details={"model": payload.model},
+            message=f"Unknown model: {payload.model}",
             status_code=400,
         )
+
+    with _download_tasks_lock:
+        task = _download_tasks.get(target_id)
+        if not task:
+            raise AppException(
+                code=ErrorCode.VALIDATION_ERROR,
+                message=f"No active download for model: {target_id}",
+                status_code=400,
+            )
+        if task.status != "downloading":
+            return DownloadCancelResponse(
+                ok=True,
+                model=target_id,
+                message=f"下载已处于 {task.status} 状态",
+            )
+        task.cancel_requested = True
+
+    return DownloadCancelResponse(
+        ok=True,
+        model=target_id,
+        message="取消请求已发送",
+    )

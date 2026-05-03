@@ -12,7 +12,7 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from app.convert.ocr.base import _clean_str
 
@@ -325,6 +325,38 @@ def download_model(model_id: str) -> bool:
     return False
 
 
+def cancellable_download_layout_model(
+    model_id: str,
+    cancel_check: Callable[[], bool] | None = None,
+    progress_callback: Callable[[float | None, str | None], None] | None = None,
+) -> bool:
+    """Download a model with cancellation support and progress tracking.
+
+    Args:
+        model_id: The model to download.
+        cancel_check: Callable that returns True if download should be cancelled.
+        progress_callback: Callable(progress, message) to report progress.
+            progress is 0.0-1.0 for huggingface downloads, None for PaddleX.
+
+    Returns:
+        True if download completed successfully, False if cancelled or failed.
+    """
+    info = LAYOUT_MODELS.get(model_id)
+    if info is None:
+        raise ValueError(f"Unknown layout model: {model_id}")
+
+    # Check cancel before starting
+    if cancel_check and cancel_check():
+        logger.info("Download cancelled before start: %s", model_id)
+        return False
+
+    if info.provider == "paddlex":
+        return _download_paddlex_model_cancellable(info, cancel_check, progress_callback)
+    elif info.provider == "doclayout_yolo":
+        return _download_doclayout_yolo_cancellable(cancel_check, progress_callback)
+    return False
+
+
 def _download_paddlex_model(info: LayoutModelInfo) -> bool:
     """Download a PaddleX model by creating it (triggers auto-download)."""
     try:
@@ -333,6 +365,47 @@ def _download_paddlex_model(info: LayoutModelInfo) -> bool:
         assert info.paddlex_model_name is not None
         logger.info("Starting PaddleX model download: %s", info.paddlex_model_name)
         paddlex.create_model(info.paddlex_model_name)
+        logger.info("PaddleX model download complete: %s", info.paddlex_model_name)
+        return True
+    except ImportError:
+        raise RuntimeError(
+            "paddlex package is not installed. Install with: pip install paddlex"
+        )
+    except Exception as e:
+        logger.exception("PaddleX model download failed: %s", e)
+        raise RuntimeError(f"PaddleX model download failed: {e}") from e
+
+
+def _download_paddlex_model_cancellable(
+    info: LayoutModelInfo,
+    cancel_check: Callable[[], bool] | None = None,
+    progress_callback: Callable[[float | None, str | None], None] | None = None,
+) -> bool:
+    """Download a PaddleX model with cancellation check.
+
+    PaddleX downloads are not easily cancellable mid-flight (the download happens
+    inside paddlex.create_model). We check cancel before starting and report
+    indeterminate progress.
+    """
+    if cancel_check and cancel_check():
+        return False
+
+    try:
+        import paddlex
+
+        assert info.paddlex_model_name is not None
+        logger.info("Starting PaddleX model download: %s", info.paddlex_model_name)
+
+        if progress_callback:
+            progress_callback(None, f"正在下载 {info.display_name}...")
+
+        # PaddleX create_model auto-downloads weights — no progress hooks available
+        paddlex.create_model(info.paddlex_model_name)
+
+        if cancel_check and cancel_check():
+            logger.info("Download cancelled after completion: %s", info.model_id)
+            return False
+
         logger.info("PaddleX model download complete: %s", info.paddlex_model_name)
         return True
     except ImportError:
@@ -361,6 +434,102 @@ def _download_doclayout_yolo() -> bool:
         )
         logger.info("DocLayout-YOLO download complete")
         return True
+    except Exception as e:
+        logger.exception("DocLayout-YOLO download failed: %s", e)
+        raise RuntimeError(f"DocLayout-YOLO download failed: {e}") from e
+
+
+class _CancellableTqdm:
+    """A tqdm wrapper that reports progress and checks for cancellation."""
+
+    def __init__(
+        self,
+        cancel_check: Callable[[], bool] | None = None,
+        progress_callback: Callable[[float | None, str | None], None] | None = None,
+        **kwargs,
+    ):
+        self._cancel_check = cancel_check
+        self._progress_callback = progress_callback
+        self._last_reported: float = -1.0
+
+    def __call__(self, iterable=None, **kwargs):
+        """Wrap an iterable with progress tracking."""
+        # Import tqdm to use as base
+        from tqdm import tqdm as tqdm_cls
+
+        parent_self = self
+
+        class ProgressTqdm(tqdm_cls):
+            def update(self, n=1):
+                # Check cancel before updating
+                if parent_self._cancel_check and parent_self._cancel_check():
+                    self.close()
+                    raise _DownloadCancelledError("Download cancelled by user")
+
+                super().update(n)
+                # Report progress at most every 2%
+                if parent_self._progress_callback and self.total:
+                    current = self.n / self.total
+                    if current - parent_self._last_reported >= 0.02:
+                        parent_self._last_reported = current
+                        parent_self._progress_callback(
+                            current,
+                            f"下载中... {current:.0%}",
+                        )
+
+            def __iter__(self):
+                for item in super().__iter__():
+                    # Check cancel on each iteration
+                    if parent_self._cancel_check and parent_self._cancel_check():
+                        self.close()
+                        raise _DownloadCancelledError("Download cancelled by user")
+                    yield item
+
+        return ProgressTqdm(iterable, **kwargs)
+
+
+class _DownloadCancelledError(Exception):
+    """Raised when a download is cancelled."""
+
+
+def _download_doclayout_yolo_cancellable(
+    cancel_check: Callable[[], bool] | None = None,
+    progress_callback: Callable[[float | None, str | None], None] | None = None,
+) -> bool:
+    """Download DocLayout-YOLO model weights with cancellation and progress."""
+    try:
+        from huggingface_hub import hf_hub_download
+
+        cache_dir = Path(os.getenv("MODEL_CACHE_DIR", "/app/data/models"))
+        target_dir = cache_dir / "doclayout_yolo"
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info("Starting DocLayout-YOLO download")
+
+        if progress_callback:
+            progress_callback(0.0, "开始下载 DocLayout-YOLO...")
+
+        # Use tqdm_class for progress tracking and cancellation
+        cancellable_tqdm = _CancellableTqdm(cancel_check, progress_callback)
+        try:
+            hf_hub_download(
+                repo_id="juliozhao/DocLayout-YOLO-DocStructBench",
+                filename="docstructbench_imgsz1024.onnx",
+                local_dir=str(target_dir),
+                tqdm_class=cancellable_tqdm,
+            )
+        except _DownloadCancelledError:
+            logger.info("DocLayout-YOLO download cancelled")
+            return False
+
+        if cancel_check and cancel_check():
+            logger.info("DocLayout-YOLO download cancelled after completion")
+            return False
+
+        logger.info("DocLayout-YOLO download complete")
+        return True
+    except _DownloadCancelledError:
+        return False
     except Exception as e:
         logger.exception("DocLayout-YOLO download failed: %s", e)
         raise RuntimeError(f"DocLayout-YOLO download failed: {e}") from e
