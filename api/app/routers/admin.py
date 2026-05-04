@@ -571,3 +571,52 @@ async def update_site_settings(
     db.commit()
     logger.info("Admin updated site settings: %s", updated)
     return {"updated": updated}
+
+
+def _get_paddle_cache_size() -> tuple[int, int]:
+    """Get PaddleX/PaddleOCR cache size in bytes and file count."""
+    from pathlib import Path
+    home = Path.home()
+    cache_dirs = [
+        home / ".paddlex" / "official_models",
+        home / ".paddleocr",
+    ]
+    total_size = 0
+    total_files = 0
+    for cache_dir in cache_dirs:
+        if not cache_dir.exists():
+            continue
+        for f in cache_dir.rglob("*"):
+            if f.is_file():
+                total_size += f.stat().st_size
+                total_files += 1
+    return total_size, total_files
+
+
+@router.get("/cache/status")
+async def cache_status(admin: UserORM = Depends(require_admin)):
+    """Get model cache status (admin only)."""
+    size_bytes, file_count = _get_paddle_cache_size()
+    return {
+        "paddle_cache_mb": round(size_bytes / (1024 * 1024), 1),
+        "paddle_cache_files": file_count,
+    }
+
+
+@router.post("/cache/clear")
+async def cache_clear(admin: UserORM = Depends(require_admin)):
+    """Clear model cache (admin only)."""
+    import shutil
+    from pathlib import Path
+    home = Path.home()
+    cache_dirs = [
+        home / ".paddlex" / "official_models",
+        home / ".paddleocr",
+    ]
+    removed = 0
+    for cache_dir in cache_dirs:
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir, ignore_errors=True)
+            removed += 1
+    logger.info("Admin cleared %s cache directories", removed)
+    return {"cleared": removed}

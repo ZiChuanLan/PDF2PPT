@@ -1032,6 +1032,12 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                     job_id,
                     exc_info=True,
                 )
+            # Clean up intermediate IR file
+            ir_parsed = job_path / "ir.parsed.json"
+            try:
+                ir_parsed.unlink(missing_ok=True)
+            except Exception:
+                pass
         set_job_stage(None)
         set_job_id(None)
 
