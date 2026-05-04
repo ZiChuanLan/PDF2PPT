@@ -59,8 +59,6 @@ import { Select } from "@/components/ui/select"
 import { useUploadSession } from "@/components/upload-session-provider"
 import { ModelStatusBadge } from "@/components/model-status-badge"
 import { useModelStatus } from "@/hooks/use-model-status"
-import { useModelDownload } from "@/hooks/use-model-download"
-import { DownloadProgressButton } from "@/components/download-progress-button"
 
 type JobApiErrorBody = {
   code?: string
@@ -234,9 +232,6 @@ export default function Home() {
   const isImageInput = isImageUploadFile(currentPreviewFile)
 
   const { data: modelStatus, isLoading: isModelStatusLoading, refetch: refetchModelStatus } = useModelStatus()
-  const { startDownload, cancelDownload, getDownloadState } = useModelDownload({
-    onDownloadComplete: () => void refetchModelStatus(),
-  })
   const [preflightWarning, setPreflightWarning] = React.useState<string | null>(null)
   const [preflightAcknowledged, setPreflightAcknowledged] = React.useState(false)
 
@@ -1105,23 +1100,11 @@ export default function Home() {
                               Tesseract{modelStatus && !modelStatus.local.tesseract?.ready ? " (未就绪)" : ""}
                             </option>
                           </Select>
-                          {/* PaddleOCR download button when not ready */}
-                          {modelStatus && !modelStatus.local.paddleocr?.ready && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <DownloadProgressButton
-                                modelId="paddleocr"
-                                downloadState={getDownloadState("paddleocr")}
-                                onDownload={startDownload}
-                                onCancel={cancelDownload}
-                              />
-                              <span className="text-xs text-muted-foreground">下载 PaddleOCR 模型</span>
-                            </div>
-                          )}
-                          {/* Tesseract install hint when not ready */}
-                          {modelStatus && !modelStatus.local.tesseract?.ready && (
+                          {/* Hint when no OCR provider is ready */}
+                          {modelStatus && !modelStatus.local.paddleocr?.ready && !modelStatus.local.tesseract?.ready && (
                             <div className="flex items-center gap-1.5 text-xs text-amber-600 mt-1">
                               <AlertCircleIcon className="size-3.5" />
-                              <span>Tesseract 需要系统安装：<code className="bg-muted px-1 rounded">apt install tesseract-ocr tesseract-ocr-chi-sim</code></span>
+                              <span>本地 OCR 未就绪，请前往{" "}<Link href="/settings" className="underline">设置</Link>{" "}配置</span>
                             </div>
                           )}
                         </div>
