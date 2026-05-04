@@ -454,32 +454,38 @@ class _CancellableTqdm:
 
     def __call__(self, iterable=None, **kwargs):
         """Wrap an iterable with progress tracking."""
-        # Import tqdm to use as base
         from tqdm import tqdm as tqdm_cls
 
         parent_self = self
 
         class ProgressTqdm(tqdm_cls):
             def update(self, n=1):
-                # Check cancel before updating
                 if parent_self._cancel_check and parent_self._cancel_check():
                     self.close()
                     raise _DownloadCancelledError("Download cancelled by user")
 
                 super().update(n)
-                # Report progress at most every 2%
-                if parent_self._progress_callback and self.total:
+
+                if not parent_self._progress_callback:
+                    return
+
+                if self.total and self.total > 0:
                     current = self.n / self.total
-                    if current - parent_self._last_reported >= 0.02:
+                    if current - parent_self._last_reported >= 0.01:
                         parent_self._last_reported = current
                         parent_self._progress_callback(
                             current,
                             f"下载中... {current:.0%}",
                         )
+                else:
+                    downloaded_mb = self.n / (1024 * 1024)
+                    parent_self._progress_callback(
+                        None,
+                        f"已下载 {downloaded_mb:.1f} MB...",
+                    )
 
             def __iter__(self):
                 for item in super().__iter__():
-                    # Check cancel on each iteration
                     if parent_self._cancel_check and parent_self._cancel_check():
                         self.close()
                         raise _DownloadCancelledError("Download cancelled by user")
