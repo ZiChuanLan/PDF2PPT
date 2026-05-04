@@ -182,7 +182,7 @@ class DocLayoutYoloProvider:
     def _ensure_model_weights() -> str:
         """Ensure DocLayout-YOLO model weights are downloaded."""
         cache_dir = Path(os.getenv("MODEL_CACHE_DIR", "/app/data/models"))
-        model_path = cache_dir / "doclayout_yolo" / "docstructbench_imgsz1024.onnx"
+        model_path = cache_dir / "doclayout_yolo" / "doclayout_yolo_docstructbench_imgsz1024.onnx"
         if model_path.exists():
             return str(model_path)
 
@@ -190,8 +190,8 @@ class DocLayoutYoloProvider:
             from huggingface_hub import hf_hub_download
 
             downloaded = hf_hub_download(
-                repo_id="juliozhao/DocLayout-YOLO-DocStructBench",
-                filename="docstructbench_imgsz1024.onnx",
+                repo_id="wybxc/DocLayout-YOLO-DocStructBench-onnx",
+                filename="doclayout_yolo_docstructbench_imgsz1024.onnx",
                 local_dir=str(model_path.parent),
             )
             return downloaded
@@ -304,7 +304,7 @@ def _is_paddlex_model_cached(info: LayoutModelInfo) -> bool:
 def _is_doclayout_yolo_cached() -> bool:
     """Check if DocLayout-YOLO weights are cached."""
     cache_dir = Path(os.getenv("MODEL_CACHE_DIR", "/app/data/models"))
-    model_path = cache_dir / "doclayout_yolo" / "docstructbench_imgsz1024.onnx"
+    model_path = cache_dir / "doclayout_yolo" / "doclayout_yolo_docstructbench_imgsz1024.onnx"
     return model_path.exists()
 
 
@@ -428,8 +428,8 @@ def _download_doclayout_yolo() -> bool:
 
         logger.info("Starting DocLayout-YOLO download")
         hf_hub_download(
-            repo_id="juliozhao/DocLayout-YOLO-DocStructBench",
-            filename="docstructbench_imgsz1024.onnx",
+            repo_id="wybxc/DocLayout-YOLO-DocStructBench-onnx",
+            filename="doclayout_yolo_docstructbench_imgsz1024.onnx",
             local_dir=str(target_dir),
         )
         logger.info("DocLayout-YOLO download complete")
@@ -513,8 +513,8 @@ def _download_doclayout_yolo_cancellable(
         cancellable_tqdm = _CancellableTqdm(cancel_check, progress_callback)
         try:
             hf_hub_download(
-                repo_id="juliozhao/DocLayout-YOLO-DocStructBench",
-                filename="docstructbench_imgsz1024.onnx",
+                repo_id="wybxc/DocLayout-YOLO-DocStructBench-onnx",
+                filename="doclayout_yolo_docstructbench_imgsz1024.onnx",
                 local_dir=str(target_dir),
                 tqdm_class=cancellable_tqdm,
             )
