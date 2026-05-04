@@ -408,11 +408,11 @@ class RedisService:
         keys = self.redis_client.keys("job:*")
         if not isinstance(keys, list):
             return []
-        # Filter out cancel keys and extract job IDs
+        # Filter out cancel and secrets keys, extract job IDs
         job_ids: list[str] = []
         for key in keys:
             key_str = str(key)
-            if ":cancel" not in key_str:
+            if ":cancel" not in key_str and ":secrets" not in key_str:
                 job_id = key_str.replace("job:", "")
                 job_ids.append(job_id)
         return job_ids
