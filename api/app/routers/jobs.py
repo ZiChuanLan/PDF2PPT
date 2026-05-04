@@ -141,7 +141,7 @@ def _write_upload_as_input_pdf(
     *,
     filename: str,
     content_type: str | None,
-    content: bytes,
+    content: bytes | None,
     output_path: Path,
 ) -> str:
     upload_kind = _classify_upload_kind(
@@ -149,7 +149,9 @@ def _write_upload_as_input_pdf(
         content_type=content_type,
     )
     if upload_kind == "pdf":
-        output_path.write_bytes(content)
+        if content is not None:
+            output_path.write_bytes(content)
+        # If content is None, file was already written via streaming
         return upload_kind
     if upload_kind != "image":
         raise AppException(
@@ -160,6 +162,10 @@ def _write_upload_as_input_pdf(
                 "content_type": _normalize_upload_content_type(content_type),
             },
         )
+
+    # For images, we need to read the content if not provided
+    if content is None:
+        content = output_path.read_bytes()
 
     try:
         source_image = Image.open(io.BytesIO(content))
@@ -988,27 +994,67 @@ async def create_job(
     job_created = False
 
     try:
-        content = await file.read()
-        file_size_mb = len(content) / (1024 * 1024)
-        if file_size_mb > settings.max_file_mb:
-            raise AppException(
-                code=ErrorCode.FILE_TOO_LARGE,
-                message=f"File size exceeds {settings.max_file_mb}MB limit",
-                details={"size_mb": file_size_mb, "limit_mb": settings.max_file_mb},
-            )
-
-        # Create job directory
+        # Stream file to disk instead of loading entirely into memory.
+        # This prevents memory pressure for large files (up to 100MB).
         job_dir = ensure_job_dir(job_id)
         input_path = job_dir / "input.pdf"
+        file_size = 0
+        chunk_size = 1024 * 1024  # 1MB chunks
+        with open(input_path, "wb") as f:
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > settings.max_file_mb * 1024 * 1024:
+                    f.close()
+                    input_path.unlink(missing_ok=True)
+                    raise AppException(
+                        code=ErrorCode.FILE_TOO_LARGE,
+                        message=f"File size exceeds {settings.max_file_mb}MB limit",
+                        details={"limit_mb": settings.max_file_mb},
+                    )
+                f.write(chunk)
+        file_size_mb = file_size / (1024 * 1024)
+
         upload_kind = _write_upload_as_input_pdf(
             filename=filename,
             content_type=normalized_content_type,
-            content=content,
+            content=None,  # Already written via streaming
             output_path=input_path,
         )
 
         # Create job in Redis
         user_id = current_user.id if current_user else None
+
+        # Check user quotas before creating job
+        if current_user:
+            # Check concurrent task limit
+            if current_user.concurrent_task_limit > 0:
+                active_jobs = redis_service.count_active_jobs_for_user(user_id)
+                if active_jobs >= current_user.concurrent_task_limit:
+                    raise AppException(
+                        code=ErrorCode.QUOTA_EXCEEDED,
+                        message=f"Concurrent task limit reached ({current_user.concurrent_task_limit})",
+                        details={
+                            "limit": current_user.concurrent_task_limit,
+                            "active": active_jobs,
+                        },
+                    )
+
+            # Check daily task limit
+            if current_user.daily_task_limit > 0:
+                daily_jobs = redis_service.count_daily_jobs_for_user(user_id)
+                if daily_jobs >= current_user.daily_task_limit:
+                    raise AppException(
+                        code=ErrorCode.QUOTA_EXCEEDED,
+                        message=f"Daily task limit reached ({current_user.daily_task_limit})",
+                        details={
+                            "limit": current_user.daily_task_limit,
+                            "used": daily_jobs,
+                        },
+                    )
+
         job = redis_service.create_job(job_id, user_id=user_id)
         job_created = True
 
@@ -1020,6 +1066,22 @@ async def create_job(
             stage=JobStage.queued,
             message="Job queued for processing",
         )
+
+        # Store sensitive keys separately in Redis (not in RQ job kwargs)
+        # so they don't appear in RQ job descriptions or admin views.
+        secrets: dict[str, str] = {}
+        if api_key:
+            secrets["api_key"] = api_key
+        if mineru_api_token:
+            secrets["mineru_api_token"] = mineru_api_token
+        if ocr_baidu_api_key:
+            secrets["ocr_baidu_api_key"] = ocr_baidu_api_key
+        if ocr_baidu_secret_key:
+            secrets["ocr_baidu_secret_key"] = ocr_baidu_secret_key
+        if ocr_ai_api_key:
+            secrets["ocr_ai_api_key"] = ocr_ai_api_key
+        if secrets:
+            redis_service.store_job_secrets(job_id, secrets)
 
         # Queue job for processing
         if redis_service.is_memory_backend():
@@ -1033,14 +1095,16 @@ async def create_job(
                     "enable_layout_assist": enable_layout_assist,
                     "layout_assist_apply_image_regions": layout_assist_apply_image_regions,
                     "provider": normalized_options.provider,
-                    "api_key": api_key,
+                    # Sensitive keys stored separately in Redis (see store_job_secrets).
+                    # Worker retrieves them by job_id to avoid exposing in kwargs.
+                    "api_key": None,
                     "baidu_doc_parse_type": normalized_options.baidu_doc_parse_type,
                     "base_url": base_url,
                     "model": model,
                     "page_start": page_start,
                     "page_end": page_end,
                     "parse_provider": normalized_options.parse_provider,
-                    "mineru_api_token": mineru_api_token,
+                    "mineru_api_token": None,
                     "mineru_base_url": mineru_base_url,
                     "mineru_model_version": mineru_model_version,
                     "mineru_enable_formula": mineru_enable_formula,
@@ -1050,11 +1114,11 @@ async def create_job(
                     "mineru_hybrid_ocr": mineru_hybrid_ocr,
                     "ocr_provider": normalized_options.ocr_provider,
                     "ocr_baidu_app_id": ocr_baidu_app_id,
-                    "ocr_baidu_api_key": ocr_baidu_api_key,
-                    "ocr_baidu_secret_key": ocr_baidu_secret_key,
+                    "ocr_baidu_api_key": None,
+                    "ocr_baidu_secret_key": None,
                     "ocr_tesseract_min_confidence": ocr_tesseract_min_confidence,
                     "ocr_tesseract_language": ocr_tesseract_language,
-                    "ocr_ai_api_key": ocr_ai_api_key,
+                    "ocr_ai_api_key": None,
                     "ocr_ai_provider": normalized_options.ocr_ai_provider,
                     "ocr_ai_base_url": ocr_ai_base_url,
                     "ocr_ai_model": ocr_ai_model,
@@ -1103,14 +1167,16 @@ async def create_job(
                 enable_layout_assist=enable_layout_assist,
                 layout_assist_apply_image_regions=layout_assist_apply_image_regions,
                 provider=normalized_options.provider,
-                api_key=api_key,
+                # Sensitive keys stored separately in Redis (see store_job_secrets).
+                # Worker retrieves them by job_id to avoid exposing in RQ kwargs.
+                api_key=None,
                 baidu_doc_parse_type=normalized_options.baidu_doc_parse_type,
                 base_url=base_url,
                 model=model,
                 page_start=page_start,
                 page_end=page_end,
                 parse_provider=normalized_options.parse_provider,
-                mineru_api_token=mineru_api_token,
+                mineru_api_token=None,
                 mineru_base_url=mineru_base_url,
                 mineru_model_version=mineru_model_version,
                 mineru_enable_formula=mineru_enable_formula,
@@ -1120,11 +1186,11 @@ async def create_job(
                 mineru_hybrid_ocr=mineru_hybrid_ocr,
                 ocr_provider=normalized_options.ocr_provider,
                 ocr_baidu_app_id=ocr_baidu_app_id,
-                ocr_baidu_api_key=ocr_baidu_api_key,
-                ocr_baidu_secret_key=ocr_baidu_secret_key,
+                ocr_baidu_api_key=None,
+                ocr_baidu_secret_key=None,
                 ocr_tesseract_min_confidence=ocr_tesseract_min_confidence,
                 ocr_tesseract_language=ocr_tesseract_language,
-                ocr_ai_api_key=ocr_ai_api_key,
+                ocr_ai_api_key=None,
                 ocr_ai_provider=normalized_options.ocr_ai_provider,
                 ocr_ai_base_url=ocr_ai_base_url,
                 ocr_ai_model=ocr_ai_model,
@@ -1311,22 +1377,33 @@ async def create_job_v2(
                 },
             )
 
-        content = await file.read()
-        file_size_mb = len(content) / (1024 * 1024)
-        if file_size_mb > settings.max_file_mb:
-            raise AppException(
-                code=ErrorCode.FILE_TOO_LARGE,
-                message=f"File size exceeds {settings.max_file_mb}MB limit",
-                details={"size_mb": file_size_mb, "limit_mb": settings.max_file_mb},
-            )
-
-        # Create job directory and write input file
+        # Stream file to disk instead of loading entirely into memory.
+        # This prevents memory pressure for large files (up to 100MB).
         job_dir = ensure_job_dir(job_id)
         input_path = job_dir / "input.pdf"
+        file_size = 0
+        chunk_size = 1024 * 1024  # 1MB chunks
+        with open(input_path, "wb") as f:
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > settings.max_file_mb * 1024 * 1024:
+                    f.close()
+                    input_path.unlink(missing_ok=True)
+                    raise AppException(
+                        code=ErrorCode.FILE_TOO_LARGE,
+                        message=f"File size exceeds {settings.max_file_mb}MB limit",
+                        details={"limit_mb": settings.max_file_mb},
+                    )
+                f.write(chunk)
+        file_size_mb = file_size / (1024 * 1024)
+
         upload_kind = _write_upload_as_input_pdf(
             filename=filename,
             content_type=normalized_content_type,
-            content=content,
+            content=None,  # Already written via streaming
             output_path=input_path,
         )
 
@@ -1342,6 +1419,19 @@ async def create_job_v2(
             stage=JobStage.queued,
             message="Job queued for processing",
         )
+
+        # Store sensitive keys separately in Redis (not in RQ job kwargs)
+        secrets: dict[str, str] = {}
+        for key_name in ("api_key", "mineru_api_token", "ocr_baidu_api_key", "ocr_baidu_secret_key", "ocr_ai_api_key"):
+            val = kwargs.get(key_name)
+            if val:
+                secrets[key_name] = str(val)
+        if secrets:
+            redis_service.store_job_secrets(job_id, secrets)
+
+        # Remove sensitive keys from kwargs before passing to worker
+        for key_name in ("api_key", "mineru_api_token", "ocr_baidu_api_key", "ocr_baidu_secret_key", "ocr_ai_api_key"):
+            kwargs.pop(key_name, None)
 
         # Add job_timeout to kwargs
         kwargs["job_timeout"] = "1h"

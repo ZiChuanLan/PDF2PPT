@@ -500,6 +500,14 @@ async def update_env_vars(
     if filtered_updates:
         new_content = _update_env_content(raw, filtered_updates)
         os.makedirs(os.path.dirname(ENV_FILE_PATH), exist_ok=True)
+        # Create backup before writing
+        backup_path = ENV_FILE_PATH + ".bak"
+        try:
+            if os.path.exists(ENV_FILE_PATH):
+                import shutil
+                shutil.copy2(ENV_FILE_PATH, backup_path)
+        except Exception:
+            logger.warning("Failed to create .env backup", exc_info=True)
         with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
             f.write(new_content)
 

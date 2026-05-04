@@ -12,6 +12,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,20 @@ from .worker_helpers import (
 
 
 logger = get_logger(__name__)
+
+
+def _retrieve_job_secrets(job_id: str) -> dict[str, str]:
+    """Retrieve sensitive keys stored separately for this job.
+
+    Returns a dict with keys like 'api_key', 'ocr_ai_api_key', etc.
+    Falls back to empty dict if secrets not found (e.g., legacy jobs).
+    """
+    try:
+        redis_service = get_redis_service()
+        return redis_service.get_job_secrets(job_id)
+    except Exception:
+        logger.debug("Could not retrieve secrets for job %s", job_id, exc_info=True)
+        return {}
 
 
 class JobCancelledError(Exception):
@@ -179,6 +194,15 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
 ) -> None:
     """RQ job handler: process a single PDF-to-PPT conversion job."""
 
+    # Retrieve sensitive keys stored separately in Redis (not in RQ kwargs).
+    # This prevents API keys from being exposed in RQ job descriptions or logs.
+    _secrets = _retrieve_job_secrets(job_id)
+    api_key = _secrets.get("api_key") or api_key
+    mineru_api_token = _secrets.get("mineru_api_token") or mineru_api_token
+    ocr_baidu_api_key = _secrets.get("ocr_baidu_api_key") or ocr_baidu_api_key
+    ocr_baidu_secret_key = _secrets.get("ocr_baidu_secret_key") or ocr_baidu_secret_key
+    ocr_ai_api_key = _secrets.get("ocr_ai_api_key") or ocr_ai_api_key
+
     _ = (
         enable_ocr,
         retain_process_artifacts,
@@ -256,6 +280,14 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
     ir_path = job_path / "ir.json"
     artifacts_dir = job_path / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create processing marker to prevent cleanup daemon from deleting
+    # active job directory if worker hangs or Redis metadata is lost.
+    processing_marker = job_path / ".processing"
+    processing_marker.write_text(
+        json.dumps({"started_at": datetime.now(timezone.utc).isoformat()}),
+        encoding="utf-8",
+    )
 
     if redis_service.is_cancelled(job_id):
         set_job_stage(JobStage.cleanup.value)
@@ -984,6 +1016,11 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
         )
         return
     finally:
+        # Remove processing marker
+        try:
+            processing_marker.unlink(missing_ok=True)
+        except Exception:
+            pass
         if not bool(retain_process_artifacts):
             try:
                 removed = cleanup_job_process_artifacts(job_path)

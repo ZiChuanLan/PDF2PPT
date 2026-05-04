@@ -358,10 +358,50 @@ class RedisService:
         """Check if job has been cancelled."""
         return bool(self.redis_client.get(self._cancel_key(job_id)))
 
+    def _secrets_key(self, job_id: str) -> str:
+        """Generate Redis key for job secrets."""
+        return f"job:{job_id}:secrets"
+
+    def store_job_secrets(self, job_id: str, secrets: dict[str, str]) -> None:
+        """Store sensitive keys for a job with TTL.
+
+        Keys are stored in a separate Redis key (not in job metadata)
+        so they don't appear in RQ job descriptions or admin views.
+        """
+        import json
+
+        if not secrets:
+            return
+        self.redis_client.setex(
+            self._secrets_key(job_id),
+            self.ttl_seconds,
+            json.dumps(secrets),
+        )
+
+    def get_job_secrets(self, job_id: str) -> dict[str, str]:
+        """Retrieve sensitive keys for a job.
+
+        Returns the stored secrets dict, or empty dict if not found.
+        """
+        import json
+
+        data = self.redis_client.get(self._secrets_key(job_id))
+        if not data:
+            return {}
+        try:
+            return json.loads(data)
+        except Exception:
+            return {}
+
+    def delete_job_secrets(self, job_id: str) -> None:
+        """Delete stored secrets for a job."""
+        self.redis_client.delete(self._secrets_key(job_id))
+
     def delete_job(self, job_id: str) -> None:
         """Delete job metadata from Redis."""
         self.redis_client.delete(self._job_key(job_id))
         self.redis_client.delete(self._cancel_key(job_id))
+        self.delete_job_secrets(job_id)
 
     def get_all_job_ids(self) -> list[str]:
         """Get all job IDs from Redis."""
@@ -376,6 +416,28 @@ class RedisService:
                 job_id = key_str.replace("job:", "")
                 job_ids.append(job_id)
         return job_ids
+
+    def count_active_jobs_for_user(self, user_id: int) -> int:
+        """Count active (non-terminal) jobs for a user."""
+        count = 0
+        for job_id in self.get_all_job_ids():
+            job = self.get_job(job_id)
+            if job is not None and job.user_id == user_id:
+                if job.status not in _TERMINAL_JOB_STATUSES:
+                    count += 1
+        return count
+
+    def count_daily_jobs_for_user(self, user_id: int) -> int:
+        """Count jobs created today for a user."""
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        count = 0
+        for job_id in self.get_all_job_ids():
+            job = self.get_job(job_id)
+            if job is not None and job.user_id == user_id:
+                if job.created_at >= today_start:
+                    count += 1
+        return count
 
     def list_jobs(self, *, limit: int = 50, user_id: int | None = None) -> list[Job]:
         """List jobs ordered by creation time descending.

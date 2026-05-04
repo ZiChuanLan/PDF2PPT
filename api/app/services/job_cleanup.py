@@ -95,6 +95,10 @@ def cleanup_expired_jobs(
             expired = expires_at <= current_time
         else:
             try:
+                # Check for active processing marker before falling back to mtime
+                processing_marker = job_dir / ".processing"
+                if processing_marker.exists():
+                    continue
                 expired = float(job_dir.stat().st_mtime) <= cutoff_epoch
             except FileNotFoundError:
                 continue
