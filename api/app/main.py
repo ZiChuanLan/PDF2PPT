@@ -126,6 +126,27 @@ async def request_id_middleware(request: Request, call_next):
                     response.headers["X-Request-ID"] = request_id
                     return response
 
+    # Rate limiting (skip health check and static assets)
+    if not request.url.path.startswith("/health") and request.url.path.startswith("/api/"):
+        from app.services.redis_service import get_redis_service
+        from app.config import get_settings as _gs
+        _rs = _gs()
+        client_ip = request.client.host if request.client else "unknown"
+        allowed, remaining = get_redis_service().check_rate_limit(
+            client_ip, _rs.rate_limit_requests, _rs.rate_limit_window_seconds
+        )
+        if not allowed:
+            response = JSONResponse(
+                status_code=429,
+                content={
+                    "code": "rate_limit_exceeded",
+                    "message": "请求过于频繁，请稍后再试",
+                },
+            )
+            response.headers["X-Request-ID"] = request_id
+            response.headers["Retry-After"] = str(_rs.rate_limit_window_seconds)
+            return response
+
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response

@@ -988,6 +988,22 @@ async def create_job(
             },
         )
 
+    # Check disk space before accepting upload
+    import shutil as _shutil
+    _job_root = Path(settings.job_root_dir)
+    _job_root.mkdir(parents=True, exist_ok=True)
+    _disk = _shutil.disk_usage(_job_root)
+    _min_bytes = settings.min_disk_space_mb * 1024 * 1024
+    if _disk.free < _min_bytes:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"磁盘空间不足，剩余 {_disk.free // (1024*1024)}MB，需要至少 {settings.min_disk_space_mb}MB",
+            details={
+                "free_mb": _disk.free // (1024 * 1024),
+                "required_mb": settings.min_disk_space_mb,
+            },
+        )
+
     # Generate job ID
     job_id = str(uuid.uuid4())
     job_dir: Path | None = None
@@ -1353,6 +1369,22 @@ async def create_job_v2(
                     "api_key or ocr_ai_api_key is required when parse_provider=v2"
                 ),
             )
+
+    # Check disk space before accepting upload
+    import shutil as _shutil
+    _job_root = Path(settings.job_root_dir)
+    _job_root.mkdir(parents=True, exist_ok=True)
+    _disk = _shutil.disk_usage(_job_root)
+    _min_bytes = settings.min_disk_space_mb * 1024 * 1024
+    if _disk.free < _min_bytes:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"磁盘空间不足，剩余 {_disk.free // (1024*1024)}MB，需要至少 {settings.min_disk_space_mb}MB",
+            details={
+                "free_mb": _disk.free // (1024 * 1024),
+                "required_mb": settings.min_disk_space_mb,
+            },
+        )
 
     # Generate job ID
     job_id = str(uuid.uuid4())

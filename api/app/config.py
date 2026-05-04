@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     deploy_mode: str = "self"
     # Default admin password for self-use mode auto-login
     admin_default_password: str = "admin12345678"
+    # Rate limiting (requests per window per client IP)
+    rate_limit_requests: int = 60
+    rate_limit_window_seconds: int = 60
+    # Minimum free disk space (MB) required before accepting uploads
+    min_disk_space_mb: int = 500
 
     class Config:
         env_file = ".env"

@@ -439,6 +439,33 @@ class RedisService:
                     count += 1
         return count
 
+    def check_rate_limit(self, client_ip: str, max_requests: int, window_seconds: int) -> tuple[bool, int]:
+        """Check rate limit using sliding window counter.
+
+        Returns (allowed, remaining).
+        """
+        key = f"rl:{client_ip}"
+        try:
+            current = self.redis_client.get(key)
+            if current is not None:
+                count = int(current)
+                if count >= max_requests:
+                    return False, 0
+                pipe = self.redis_client.pipeline()
+                pipe.incr(key)
+                pipe.ttl(key)
+                results = pipe.execute()
+                new_count = int(results[0])
+                return True, max(0, max_requests - new_count)
+            else:
+                pipe = self.redis_client.pipeline()
+                pipe.setex(key, window_seconds, 1)
+                results = pipe.execute()
+                return True, max_requests - 1
+        except Exception:
+            logger.warning("Rate limit check failed, allowing request", exc_info=True)
+            return True, max_requests
+
     def list_jobs(self, *, limit: int = 50, user_id: int | None = None) -> list[Job]:
         """List jobs ordered by creation time descending.
 
