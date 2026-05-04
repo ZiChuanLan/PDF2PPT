@@ -102,6 +102,11 @@ export function useModelDownload(options?: {
     }
   }, [downloads, fetchStatus])
 
+  // Fetch status on mount to pick up any active downloads from other pages
+  React.useEffect(() => {
+    void fetchStatus()
+  }, [fetchStatus])
+
   /**
    * Start downloading a model. Returns immediately — poll downloads state
    * for progress updates.
