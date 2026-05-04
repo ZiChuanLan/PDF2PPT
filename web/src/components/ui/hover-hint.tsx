@@ -17,8 +17,8 @@ function HoverHint({
   className,
 }: HoverHintProps) {
   return (
-    <button
-      type="button"
+    <span
+      role="img"
       title={text}
       aria-label={`${label}: ${text}`}
       className={cn(
@@ -28,7 +28,7 @@ function HoverHint({
     >
       <CircleHelpIcon className="size-3.5" />
       <span className="sr-only">{label}</span>
-    </button>
+    </span>
   )
 }
 
