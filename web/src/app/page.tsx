@@ -58,7 +58,7 @@ import { PdfCanvasPreview } from "@/components/pdf-canvas-preview"
 import { Select } from "@/components/ui/select"
 import { useUploadSession } from "@/components/upload-session-provider"
 import { ModelStatusBadge } from "@/components/model-status-badge"
-import { useModelStatus } from "@/hooks/use-model-status"
+import { useModelStatus, useEffectiveModelStatus } from "@/hooks/use-model-status"
 
 type JobApiErrorBody = {
   code?: string
@@ -231,7 +231,8 @@ export default function Home() {
   const currentPreviewFile = uploadFiles[previewFileIndex]?.file ?? null
   const isImageInput = isImageUploadFile(currentPreviewFile)
 
-  const { data: modelStatus, isLoading: isModelStatusLoading, refetch: refetchModelStatus } = useModelStatus()
+  const { data: backendModelStatus, isLoading: isModelStatusLoading, refetch: refetchModelStatus } = useModelStatus()
+  const modelStatus = useEffectiveModelStatus(backendModelStatus, settingsSnapshot)
   const [preflightWarning, setPreflightWarning] = React.useState<string | null>(null)
   const [preflightAcknowledged, setPreflightAcknowledged] = React.useState(false)
 
@@ -265,9 +266,9 @@ export default function Home() {
       const mode = settingsSnapshot.parseEngineMode
       const requiredProviders: Array<{ key: string; kind: "local" | "remote"; label: string }> = []
       if (mode === "local_ocr") {
-        if (settingsSnapshot.ocrProvider === "paddleocr") {
-          requiredProviders.push({ key: "paddleocr", kind: "local", label: "PaddleOCR" })
-        }
+        const ocrKey = settingsSnapshot.ocrProvider === "tesseract" ? "tesseract" : "paddleocr"
+        const ocrLabel = settingsSnapshot.ocrProvider === "tesseract" ? "Tesseract" : "PaddleOCR"
+        requiredProviders.push({ key: ocrKey, kind: "local", label: ocrLabel })
       } else if (mode === "remote_ocr") {
         requiredProviders.push({ key: "aiocr", kind: "remote", label: "AIOCR" })
       } else if (mode === "baidu_doc") {

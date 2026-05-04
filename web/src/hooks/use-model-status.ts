@@ -65,3 +65,70 @@ export function useModelStatus() {
 
   return { data, isLoading, error, refetch }
 }
+
+/**
+ * Merge backend model status with frontend localStorage-based checks for
+ * remote providers.  The backend model-status endpoint checks `site_settings`
+ * in the DB, but in self-hosted mode the user's OCR/AI keys are only stored
+ * in localStorage.  This hook overrides the `ready` flag for remote providers
+ * when the required keys are present in the current Settings snapshot.
+ */
+export function useEffectiveModelStatus(
+  backend: ModelStatusResponse | null,
+  settings: {
+    ocrAiApiKey: string
+    ocrAiBaseUrl: string
+    ocrBaiduApiKey: string
+    ocrBaiduSecretKey: string
+    mineruApiToken: string
+  },
+): ModelStatusResponse | null {
+  return React.useMemo(() => {
+    if (!backend) return null
+
+    const remote = { ...backend.remote }
+
+    // AIOCR — needs api_key + base_url
+    if (remote["aiocr"]) {
+      const hasKey = settings.ocrAiApiKey.trim().length > 0
+      const hasUrl = settings.ocrAiBaseUrl.trim().length > 0
+      remote["aiocr"] = {
+        ...remote["aiocr"],
+        ready: hasKey && hasUrl,
+        configured: hasKey && hasUrl,
+        issues: hasKey && hasUrl ? [] : [
+          ...(!hasKey ? ["api_key_missing"] : []),
+          ...(!hasUrl ? ["base_url_missing"] : []),
+        ],
+      }
+    }
+
+    // Baidu Doc — needs api_key + secret_key
+    if (remote["baidu_doc"]) {
+      const hasKey = settings.ocrBaiduApiKey.trim().length > 0
+      const hasSecret = settings.ocrBaiduSecretKey.trim().length > 0
+      remote["baidu_doc"] = {
+        ...remote["baidu_doc"],
+        ready: hasKey && hasSecret,
+        configured: hasKey && hasSecret,
+        issues: hasKey && hasSecret ? [] : [
+          ...(!hasKey ? ["api_key_missing"] : []),
+          ...(!hasSecret ? ["secret_key_missing"] : []),
+        ],
+      }
+    }
+
+    // MinerU — needs api_token
+    if (remote["mineru"]) {
+      const hasToken = settings.mineruApiToken.trim().length > 0
+      remote["mineru"] = {
+        ...remote["mineru"],
+        ready: hasToken,
+        configured: hasToken,
+        issues: hasToken ? [] : ["api_token_missing"],
+      }
+    }
+
+    return { local: backend.local, remote }
+  }, [backend, settings.ocrAiApiKey, settings.ocrAiBaseUrl, settings.ocrBaiduApiKey, settings.ocrBaiduSecretKey, settings.mineruApiToken])
+}
