@@ -143,6 +143,16 @@ export default function Home() {
   const [previewPageInput, setPreviewPageInput] = React.useState("1")
   const [previewPageCount, setPreviewPageCount] = React.useState(0)
   const [previewFileIndex, setPreviewFileIndex] = React.useState(0)
+
+  // Clamp previewFileIndex when file count changes (e.g., after removal)
+  React.useEffect(() => {
+    if (fileCount === 0) {
+      setPreviewFileIndex(0)
+    } else if (previewFileIndex >= fileCount) {
+      setPreviewFileIndex(fileCount - 1)
+    }
+  }, [fileCount, previewFileIndex])
+
   const [usePageRange, setUsePageRange] = React.useState(
     Boolean(pageStartInput.trim() || pageEndInput.trim())
   )
@@ -214,6 +224,16 @@ export default function Home() {
 
   const onDrop = React.useCallback((accepted: File[]) => {
     if (accepted.length === 0) return
+
+    // Frontend file size check (100MB default, matches backend)
+    const MAX_FILE_SIZE_MB = 100
+    const oversized = accepted.filter((f) => f.size > MAX_FILE_SIZE_MB * 1024 * 1024)
+    if (oversized.length > 0) {
+      const names = oversized.map((f) => f.name).join(", ")
+      toast.error(`文件过大（超过 ${MAX_FILE_SIZE_MB}MB）: ${names}`)
+      return
+    }
+
     addFiles(accepted)
     setActionError(null)
     setPreviewPageInput("1")
@@ -278,7 +298,8 @@ export default function Home() {
       }
       const notReady = requiredProviders.filter((p) => {
         const bucket = p.kind === "local" ? modelStatus.local : modelStatus.remote
-        return bucket[p.key] && !bucket[p.key].ready
+        const status = bucket[p.key]
+        return !status || !status.ready
       })
       if (notReady.length > 0) {
         const names = notReady.map((p) => p.label).join("、")
@@ -437,11 +458,21 @@ export default function Home() {
   const completedCount = fileJobs.filter((j) => j.status?.status === "completed").length
   const failedCount = fileJobs.filter((j) => j.error || j.status?.status === "failed").length
 
+  // Stable list of active job IDs for SSE dependency
+  const activeJobIdsKey = React.useMemo(
+    () =>
+      fileJobs
+        .filter(
+          (j) => j.jobId && j.isSubmitting === false && (!j.status || !TERMINAL_JOB_STATUSES.has(j.status.status))
+        )
+        .map((j) => j.jobId!)
+        .join(","),
+    [fileJobs]
+  )
+
   // SSE: subscribe to active job events
   React.useEffect(() => {
-    const activeJobIds = fileJobs
-      .filter((j) => j.jobId && j.isSubmitting === false && (!j.status || !TERMINAL_JOB_STATUSES.has(j.status.status)))
-      .map((j) => j.jobId!)
+    const activeJobIds = activeJobIdsKey.split(",").filter(Boolean)
     if (activeJobIds.length === 0) return
 
     let mounted = true
@@ -512,7 +543,7 @@ export default function Home() {
         es.close()
       }
     }
-  }, [fileJobs, fetchJobStatus])
+  }, [activeJobIdsKey, fetchJobStatus])
 
   // Toast on terminal states
   React.useEffect(() => {
@@ -835,9 +866,6 @@ export default function Home() {
                               size="icon-xs"
                               onClick={() => {
                                 removeFile(index)
-                                if (previewFileIndex >= fileCount - 1) {
-                                  setPreviewFileIndex(Math.max(0, fileCount - 2))
-                                }
                               }}
                             >
                               <XIcon className="size-3" />

@@ -1021,6 +1021,11 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             processing_marker.unlink(missing_ok=True)
         except Exception:
             pass
+        # Clean up secrets from Redis immediately (no longer needed)
+        try:
+            redis_service.delete_job_secrets(job_id)
+        except Exception:
+            pass
         if not bool(retain_process_artifacts):
             try:
                 removed = cleanup_job_process_artifacts(job_path)

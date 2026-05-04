@@ -80,7 +80,7 @@ function getProviderStatus(
 function getOverallStatus(
   status: ModelStatusResponse | null,
   providers: ProviderDisplay[]
-): "ready" | "partial" | "unknown" {
+): "ready" | "partial" | "none" | "unknown" {
   if (!status) return "unknown"
   const all = providers.map((p) =>
     getProviderStatus(status, p.key, p.kind)
@@ -88,7 +88,7 @@ function getOverallStatus(
   if (all.length === 0) return "unknown"
   const readyCount = all.filter((s) => s.ready).length
   if (readyCount === all.length) return "ready"
-  if (readyCount === 0) return "partial"
+  if (readyCount === 0) return "none"
   return "partial"
 }
 
@@ -108,6 +108,7 @@ function getOverallDotColor(
   const overall = getOverallStatus(status, providers)
   if (overall === "ready") return "bg-emerald-500"
   if (overall === "partial") return "bg-amber-500"
+  if (overall === "none") return "bg-red-500"
   return "bg-muted-foreground/40"
 }
 
@@ -458,7 +459,7 @@ export function ModelStatusBadge({
           <StatusDot colorClass={overallColor} />
         )}
         <span className="font-mono uppercase tracking-widest">
-          {overall === "ready" ? "模型就绪" : overall === "partial" ? "部分就绪" : "检查中"}
+          {overall === "ready" ? "模型就绪" : overall === "partial" ? "部分就绪" : overall === "none" ? "未就绪" : "检查中"}
         </span>
       </button>
 

@@ -332,6 +332,14 @@ export default function SettingsPage() {
   const { startDownload, cancelDownload, getDownloadState } = useModelDownload({
     onDownloadComplete: () => void refetchModelStatus(),
   })
+
+  // Refetch model status when settings are saved (API keys may have changed)
+  React.useEffect(() => {
+    if (lastSavedAt) {
+      void refetchModelStatus()
+    }
+  }, [lastSavedAt, refetchModelStatus])
+
   const [showAdvanced, setShowAdvanced] = React.useState(false)
   const [showOcrPromptExperiment, setShowOcrPromptExperiment] = React.useState(false)
   const [showOcrModelSuggestions, setShowOcrModelSuggestions] = React.useState(false)

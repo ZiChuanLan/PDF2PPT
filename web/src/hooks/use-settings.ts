@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api"
 import {
   SETTINGS_STORAGE_KEY,
   defaultSettings,
+  loadStoredSettings,
   type Settings,
 } from "@/lib/settings"
 
@@ -72,16 +73,8 @@ export function useSettings() {
 
     async function load() {
       if (deployMode === "self") {
-        // Self mode: load from localStorage
-        try {
-          const raw = localStorage.getItem(SETTINGS_STORAGE_KEY)
-          if (raw) {
-            const parsed = JSON.parse(raw) as Partial<Settings>
-            if (mounted) setSettings({ ...defaultSettings, ...parsed })
-          }
-        } catch {
-          // Ignore parse errors
-        }
+        // Self mode: load from localStorage with validation and migration
+        if (mounted) setSettings(loadStoredSettings())
         if (mounted) setSettingsHydrated(true)
       } else {
         // Public mode: load user_preferences from API
@@ -118,6 +111,7 @@ export function useSettings() {
     const timer = window.setTimeout(() => {
       if (deployMode === "self") {
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+        setLastSavedAt(Date.now())
       } else {
         // Public mode: save non-sensitive keys to user_preferences
         const prefs: Record<string, string> = {}
@@ -129,11 +123,14 @@ export function useSettings() {
         void apiFetch("/user/preferences", {
           method: "PUT",
           body: JSON.stringify({ preferences: prefs }),
-        }).catch(() => {
-          // Silently fail - will retry on next change
         })
+          .then((res) => {
+            if (res.ok) setLastSavedAt(Date.now())
+          })
+          .catch(() => {
+            // Silently fail - will retry on next change
+          })
       }
-      setLastSavedAt(Date.now())
     }, 500)
     return () => window.clearTimeout(timer)
   }, [settings, settingsHydrated, deployMode])

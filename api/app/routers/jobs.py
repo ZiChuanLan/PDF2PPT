@@ -1441,6 +1441,35 @@ async def create_job_v2(
 
         # Create job in Redis
         user_id = current_user.id if current_user else None
+
+        # Check user quotas before creating job
+        if current_user:
+            # Check concurrent task limit
+            if current_user.concurrent_task_limit > 0:
+                active_jobs = redis_service.count_active_jobs_for_user(user_id)
+                if active_jobs >= current_user.concurrent_task_limit:
+                    raise AppException(
+                        code=ErrorCode.QUOTA_EXCEEDED,
+                        message=f"Concurrent task limit reached ({current_user.concurrent_task_limit})",
+                        details={
+                            "limit": current_user.concurrent_task_limit,
+                            "active": active_jobs,
+                        },
+                    )
+
+            # Check daily task limit
+            if current_user.daily_task_limit > 0:
+                daily_jobs = redis_service.count_daily_jobs_for_user(user_id)
+                if daily_jobs >= current_user.daily_task_limit:
+                    raise AppException(
+                        code=ErrorCode.QUOTA_EXCEEDED,
+                        message=f"Daily task limit reached ({current_user.daily_task_limit})",
+                        details={
+                            "limit": current_user.daily_task_limit,
+                            "used": daily_jobs,
+                        },
+                    )
+
         job = redis_service.create_job(job_id, user_id=user_id)
         job_created = True
 

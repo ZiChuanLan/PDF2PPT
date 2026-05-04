@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 
 type UploadFileEntry = {
   file: File
@@ -36,11 +37,17 @@ export function UploadSessionProvider({
     setFiles((prev) => {
       const existingNames = new Set(prev.map((e) => e.file.name))
       const entries: UploadFileEntry[] = []
+      const skipped: string[] = []
       for (const f of newFiles) {
         if (!existingNames.has(f.name)) {
           entries.push({ file: f, pageStartInput: "", pageEndInput: "" })
           existingNames.add(f.name)
+        } else {
+          skipped.push(f.name)
         }
+      }
+      if (skipped.length > 0) {
+        toast.warning(`已跳过重复文件: ${skipped.join(", ")}`)
       }
       return [...prev, ...entries]
     })
