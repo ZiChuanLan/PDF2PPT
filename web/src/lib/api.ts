@@ -257,6 +257,10 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   })
 }
 
+export function createJobEventSource(jobId: string): EventSource {
+  return new EventSource(`/api/v1/jobs/${jobId}/events`)
+}
+
 type ApiErrorBody = {
   code?: string
   message?: string

@@ -19,7 +19,7 @@ import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
+import { apiFetch, createJobEventSource, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
@@ -75,6 +75,7 @@ type FileJobState = {
   jobId: string | null
   status: JobStatusResponse | null
   error: string | null
+  pollError: string | null
   isSubmitting: boolean
 }
 
@@ -303,6 +304,7 @@ export default function Home() {
       jobId: null,
       status: null,
       error: null,
+      pollError: null,
       isSubmitting: true,
     }))
     setFileJobs(initialJobs)
@@ -402,13 +404,14 @@ export default function Home() {
   const handleDownloadAll = React.useCallback(async () => {
     const completedJobs = fileJobs.filter((j) => j.status?.status === "completed" && j.jobId)
     if (completedJobs.length === 0) return
-    for (const job of completedJobs) {
-      try {
-        await handleDownload(job.jobId!)
-      } catch (e) {
-        toast.error(`${job.file.name}: ${normalizeFetchError(e, "下载失败")}`)
+    const results = await Promise.allSettled(
+      completedJobs.map((job) => handleDownload(job.jobId!))
+    )
+    results.forEach((result, i) => {
+      if (result.status === "rejected") {
+        toast.error(`${completedJobs[i].file.name}: ${normalizeFetchError(result.reason, "下载失败")}`)
       }
-    }
+    })
   }, [fileJobs, handleDownload])
 
   const handleResetAll = React.useCallback(() => {
@@ -433,7 +436,7 @@ export default function Home() {
   const completedCount = fileJobs.filter((j) => j.status?.status === "completed").length
   const failedCount = fileJobs.filter((j) => j.error || j.status?.status === "failed").length
 
-  // Poll all active jobs
+  // SSE: subscribe to active job events
   React.useEffect(() => {
     const activeJobIds = fileJobs
       .filter((j) => j.jobId && j.isSubmitting === false && (!j.status || !TERMINAL_JOB_STATUSES.has(j.status.status)))
@@ -441,26 +444,72 @@ export default function Home() {
     if (activeJobIds.length === 0) return
 
     let mounted = true
-    const timer = window.setInterval(async () => {
-      if (!mounted) return
-      for (const jid of activeJobIds) {
+    const sources = new Map<string, EventSource>()
+
+    for (const jid of activeJobIds) {
+      const es = createJobEventSource(jid)
+      sources.set(jid, es)
+
+      es.onmessage = async (event) => {
+        if (!mounted) return
         try {
-          const status = await fetchJobStatus(jid)
-          if (!mounted) return
+          const data = JSON.parse(event.data)
+          const status = data.status as JobStatusValue
+          const stage = data.stage as string
+          const progress = data.progress as number
+          const message = data.message as string | null
+          const error = data.error as { code?: string; message?: string } | null
+
           setFileJobs((prev) =>
-            prev.map((j) =>
-              j.jobId === jid ? { ...j, status } : j
-            )
+            prev.map((j) => {
+              if (j.jobId !== jid) return j
+              const updated: FileJobState = {
+                ...j,
+                pollError: null,
+                status: j.status
+                  ? { ...j.status, status, stage, progress, message: message ?? j.status.message, error: error ?? j.status.error }
+                  : { job_id: jid, status, stage, progress, created_at: "", expires_at: "", message, error, debug_events: [] },
+              }
+              return updated
+            })
           )
+
+          // On terminal state, fetch full response (includes debug_events)
+          if (TERMINAL_JOB_STATUSES.has(status)) {
+            try {
+              const full = await fetchJobStatus(jid)
+              if (mounted) {
+                setFileJobs((prev) =>
+                  prev.map((j) => (j.jobId === jid ? { ...j, status: full } : j))
+                )
+              }
+            } catch {
+              // Best-effort; SSE data already has the essentials
+            }
+            es.close()
+            sources.delete(jid)
+          }
         } catch {
-          // ignore poll errors
+          // JSON parse error — ignore
         }
       }
-    }, 2000)
+
+      es.onerror = () => {
+        if (!mounted) return
+        setFileJobs((prev) =>
+          prev.map((j) =>
+            j.jobId === jid ? { ...j, pollError: "连接中断，正在重试..." } : j
+          )
+        )
+        // EventSource auto-reconnects; no manual retry needed
+      }
+    }
 
     return () => {
       mounted = false
-      window.clearInterval(timer)
+      for (const es of sources.values()) {
+        es.close()
+      }
     }
   }, [fileJobs, fetchJobStatus])
 
@@ -1371,6 +1420,9 @@ export default function Home() {
                           {stageLabel}
                           {fj.status?.progress != null && fj.status.progress > 0 && ` · ${fj.status.progress}%`}
                         </div>
+                        {fj.pollError && (
+                          <div className="text-xs text-amber-600">{fj.pollError}</div>
+                        )}
                       </div>
 
                       {/* Progress or actions */}
