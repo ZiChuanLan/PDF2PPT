@@ -2668,7 +2668,13 @@ class AiOcrClient(OcrProvider):
         image_path: str,
         image: Image.Image,
     ) -> str | None:
-        """Return a bypass reason when direct page OCR is safer/faster."""
+        """Return a bypass reason when direct page OCR is safer/faster.
+
+        Uses multi-signal fusion instead of a single fixed threshold:
+        1. Layout model confidence scores (model-native signal)
+        2. Coverage area (secondary signal, adaptive based on confidence)
+        3. Block count sanity check
+        """
 
         try:
             layout_blocks, image_regions = self._run_local_layout_analysis(image_path)
@@ -2690,6 +2696,8 @@ class AiOcrClient(OcrProvider):
         page_area = max(1.0, float(page_w * page_h))
         text_blocks: list[list[float]] = []
         text_area = 0.0
+        confidence_scores: list[float] = []
+
         for block in layout_blocks:
             label = str(block.get("label") or "")
             if _is_image_like_layout_label(label):
@@ -2705,19 +2713,68 @@ class AiOcrClient(OcrProvider):
             x0, y0, x1, y1 = [float(v) for v in bbox_n]
             text_blocks.append([x0, y0, x1, y1])
             text_area += max(0.0, x1 - x0) * max(0.0, y1 - y0)
+            score = block.get("score")
+            if isinstance(score, (int, float)):
+                confidence_scores.append(float(score))
 
-        # Coverage check: if detected text blocks cover too little of the page,
-        # the layout model is likely unsuited for this image type (e.g. screenshots).
-        # Fall through to direct page OCR for better results.
+        # Signal 1: Confidence scores (model-native, zero-cost)
+        # When a layout model encounters image types it wasn't trained on
+        # (e.g. screenshots for PP-DocLayout-V3 trained on papers/docs),
+        # it produces low-confidence detections. This is the most reliable
+        # signal — it's the model telling us "I'm not sure."
+        if confidence_scores:
+            avg_confidence = sum(confidence_scores) / len(confidence_scores)
+            low_conf_count = sum(1 for s in confidence_scores if s < 0.5)
+            low_conf_ratio = low_conf_count / len(confidence_scores)
+
+            if avg_confidence < 0.4:
+                logger.info(
+                    "Layout model avg confidence %.2f < 0.4 — bypassing block OCR"
+                    " (text_blocks=%s, scores=%s, layout_model=%s, image=%s)",
+                    avg_confidence,
+                    len(text_blocks),
+                    [round(s, 2) for s in confidence_scores[:10]],
+                    self.layout_model,
+                    Path(image_path).name,
+                )
+                return "low_layout_confidence"
+
+            if low_conf_ratio > 0.5:
+                logger.info(
+                    "Layout model %.0f%% detections below 0.5 confidence — bypassing block OCR"
+                    " (text_blocks=%s, layout_model=%s, image=%s)",
+                    low_conf_ratio * 100,
+                    len(text_blocks),
+                    self.layout_model,
+                    Path(image_path).name,
+                )
+                return "high_low_confidence_ratio"
+
+        # Signal 2: Coverage with adaptive threshold
+        # When confidence is high but coverage is very low, the layout model
+        # is "confident" about a small area — likely a real document with little
+        # text, OR the model is confidently wrong about a non-document image.
+        # Use a more conservative threshold when confidence is mediocre.
         coverage = text_area / page_area
-        threshold = float(self._LOW_COVERAGE_THRESHOLD)
-        if text_blocks and coverage < threshold:
+        base_threshold = float(self._LOW_COVERAGE_THRESHOLD)
+
+        if confidence_scores:
+            avg_conf = sum(confidence_scores) / len(confidence_scores)
+            if avg_conf < 0.6:
+                # Mediocre confidence → lower coverage threshold (more aggressive bypass)
+                base_threshold *= 0.6
+            elif avg_conf > 0.85:
+                # High confidence → trust the model more, raise threshold
+                base_threshold *= 1.3
+
+        if text_blocks and coverage < base_threshold:
             logger.info(
-                "Layout text coverage %.1f%% below threshold %.0f%% — bypassing block OCR"
-                " (text_blocks=%s, layout_model=%s, image=%s)",
+                "Layout text coverage %.1f%% below adaptive threshold %.0f%% — bypassing block OCR"
+                " (text_blocks=%s, avg_conf=%.2f, layout_model=%s, image=%s)",
                 coverage * 100,
-                threshold * 100,
+                base_threshold * 100,
                 len(text_blocks),
+                sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0,
                 self.layout_model,
                 Path(image_path).name,
             )
@@ -2754,6 +2811,73 @@ class AiOcrClient(OcrProvider):
     _LOW_COVERAGE_THRESHOLD = _env_float(
         "OCR_AI_LAYOUT_COVERAGE_BYPASS_THRESHOLD", 0.30
     )
+
+    # ------------------------------------------------------------------
+    # Post-OCR quality validation
+    # ------------------------------------------------------------------
+
+    def _validate_layout_block_ocr_results(
+        self,
+        ocr_results: list[dict[str, Any]],
+        image: Image.Image,
+    ) -> str | None:
+        """Check if layout-block OCR results are suspiciously sparse.
+
+        Returns a reason string if results look bad, None if OK.
+        This is a post-hoc signal — runs AFTER OCR, zero extra API cost.
+        """
+        if not ocr_results:
+            return "no_ocr_results"
+
+        page_w, page_h = image.size
+        page_area = max(1.0, float(page_w * page_h))
+        total_chars = sum(len(r.get("text", "")) for r in ocr_results)
+
+        # Text density: chars per 10K pixels
+        # A typical document page (A4, 300dpi, ~2500x3500) with 2000 chars
+        # → density ≈ 2000 / (8750000/10000) ≈ 2.3 chars/10Kpx
+        # A screenshot with sparse text might have density < 0.5
+        text_density = total_chars / (page_area / 10000.0)
+
+        # Coherence: ratio of alphanumeric chars (real text vs garbage)
+        alphanumeric = sum(
+            c.isalnum() or c.isspace()
+            for r in ocr_results
+            for c in r.get("text", "")
+        )
+        coherence = alphanumeric / max(1, total_chars)
+
+        # Suspicious conditions:
+        # - Very little text from many blocks (layout model missed most content)
+        # - Text is mostly garbage characters
+        suspicious = False
+        reason = None
+
+        if text_density < 0.3 and len(ocr_results) >= 3:
+            suspicious = True
+            reason = f"very_low_density_{text_density:.2f}_chars_per_10Kpx"
+        elif coherence < 0.4 and total_chars > 10:
+            suspicious = True
+            reason = f"low_coherence_{coherence:.2f}"
+        elif len(ocr_results) <= 2 and page_area > 500000:
+            # Large image but only 1-2 text blocks → layout model probably failed
+            suspicious = True
+            reason = f"too_few_blocks_{len(ocr_results)}_for_large_image"
+
+        if suspicious:
+            logger.warning(
+                "Layout-block OCR results suspicious: %s"
+                " (density=%.2f, coherence=%.2f, blocks=%d, chars=%d, image_size=%dx%d)",
+                reason,
+                text_density,
+                coherence,
+                len(ocr_results),
+                total_chars,
+                page_w,
+                page_h,
+            )
+
+        return reason
 
     def _ocr_local_layout_block_crop(
         self,
@@ -3780,8 +3904,40 @@ class AiOcrClient(OcrProvider):
                     )
                 else:
                     if result:
-                        self._refresh_route_kind()
-                        return result
+                        # Post-OCR quality validation: check if results are
+                        # suspiciously sparse (layout model missed most content).
+                        validation_reason = self._validate_layout_block_ocr_results(
+                            result, image
+                        )
+                        if validation_reason:
+                            logger.warning(
+                                "Layout-block OCR results suspicious (%s); "
+                                "falling back to direct page OCR"
+                                " (provider=%s, model=%s, image=%s, blocks=%d, chars=%d)",
+                                validation_reason,
+                                self.provider_id,
+                                self.model,
+                                Path(image_path).name,
+                                len(result),
+                                sum(len(r.get("text", "")) for r in result),
+                            )
+                            # Store the suspicious result for debugging
+                            layout_debug = (
+                                dict(self.last_layout_analysis_debug)
+                                if isinstance(self.last_layout_analysis_debug, dict)
+                                else {}
+                            )
+                            self.last_layout_analysis_debug = {
+                                **layout_debug,
+                                "post_ocr_validation": validation_reason,
+                                "post_ocr_chars": sum(
+                                    len(r.get("text", "")) for r in result
+                                ),
+                            }
+                            # Fall through to direct page OCR
+                        else:
+                            self._refresh_route_kind()
+                            return result
                     if not is_deepseek_layout_block:
                         self._refresh_route_kind()
                         return result
