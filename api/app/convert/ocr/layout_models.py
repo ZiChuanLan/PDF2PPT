@@ -143,10 +143,10 @@ class PaddleXLayoutProvider:
         results = self._model.predict(image_path)
         items: list[dict[str, Any]] = []
         for result in results:
-            if hasattr(result, "json"):
-                data = result.json()
-            elif isinstance(result, dict):
+            if isinstance(result, dict):
                 data = result
+            elif hasattr(result, "json") and callable(result.json):
+                data = result.json()
             else:
                 continue
 

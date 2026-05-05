@@ -2687,7 +2687,9 @@ class AiOcrClient(OcrProvider):
         if page_w <= 0 or page_h <= 0:
             return None
 
+        page_area = max(1.0, float(page_w * page_h))
         text_blocks: list[list[float]] = []
+        text_area = 0.0
         for block in layout_blocks:
             label = str(block.get("label") or "")
             if _is_image_like_layout_label(label):
@@ -2700,7 +2702,26 @@ class AiOcrClient(OcrProvider):
             bbox_n = _normalize_bbox_px(bbox)
             if bbox_n is None:
                 continue
-            text_blocks.append([float(v) for v in bbox_n])
+            x0, y0, x1, y1 = [float(v) for v in bbox_n]
+            text_blocks.append([x0, y0, x1, y1])
+            text_area += max(0.0, x1 - x0) * max(0.0, y1 - y0)
+
+        # Coverage check: if detected text blocks cover too little of the page,
+        # the layout model is likely unsuited for this image type (e.g. screenshots).
+        # Fall through to direct page OCR for better results.
+        coverage = text_area / page_area
+        threshold = float(self._LOW_COVERAGE_THRESHOLD)
+        if text_blocks and coverage < threshold:
+            logger.info(
+                "Layout text coverage %.1f%% below threshold %.0f%% — bypassing block OCR"
+                " (text_blocks=%s, layout_model=%s, image=%s)",
+                coverage * 100,
+                threshold * 100,
+                len(text_blocks),
+                self.layout_model,
+                Path(image_path).name,
+            )
+            return "low_text_coverage"
 
         if not text_blocks or len(text_blocks) > 3:
             return None
@@ -2729,6 +2750,10 @@ class AiOcrClient(OcrProvider):
         if vertical_span_ratio > 0.28 or max_width_ratio < 0.65:
             return None
         return "wide_flat_layout_blocks"
+
+    _LOW_COVERAGE_THRESHOLD = _env_float(
+        "OCR_AI_LAYOUT_COVERAGE_BYPASS_THRESHOLD", 0.30
+    )
 
     def _ocr_local_layout_block_crop(
         self,
@@ -3707,16 +3732,17 @@ class AiOcrClient(OcrProvider):
         if self._uses_local_layout_block_ocr():
             bypass_reason = None
             is_deepseek_layout_block = _is_deepseek_ocr_model(self.model)
-            if is_deepseek_layout_block:
-                bypass_reason = self._should_bypass_local_layout_block_ocr(
-                    image_path=image_path,
-                    image=image,
-                )
-                if not bypass_reason:
-                    # DeepSeek-OCR performs reliably on the full page in our
-                    # real pipeline tests, while local block crops frequently
-                    # return empty text and then time out on the fallback pass.
-                    bypass_reason = "deepseek_model_prefers_direct_page_ocr"
+            # Check bypass for ALL models: low coverage (screenshots),
+            # wide_flat layout, etc.
+            bypass_reason = self._should_bypass_local_layout_block_ocr(
+                image_path=image_path,
+                image=image,
+            )
+            if is_deepseek_layout_block and not bypass_reason:
+                # DeepSeek-OCR performs reliably on the full page in our
+                # real pipeline tests, while local block crops frequently
+                # return empty text and then time out on the fallback pass.
+                bypass_reason = "deepseek_model_prefers_direct_page_ocr"
             if bypass_reason:
                 layout_debug = (
                     dict(self.last_layout_analysis_debug)
