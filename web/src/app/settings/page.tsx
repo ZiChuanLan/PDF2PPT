@@ -1239,7 +1239,7 @@ export default function SettingsPage() {
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 accent-[#111111]"
+                        className="h-4 w-4 accent-foreground"
                         checked={settings.mineruEnableFormula}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -1254,7 +1254,7 @@ export default function SettingsPage() {
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 accent-[#111111]"
+                        className="h-4 w-4 accent-foreground"
                         checked={settings.mineruEnableTable}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -1269,7 +1269,7 @@ export default function SettingsPage() {
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 accent-[#111111]"
+                        className="h-4 w-4 accent-foreground"
                         checked={settings.mineruIsOcr}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -1407,7 +1407,7 @@ export default function SettingsPage() {
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 accent-[#111111]"
+                    className="h-4 w-4 accent-foreground"
                     checked={settings.removeFooterNotebooklm}
                     onChange={(e) =>
                       setSettings((s) => ({
@@ -1592,22 +1592,80 @@ export default function SettingsPage() {
                     >
                       OCR 提供方
                     </FieldLabel>
-                    <Select
-                      id="ocr-provider"
-                      value={selectedOcrProvider}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          ocrProvider: e.target.value as Settings["ocrProvider"],
-                        }))
-                      }
-                    >
-                      {ocrState.availableOcrProviders.map((providerId) => (
-                        <option key={providerId} value={providerId}>
-                          {ocrProviderLabels[providerId]}
-                        </option>
-                      ))}
-                    </Select>
+                    <div className="grid gap-2">
+                      {ocrState.availableOcrProviders.map((providerId) => {
+                        const isReady = modelStatusData?.local?.[providerId]?.ready ?? false
+                        const isSelected = selectedOcrProvider === providerId
+                        return (
+                          <div
+                            key={providerId}
+                            className={`flex items-center justify-between rounded border px-3 py-2 transition-colors ${
+                              isSelected
+                                ? "border-foreground bg-muted/50"
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <label
+                              htmlFor={`ocr-provider-${providerId}`}
+                              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
+                            >
+                              <input
+                                type="radio"
+                                id={`ocr-provider-${providerId}`}
+                                name="ocr-provider"
+                                value={providerId}
+                                checked={isSelected}
+                                onChange={(e) =>
+                                  setSettings((s) => ({
+                                    ...s,
+                                    ocrProvider: e.target.value as Settings["ocrProvider"],
+                                  }))
+                                }
+                                disabled={!isReady}
+                                className="h-4 w-4 accent-foreground"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium">
+                                    {ocrProviderLabels[providerId]}
+                                  </span>
+                                  {isReady ? (
+                                    <span className="flex items-center gap-1 text-[11px] text-emerald-600">
+                                      <CheckIcon className="size-3" />
+                                      就绪
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-muted-foreground">
+                                      未就绪
+                                    </span>
+                                  )}
+                                </div>
+                                {providerId === "tesseract" && !isReady && (
+                                  <div className="text-[11px] text-muted-foreground">
+                                    需系统安装 tesseract-ocr
+                                  </div>
+                                )}
+                              </div>
+                            </label>
+                            {providerId === "paddleocr" && !isReady && (
+                              <div className="flex shrink-0 items-center gap-2">
+                                <DownloadProgressButton
+                                  modelId="paddleocr"
+                                  downloadState={getDownloadState("paddleocr")}
+                                  onDownload={async (id) => {
+                                    if (!window.confirm("下载 PaddleOCR 模型？\n下载完成后可在设置中切换使用。")) {
+                                      return
+                                    }
+                                    await startDownload(id)
+                                  }}
+                                  onCancel={cancelDownload}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 ) : isBaiduDocParseMode ? (
                   <div className="flex flex-wrap gap-2 text-xs">
@@ -1621,7 +1679,7 @@ export default function SettingsPage() {
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 accent-[#111111]"
+                        className="h-4 w-4 accent-foreground"
                         checked={settings.ocrStrictMode}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -1777,7 +1835,7 @@ export default function SettingsPage() {
                                       }))
                                     }
                                     disabled={!isDownloaded}
-                                    className="h-4 w-4 accent-[#111111]"
+                                    className="h-4 w-4 accent-foreground"
                                   />
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">

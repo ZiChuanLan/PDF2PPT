@@ -21,6 +21,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { apiFetch, createJobEventSource, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
+import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
   AIOCR_CHAIN_MODE_LABELS,
@@ -187,7 +188,7 @@ export default function Home() {
 
   const fetchJobs = React.useCallback(async (silent = true) => {
     try {
-      const response = await apiFetch("/jobs?limit=50")
+      const response = await apiFetch(`/jobs?limit=${HOME_JOB_LIMIT}`)
       if (!response.ok) {
         throw new Error("加载任务列表失败")
       }
@@ -575,7 +576,7 @@ export default function Home() {
     window.addEventListener("focus", onFocus)
     const timer = window.setInterval(() => {
       void fetchJobs(true)
-    }, 4000)
+    }, JOB_LIST_POLL_INTERVAL_MS)
 
     return () => {
       window.removeEventListener("focus", onFocus)
@@ -688,7 +689,7 @@ export default function Home() {
               {/* Hero section */}
               <div className="relative mx-auto max-w-3xl py-8 md:py-14">
                 {/* Subtle gradient backdrop */}
-                <div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-gradient-to-b from-[#cc0000]/[0.03] to-transparent" />
+                <div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-gradient-to-b from-destructive/[0.03] to-transparent" />
 
                 <div className="mb-6 text-center">
                   <h1 className="font-serif text-3xl font-semibold tracking-tight md:text-4xl">
@@ -704,15 +705,15 @@ export default function Home() {
                   className={cn(
                     "group flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-all",
                     "min-h-[240px]",
-                    isDragActive && !isDragReject && "border-[#cc0000] bg-[#cc0000]/5 scale-[1.01]",
+                    isDragActive && !isDragReject && "border-destructive bg-destructive/5 scale-[1.01]",
                     isDragReject && "border-destructive bg-destructive/10",
-                    !isDragActive && !isDragReject && "border-border hover:border-[#cc0000]/50 hover:bg-muted/30",
+                    !isDragActive && !isDragReject && "border-border hover:border-destructive/50 hover:bg-muted/30",
                     (!user && !isAuthLoading) && "pointer-events-none opacity-60"
                   )}
                 >
                   <input {...getInputProps()} />
-                  <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-[#cc0000]/10 transition-transform group-hover:scale-110">
-                    <UploadCloudIcon className="size-7 text-[#cc0000]" />
+                  <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-destructive/10 transition-transform group-hover:scale-110">
+                    <UploadCloudIcon className="size-7 text-destructive" />
                   </div>
                   <p className="text-lg font-medium">
                     {isDragActive ? "松开以上传文件" : "拖拽文件到这里"}
@@ -779,7 +780,7 @@ export default function Home() {
                 {settingsSnapshot.parseEngineMode === "mineru_cloud" && !settingsSnapshot.mineruApiToken && (
                   <div className="mx-auto mt-2 max-w-3xl text-center text-xs text-amber-600">
                     云端 MinerU 需要配置 Token，请前往
-                    <Link href="/settings" className="ml-1 text-[#cc0000] hover:underline">设置页面</Link>
+                    <Link href="/settings" className="ml-1 text-destructive hover:underline">设置页面</Link>
                     填写
                   </div>
                 )}
@@ -841,7 +842,7 @@ export default function Home() {
                             className={cn(
                               "flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors",
                               index === previewFileIndex
-                                ? "border-[#cc0000]/40 bg-[#cc0000]/5"
+                                ? "border-destructive/40 bg-destructive/5"
                                 : "hover:bg-muted/30"
                             )}
                           >
@@ -977,7 +978,7 @@ export default function Home() {
                           <label className="flex items-center gap-2 text-sm">
                             <input
                               type="checkbox"
-                              className="h-4 w-4 accent-[#111111]"
+                              className="h-4 w-4 accent-foreground"
                               checked={usePageRange}
                               onChange={(e) => {
                                 const enabled = e.target.checked
@@ -1113,22 +1114,57 @@ export default function Home() {
                             <span>OCR 提供方</span>
                             <HoverHint text="PaddleOCR 识别精度更高；Tesseract 兼容性更好。" />
                           </div>
-                          <Select
-                            value={settingsSnapshot.ocrProvider}
-                            onChange={(e) =>
-                              updateSettingsSnapshot((prev) => ({
-                                ...prev,
-                                ocrProvider: e.target.value as Settings["ocrProvider"],
-                              }))
-                            }
-                          >
-                            <option value="paddleocr" disabled={!!modelStatus && !modelStatus.local.paddleocr?.ready}>
-                              PaddleOCR{modelStatus && !modelStatus.local.paddleocr?.ready ? " (未就绪)" : ""}
-                            </option>
-                            <option value="tesseract" disabled={!!modelStatus && !modelStatus.local.tesseract?.ready}>
-                              Tesseract{modelStatus && !modelStatus.local.tesseract?.ready ? " (未就绪)" : ""}
-                            </option>
-                          </Select>
+                          <div className="grid gap-1.5">
+                            {(["paddleocr", "tesseract"] as const).map((providerId) => {
+                              const isReady = modelStatus?.local?.[providerId]?.ready ?? false
+                              const isSelected = settingsSnapshot.ocrProvider === providerId
+                              const label = providerId === "paddleocr" ? "PaddleOCR" : "Tesseract"
+                              return (
+                                <div
+                                  key={providerId}
+                                  className={`flex items-center gap-2 rounded border px-2.5 py-1.5 transition-colors ${
+                                    isSelected
+                                      ? "border-foreground bg-muted/50"
+                                      : "border-border hover:border-muted-foreground/50"
+                                  }`}
+                                >
+                                  <label
+                                    htmlFor={`home-ocr-provider-${providerId}`}
+                                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
+                                  >
+                                    <input
+                                      type="radio"
+                                      id={`home-ocr-provider-${providerId}`}
+                                      name="home-ocr-provider"
+                                      value={providerId}
+                                      checked={isSelected}
+                                      onChange={(e) =>
+                                        updateSettingsSnapshot((prev) => ({
+                                          ...prev,
+                                          ocrProvider: e.target.value as Settings["ocrProvider"],
+                                        }))
+                                      }
+                                      disabled={!!modelStatus && !isReady}
+                                      className="h-3.5 w-3.5 accent-foreground"
+                                    />
+                                    <span className="text-xs font-medium">{label}</span>
+                                    {modelStatus && (
+                                      isReady ? (
+                                        <span className="flex items-center gap-0.5 text-[10px] text-emerald-600">
+                                          <CheckIcon className="size-2.5" />
+                                          就绪
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-muted-foreground">
+                                          未就绪
+                                        </span>
+                                      )
+                                    )}
+                                  </label>
+                                </div>
+                              )
+                            })}
+                          </div>
                           {/* Hint when no OCR provider is ready */}
                           {modelStatus && !modelStatus.local.paddleocr?.ready && !modelStatus.local.tesseract?.ready && (
                             <div className="flex items-center gap-1.5 text-xs text-amber-600 mt-1">
@@ -1231,7 +1267,7 @@ export default function Home() {
                       <label className="flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 accent-[#111111]"
+                          className="h-4 w-4 accent-foreground"
                           checked={retainProcessArtifacts}
                           onChange={(e) => setRetainProcessArtifacts(e.target.checked)}
                         />
@@ -1362,9 +1398,9 @@ export default function Home() {
                               className={cn(
                                 "flex size-8 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors",
                                 isDone
-                                  ? "border-[#cc0000] bg-[#cc0000] text-white"
+                                  ? "border-destructive bg-destructive text-white"
                                   : isCurrent
-                                    ? "border-[#cc0000] bg-white text-[#cc0000] animate-pulse"
+                                    ? "border-destructive bg-white text-destructive animate-pulse"
                                     : "border-border bg-background text-muted-foreground"
                               )}
                             >
@@ -1380,7 +1416,7 @@ export default function Home() {
                               className={cn(
                                 "mt-2 text-xs",
                                 isDone
-                                  ? "font-medium text-[#cc0000]"
+                                  ? "font-medium text-destructive"
                                   : isCurrent
                                     ? "font-medium text-foreground"
                                     : "text-muted-foreground"
@@ -1393,7 +1429,7 @@ export default function Home() {
                             <div
                               className={cn(
                                 "mx-1 mb-5 h-0.5 flex-1",
-                                isDone ? "bg-[#cc0000]" : "bg-border"
+                                isDone ? "bg-destructive" : "bg-border"
                               )}
                             />
                           ) : null}
@@ -1430,7 +1466,7 @@ export default function Home() {
                         isDone && "border-green-200 bg-green-50/50",
                         isFailed && "border-destructive/30 bg-destructive/5",
                         isCancelled && "border-muted bg-muted/30",
-                        isActive && "border-[#cc0000]/20 bg-[#cc0000]/[0.02]",
+                        isActive && "border-destructive/20 bg-destructive/[0.02]",
                         !isDone && !isFailed && !isCancelled && !isActive && "bg-muted/10"
                       )}
                     >
@@ -1445,7 +1481,7 @@ export default function Home() {
                         ) : isFailed ? (
                           <XIcon className="size-4 text-destructive" />
                         ) : isActive ? (
-                          <Loader2Icon className="size-4 animate-spin text-[#cc0000]" />
+                          <Loader2Icon className="size-4 animate-spin text-destructive" />
                         ) : (
                           <div className="size-4 rounded-full border-2 border-muted-foreground/30" />
                         )}
