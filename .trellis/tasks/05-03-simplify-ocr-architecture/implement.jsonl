@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development conventions for FastAPI + Pydantic schemas"}
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Auth pattern for job creation endpoints (JWT + user isolation)"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Task spans frontend settings UI and backend API/worker — need cross-layer data flow awareness"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Goal is to reduce duplication from 60+ params to structured config"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions for settings page and run-config changes"}
+{"file": ".trellis/tasks/05-03-simplify-ocr-architecture/research/ocr-pipeline-architecture.md", "reason": "Current OCR pipeline analysis — 6 providers, 5 AI vendors, 15+ SiliconFlow paths"}
+{"file": ".trellis/tasks/05-03-simplify-ocr-architecture/research/settings-data-flow.md", "reason": "Settings data flow from UI to worker — 60+ form fields, 50+ worker kwargs"}
+{"file": ".trellis/tasks/05-03-simplify-ocr-architecture/research/job-creation-api.md", "reason": "Job creation API analysis — 53 Form params in create_job(), 54 kwargs in process_pdf_job()"}

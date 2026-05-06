@@ -1,0 +1,31 @@
+{
+  "id": "architecture-review",
+  "name": "architecture-review",
+  "title": "全面审查链路架构并优化",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lan",
+  "assignee": "lan",
+  "createdAt": "2026-05-04",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "05-05-api-bugfixes",
+    "05-05-frontend-sse-migration",
+    "05-05-rate-limit-disk-monitor",
+    "05-05-storage-cache-cleanup"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

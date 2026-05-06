@@ -1,0 +1,5 @@
+{"type": "spec", "path": ".trellis/spec/frontend/index.md", "lines": 1, "description": "Frontend development guidelines"}
+{"type": "research", "path": ".trellis/tasks/05-04-architecture-review/research/frontend-upload-flow.md", "lines": 1, "description": "Frontend upload flow analysis"}
+{"type": "file", "path": "web/src/app/page.tsx", "lines": 1, "description": "Main upload page - SSE migration"}
+{"type": "file", "path": "web/src/lib/api.ts", "lines": 1, "description": "API client - SSE support"}
+{"type": "file", "path": "web/src/lib/job-status.ts", "lines": 1, "description": "Job status types"}
