@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
 import { isAdmin, getAvatarUrl, normalizeUser, type AdminUser, type AdminStats } from "@/lib/auth"
+import { ADMIN_USERS_LIMIT } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -57,7 +58,7 @@ export default function AdminPage() {
     setError(null)
     try {
       const [usersResponse, statsResponse] = await Promise.all([
-        apiFetch("/admin/users?limit=100"),
+        apiFetch(`/admin/users?limit=${ADMIN_USERS_LIMIT}`),
         apiFetch("/admin/stats"),
       ])
 

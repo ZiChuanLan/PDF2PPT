@@ -237,7 +237,7 @@ function LoginForm() {
               onClick={() => setActiveTab("password")}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === "password"
-                  ? "border-b-2 border-[#cc0000] text-foreground"
+                  ? "border-b-2 border-destructive text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -249,7 +249,7 @@ function LoginForm() {
                 onClick={() => setActiveTab("linuxdo")}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === "linuxdo"
-                    ? "border-b-2 border-[#cc0000] text-foreground"
+                    ? "border-b-2 border-destructive text-foreground"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >

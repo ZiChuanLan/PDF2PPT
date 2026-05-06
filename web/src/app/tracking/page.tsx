@@ -26,6 +26,7 @@ import {
 } from "@/lib/tracking-artifacts"
 import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError, resolveApiOrigin } from "@/lib/api"
+import { JOB_POLL_INTERVAL_MS, TRACKING_JOB_LIMIT } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { JobDebugPanel } from "@/components/job-debug-panel"
@@ -196,7 +197,7 @@ function TrackingPageContent() {
   const fetchJobs = React.useCallback(async (silent = true) => {
     if (!silent) setIsJobsLoading(true)
     try {
-      const response = await apiFetch("/jobs?limit=60")
+      const response = await apiFetch(`/jobs?limit=${TRACKING_JOB_LIMIT}`)
       if (!response.ok) {
         throw new Error("加载任务记录失败")
       }
@@ -385,7 +386,7 @@ function TrackingPageContent() {
     void poll()
     timer = window.setInterval(() => {
       void poll()
-    }, 2000)
+    }, JOB_POLL_INTERVAL_MS)
 
     return () => {
       mounted = false
@@ -563,7 +564,7 @@ function TrackingPageContent() {
                         className={cn(
                           "motion-row border-b px-3 py-2 transition-colors duration-200 last:border-b-0",
                           isCurrent
-                            ? "bg-secondary/80 shadow-[inset_4px_0_0_0_#111111]"
+                            ? "bg-secondary/80 shadow-[inset_4px_0_0_0_var(--foreground)]"
                             : "hover:bg-muted/40"
                         )}
                       >
@@ -1003,7 +1004,7 @@ function TrackingPageContent() {
                               setCompareSplitRatio(Math.max(0, Math.min(1, next / 100)))
                             }
                           }}
-                          className="col-span-full h-2 w-full accent-[#111111]"
+                          className="col-span-full h-2 w-full accent-foreground"
                           aria-label="调整前后对比滑杆位置"
                         />
                       </div>

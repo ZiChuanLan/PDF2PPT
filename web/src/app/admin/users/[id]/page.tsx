@@ -280,7 +280,7 @@ export default function UserDetailPage({ params }: UserDetailPageProps) {
                   id="user-active"
                   checked={isActive}
                   onChange={(e) => setIsActive(e.target.checked)}
-                  className="h-4 w-4 accent-[#111111]"
+                  className="h-4 w-4 accent-foreground"
                 />
                 <label htmlFor="user-active" className="text-sm">
                   账号启用

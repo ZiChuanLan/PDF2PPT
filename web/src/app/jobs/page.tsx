@@ -13,6 +13,7 @@ import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import {
   JOB_STAGE_LABELS,
   JOB_STATUS_LABELS,
@@ -92,7 +93,7 @@ export default function JobsPage() {
 
     const onFocus = () => void fetchJobs(true)
     window.addEventListener("focus", onFocus)
-    const timer = window.setInterval(() => void fetchJobs(true), 4000)
+    const timer = window.setInterval(() => void fetchJobs(true), JOB_LIST_POLL_INTERVAL_MS)
 
     return () => {
       window.removeEventListener("focus", onFocus)
@@ -260,7 +261,7 @@ export default function JobsPage() {
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 accent-[#111111]"
+                  className="h-4 w-4 accent-foreground"
                   checked={selectedJobs.size === filteredJobs.length && filteredJobs.length > 0}
                   onChange={handleSelectAll}
                 />
@@ -327,14 +328,14 @@ export default function JobsPage() {
                     key={job.job_id}
                     className={cn(
                       "relative border bg-card p-4 transition-colors",
-                      isSelected && "border-[#cc0000] bg-[#cc0000]/5"
+                      isSelected && "border-destructive bg-destructive/5"
                     )}
                   >
                     {/* Checkbox */}
                     <div className="absolute right-3 top-3">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 accent-[#111111]"
+                        className="h-4 w-4 accent-foreground"
                         checked={isSelected}
                         onChange={() => handleToggleSelect(job.job_id)}
                       />

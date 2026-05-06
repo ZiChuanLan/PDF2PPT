@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { useAuth } from "@/components/auth-provider"
 import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { isAdmin } from "@/lib/auth"
+import { ADMIN_INVITES_LIMIT } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,7 +51,7 @@ export default function AdminInvitesPage() {
     setIsLoading(true)
     setError(null)
     try {
-      const response = await apiFetch("/admin/invites?limit=100")
+      const response = await apiFetch(`/admin/invites?limit=${ADMIN_INVITES_LIMIT}`)
       if (!response.ok) {
         throw new Error("Failed to fetch invite codes")
       }

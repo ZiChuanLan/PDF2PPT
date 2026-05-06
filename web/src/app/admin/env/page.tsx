@@ -217,7 +217,7 @@ export default function AdminEnvPage() {
                     onClick={() => setMode("table")}
                     className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                       mode === "table"
-                        ? "bg-[#cc0000] text-white"
+                        ? "bg-destructive text-white"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -228,7 +228,7 @@ export default function AdminEnvPage() {
                     onClick={() => setMode("raw")}
                     className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                       mode === "raw"
-                        ? "bg-[#cc0000] text-white"
+                        ? "bg-destructive text-white"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
