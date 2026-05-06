@@ -17,18 +17,38 @@ from app.models.user import InviteCodeORM, UserORM, UserRole
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
 # LinuxDo OAuth endpoints
+# ---------------------------------------------------------------------------
 LINUXDO_AUTHORIZE_URL = "https://connect.linux.do/oauth2/authorize"
 LINUXDO_TOKEN_URL = "https://connect.linux.do/oauth2/token"
 LINUXDO_USERINFO_URL = "https://connect.linux.do/api/user"
 
+# ---------------------------------------------------------------------------
 # JWT settings
+# ---------------------------------------------------------------------------
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
+# ---------------------------------------------------------------------------
+# OAuth state
+# ---------------------------------------------------------------------------
 # OAuth state TTL in seconds (10 minutes)
 _STATE_EXPIRY_SECONDS = 600
+_STATE_TOKEN_BYTES = 32
+
+# ---------------------------------------------------------------------------
+# HTTP client timeouts (seconds)
+# ---------------------------------------------------------------------------
+_OAUTH_HTTP_TIMEOUT_S = 10.0
+_DEBUG_RESPONSE_TEXT_LIMIT = 500
+
+# ---------------------------------------------------------------------------
+# Invite codes
+# ---------------------------------------------------------------------------
+_INVITE_CODE_TOKEN_BYTES = 32
+_INVITE_CODE_DEFAULT_EXPIRY_DAYS = 7
 
 
 def _get_state_redis():
@@ -39,7 +59,7 @@ def _get_state_redis():
 
 def generate_state() -> str:
     """Generate a random state parameter for OAuth flow."""
-    state = secrets.token_urlsafe(32)
+    state = secrets.token_urlsafe(_STATE_TOKEN_BYTES)
     try:
         _get_state_redis().setex(f"oauth_state:{state}", _STATE_EXPIRY_SECONDS, "1")
     except Exception as e:
@@ -84,7 +104,7 @@ def get_authorize_url(state: str, origin: Optional[str] = None) -> str:
 async def exchange_code_for_token(code: str, redirect_uri: Optional[str] = None) -> Optional[dict]:
     """Exchange authorization code for access token."""
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=_OAUTH_HTTP_TIMEOUT_S) as client:
         try:
             response = await client.post(
                 LINUXDO_TOKEN_URL,
@@ -104,7 +124,7 @@ async def exchange_code_for_token(code: str, redirect_uri: Optional[str] = None)
                 logger.error(
                     "Token exchange failed: status=%d body=%s",
                     response.status_code,
-                    response.text[:500],
+                    response.text[:_DEBUG_RESPONSE_TEXT_LIMIT],
                 )
                 return None
             return response.json()
@@ -115,7 +135,7 @@ async def exchange_code_for_token(code: str, redirect_uri: Optional[str] = None)
 
 async def fetch_user_info(access_token: str) -> Optional[dict]:
     """Fetch user info from LinuxDo API."""
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=_OAUTH_HTTP_TIMEOUT_S) as client:
         try:
             response = await client.get(
                 LINUXDO_USERINFO_URL,
@@ -128,7 +148,7 @@ async def fetch_user_info(access_token: str) -> Optional[dict]:
                 logger.error(
                     "User info fetch failed: status=%d body=%s",
                     response.status_code,
-                    response.text[:500],
+                    response.text[:_DEBUG_RESPONSE_TEXT_LIMIT],
                 )
                 return None
             return response.json()
@@ -230,9 +250,9 @@ def create_user_with_password(
 # Invite code functions
 
 
-def generate_invite_code(db: Session, created_by: int, expires_in_days: int = 7) -> Optional[str]:
+def generate_invite_code(db: Session, created_by: int, expires_in_days: int = _INVITE_CODE_DEFAULT_EXPIRY_DAYS) -> Optional[str]:
     """Generate a new invite code."""
-    code = secrets.token_urlsafe(32)
+    code = secrets.token_urlsafe(_INVITE_CODE_TOKEN_BYTES)
     expires_at = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
 
     invite = InviteCodeORM(

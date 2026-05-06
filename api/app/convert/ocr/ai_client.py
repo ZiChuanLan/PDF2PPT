@@ -85,6 +85,134 @@ from .vendors import (
     get_vendor_tuning,
 )
 
+# ---------------------------------------------------------------------------
+# OCR Pipeline Constants
+# ---------------------------------------------------------------------------
+
+# Rate limiter
+_RATE_LIMITER_CUTOFF_WINDOW_S = 60.0  # Rate limiter cutoff window (seconds)
+_RATE_LIMITER_MAX_WAIT_S = 60.0  # Rate limiter max wait (seconds)
+_RATE_LIMITER_SLEEP_MIN_S = 0.05  # Rate limiter min sleep (seconds)
+_RATE_LIMITER_SLEEP_MAX_S = 5.0  # Rate limiter max sleep (seconds)
+_CHARS_PER_TOKEN = 4.0  # Chars per token estimate
+
+# Retry / backoff
+_RETRY_BACKOFF_BASE_S = 8.0  # Retry backoff base (seconds)
+_RETRY_BACKOFF_MAX_S = 0.75  # Retry backoff max (seconds)
+_RETRY_BACKOFF_MULTIPLIER = 2  # Retry backoff multiplier
+_RATE_LIMITED_MIN_DELAY_S = 2.0  # Rate-limited min delay (seconds)
+_NON_RATE_LIMITED_MIN_DELAY_S = 0.25  # Non-rate-limited min delay (seconds)
+
+# Debug text limits
+_DEBUG_TEXT_COMPACT_LIMIT = 160  # Debug text compact limit (chars)
+_DEBUG_TEXT_CONTENT_LIMIT = 400  # Debug text limit for content (chars)
+_DEBUG_TEXTS_LIMIT = 240  # Debug text limit for texts (chars)
+_DEBUG_LABEL_LIMIT = 64  # Debug text limit for label (chars)
+
+# Paddle / singleflight
+_PADDLE_DOC_MAX_SIDE_PX = 6000  # Max paddle doc max side px
+_PADDLE_VL15_PREDICT_TIMEOUT_S = 180.0  # PaddleOCR-VL-1.5 predict timeout
+_PADDLE_MIN_PREDICT_TIMEOUT_S = 10.0  # Min predict timeout (seconds)
+_PADDLE_RETRY_TIMEOUT_CAP_S = 90.0  # Default retry timeout cap (seconds)
+_SINGLEFLIGHT_WAIT_S = 3.0  # Singleflight wait default (seconds)
+
+# Concurrency wait
+_CONCURRENCY_WAIT_MIN_S = 0.01  # Min wait for concurrency (seconds)
+_CONCURRENCY_WAIT_MAX_S = 0.1  # Max wait for concurrency (seconds)
+_DONE_WAIT_TIMEOUT_S = 1.0  # Done wait timeout (seconds)
+
+# Layout model
+_LAYOUT_MODEL_INIT_TIMEOUT_MIN_S = 5.0  # Min layout model init timeout (seconds)
+_LAYOUT_BLOCK_DIMENSION_MIN_PX = 3.0  # Min block dimension threshold (pixels)
+_LAYOUT_BLOCK_PREDICT_TIMEOUT_MIN_S = 5.0  # Min layout block predict timeout (seconds)
+
+# Image processing: padding / crop
+_BLOCK_CROP_PAD_MAX_PX = 24  # Max padding pixels for block crop
+_BLOCK_CROP_PAD_MIN_PX = 2  # Min padding pixels for block crop
+_BLOCK_CROP_PAD_RATIO = 0.03  # Padding ratio for block crop
+_BLOCK_CROP_YPAD_MAX_PX = 24  # Max Y-padding pixels for block crop
+_BLOCK_CROP_YPAD_MIN_PX = 2  # Min Y-padding pixels for block crop
+_BLOCK_CROP_YPAD_RATIO = 0.18  # Y-padding ratio for block crop
+
+# Ring margin (visual bounds tightening)
+_RING_YMARGIN_MAX_PX = 18  # Ring Y margin max (pixels)
+_RING_YMARGIN_MIN_PX = 2  # Ring Y margin min (pixels)
+_RING_YMARGIN_RATIO = 0.10  # Ring Y margin ratio
+_RING_XMARGIN_MAX_PX = 18  # Ring X margin max (pixels)
+_RING_XMARGIN_MIN_PX = 2  # Ring X margin min (pixels)
+_RING_XMARGIN_RATIO = 0.04  # Ring X margin ratio
+
+# Background diff thresholds
+_BG_DIFF_LIGHT_THRESHOLD = 18.0  # Background diff threshold (light bg)
+_BG_DIFF_DARK_THRESHOLD = 22.0  # Background diff threshold (dark bg)
+_BG_DIFF_LIGHT_BG_LUMA = 150.0  # Background luma cutoff for light/dark
+
+# Edge thresholds
+_EDGE_THRESH_LOW = 22  # Edge threshold for short crops
+_EDGE_THRESH_HIGH = 26  # Edge threshold for tall crops
+_EDGE_HEIGHT_CUTOFF = 96  # Height cutoff for edge threshold selection
+
+# Outer margin
+_OUTER_MARGIN_MAX_PX = 12  # Outer margin max (pixels)
+_OUTER_MARGIN_MIN_PX = 2  # Outer margin min (pixels)
+_OUTER_MARGIN_RATIO = 0.05  # Outer margin ratio
+
+# Row / col thresholds
+_ROW_THRESHOLD_MIN_PX = 2  # Row threshold min (pixels)
+_ROW_THRESHOLD_RATIO = 0.0035  # Row threshold ratio
+_COL_THRESHOLD_MIN_PX = 1  # Col threshold min (pixels)
+_COL_THRESHOLD_RATIO = 0.020  # Col threshold ratio
+
+# Keep ratios (skip tightening if crop already tight)
+_KEEP_AREA_RATIO = 0.94  # Keep area ratio threshold
+_KEEP_WIDTH_RATIO = 0.97  # Width keep ratio threshold
+_KEEP_HEIGHT_RATIO = 0.90  # Height keep ratio threshold
+
+# Local padding (after tightening)
+_PAD_X_MAX_PX = 18  # Pad X local max (pixels)
+_PAD_X_MIN_PX = 2  # Pad X local min (pixels)
+_PAD_X_RATIO = 0.08  # Pad X local ratio
+_PAD_Y_MAX_PX = 12  # Pad Y local max (pixels)
+_PAD_Y_MIN_PX = 2  # Pad Y local min (pixels)
+_PAD_Y_RATIO = 0.12  # Pad Y local ratio
+
+# Tightened keep ratios (skip if tightening barely changed bbox)
+_TIGHTENED_WIDTH_RATIO = 0.985  # Tightened width keep ratio
+_TIGHTENED_HEIGHT_RATIO = 0.94  # Tightened height keep ratio
+
+# Geometry tolerance
+_DEFAULT_TOLERANCE_PX = 1.5  # Default tolerance for geometry fit (pixels)
+
+# Request timeout
+_REQUEST_TIMEOUT_BUFFER_S = 12.0  # Request timeout buffer (seconds)
+_REQUEST_TIMEOUT_MULTIPLIER = 1.5  # Request timeout multiplier
+_REQUEST_TIMEOUT_CAP_S = 55.0  # Max request timeout cap (seconds)
+_RETRY_TIMEOUT_BUFFER_S = 8.0  # Retry timeout buffer (seconds)
+
+# OCR bypass thresholds
+_LOW_CONFIDENCE_THRESHOLD = 0.6  # Low confidence threshold for adaptive coverage
+_HIGH_CONFIDENCE_THRESHOLD = 0.85  # High confidence threshold for adaptive coverage
+_LOW_CONFIDENCE_COVERAGE_MULTIPLIER = 0.6  # Coverage multiplier for low confidence
+_HIGH_CONFIDENCE_COVERAGE_MULTIPLIER = 1.3  # Coverage multiplier for high confidence
+_WIDE_FLAT_MIN_ASPECT_RATIO = 7.0  # Min aspect ratio for wide-flat block detection
+_WIDE_FLAT_MIN_WIDTH_RATIO = 0.35  # Min width ratio for wide-flat block detection
+_WIDE_FLAT_MAX_HEIGHT_RATIO = 0.18  # Max height ratio for wide-flat block detection
+_WIDE_FLAT_MAX_VERTICAL_SPAN = 0.28  # Max vertical span ratio for wide-flat detection
+_WIDE_FLAT_MIN_COVERAGE_RATIO = 0.65  # Min coverage ratio for wide-flat detection
+
+# Confidence-based bypass thresholds
+_CONFIDENCE_BYPASS_LOW_THRESHOLD = 0.5  # Low confidence threshold for individual detections
+_CONFIDENCE_BYPASS_AVG_THRESHOLD = 0.4  # Average confidence threshold for bypass
+_CONFIDENCE_BYPASS_RATIO_THRESHOLD = 0.5  # Low confidence ratio threshold for bypass
+
+# OCR result validation thresholds
+_VALIDATION_DENSITY_THRESHOLD = 0.3  # Text density threshold (chars per 10Kpx)
+_VALIDATION_COHERENCE_THRESHOLD = 0.4  # Coherence threshold (alphanumeric ratio)
+_VALIDATION_MIN_CHARS_FOR_COHERENCE = 10  # Minimum chars for coherence check
+_VALIDATION_LARGE_IMAGE_AREA = 500000  # Large image area threshold (pixels)
+_VALIDATION_TOO_FEW_BLOCKS = 2  # Too few blocks threshold
+_PIXELS_PER_10K = 10000.0  # Pixels per 10K for density calculation
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,7 +245,7 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
-def _compact_debug_text(value: Any, *, limit: int = 160) -> str:
+def _compact_debug_text(value: Any, *, limit: int = _DEBUG_TEXT_COMPACT_LIMIT) -> str:
     compact = re.sub(r"\s+", " ", str(value or "")).strip()
     if len(compact) <= limit:
         return compact
@@ -353,7 +481,7 @@ class _AiRequestRateLimiter:
         self._lock = threading.Lock()
 
     def _prune(self, *, now_monotonic: float) -> None:
-        cutoff = float(now_monotonic) - 60.0
+        cutoff = float(now_monotonic) - _RATE_LIMITER_CUTOFF_WINDOW_S
         self._events = [
             event
             for event in self._events
@@ -379,7 +507,7 @@ class _AiRequestRateLimiter:
                     and self._events
                 ):
                     oldest = float(self._events[0].get("at_monotonic") or now_monotonic)
-                    wait_s = max(wait_s, max(0.0, 60.0 - (now_monotonic - oldest)))
+                    wait_s = max(wait_s, max(0.0, _RATE_LIMITER_MAX_WAIT_S - (now_monotonic - oldest)))
 
                 if self.tokens_per_minute is not None and self._events:
                     token_budget = int(self.tokens_per_minute)
@@ -392,7 +520,7 @@ class _AiRequestRateLimiter:
                             reclaimed += int(event.get("tokens") or 0)
                             candidate_wait = max(
                                 0.0,
-                                60.0
+                                _RATE_LIMITER_MAX_WAIT_S
                                 - (
                                     now_monotonic
                                     - float(event.get("at_monotonic") or now_monotonic)
@@ -410,7 +538,7 @@ class _AiRequestRateLimiter:
                     self._events.append(event)
                     return _AiRequestReservation(self, event)
 
-            time.sleep(max(0.05, min(wait_s, 5.0)))
+            time.sleep(max(_RATE_LIMITER_SLEEP_MIN_S, min(wait_s, _RATE_LIMITER_SLEEP_MAX_S)))
 
     def finalize(self, event: dict[str, Any], *, actual_tokens: int | None) -> None:
         if actual_tokens is None:
@@ -490,7 +618,7 @@ def _estimate_chat_completion_tokens(*, messages: Any, max_tokens: int | None) -
             _walk(value.get("content"))
 
     _walk(messages)
-    prompt_tokens = int(math.ceil(float(text_chars) / 4.0))
+    prompt_tokens = int(math.ceil(float(text_chars) / _CHARS_PER_TOKEN))
     image_tokens = int(image_items) * 512
     completion_budget = max(0, int(max_tokens or 0))
     return max(1, prompt_tokens + image_tokens + completion_budget)
@@ -564,10 +692,10 @@ def _retry_delay_s_for_chat_completion(
     error: BaseException,
 ) -> float:
     status_code = _extract_error_status_code(error)
-    base_delay = min(8.0, 0.75 * (2 ** max(0, int(attempt_index))))
+    base_delay = min(_RETRY_BACKOFF_BASE_S, _RETRY_BACKOFF_MAX_S * (_RETRY_BACKOFF_MULTIPLIER ** max(0, int(attempt_index))))
     if status_code == 429:
-        return max(2.0, base_delay)
-    return max(0.25, base_delay)
+        return max(_RATE_LIMITED_MIN_DELAY_S, base_delay)
+    return max(_NON_RATE_LIMITED_MIN_DELAY_S, base_delay)
 
 
 def _run_chat_completion_request(
@@ -737,7 +865,7 @@ class AiOcrClient(OcrProvider):
                 normalized_max_side = None
             if normalized_max_side is not None:
                 self._paddle_doc_max_side_px_override = max(
-                    0, min(6000, int(normalized_max_side))
+                    0, min(_PADDLE_DOC_MAX_SIDE_PX, int(normalized_max_side))
                 )
         self._layout_block_max_concurrency_override = _coerce_int_in_range(
             layout_block_max_concurrency,
@@ -872,7 +1000,7 @@ class AiOcrClient(OcrProvider):
 
         def _collect(content: Any) -> None:
             if isinstance(content, str):
-                compact = _compact_debug_text(content, limit=400)
+                compact = _compact_debug_text(content, limit=_DEBUG_TEXT_CONTENT_LIMIT)
                 if compact:
                     texts.append(compact)
                 return
@@ -901,7 +1029,7 @@ class AiOcrClient(OcrProvider):
         else:
             _collect(messages)
 
-        return _compact_debug_text(" ".join(texts), limit=240)
+        return _compact_debug_text(" ".join(texts), limit=_DEBUG_TEXTS_LIMIT)
 
     def _extract_paddle_doc_block_label(self, query_text: str) -> str | None:
         if not query_text:
@@ -912,7 +1040,7 @@ class AiOcrClient(OcrProvider):
             flags=re.IGNORECASE,
         )
         if prompt_match:
-            label = _compact_debug_text(prompt_match.group(1), limit=64).strip()
+            label = _compact_debug_text(prompt_match.group(1), limit=_DEBUG_LABEL_LIMIT).strip()
             if label:
                 return label
         patterns = (
@@ -924,7 +1052,7 @@ class AiOcrClient(OcrProvider):
         for pattern in patterns:
             match = re.search(pattern, query_text, flags=re.IGNORECASE)
             if match:
-                label = _compact_debug_text(match.group(1), limit=64).strip(" .,:;")
+                label = _compact_debug_text(match.group(1), limit=_DEBUG_LABEL_LIMIT).strip(" .,:;")
                 if label:
                     return label
         return None
@@ -1424,15 +1552,15 @@ class AiOcrClient(OcrProvider):
 
     def _resolve_paddle_doc_predict_timeout_s(self) -> float:
         default_timeout = max(
-            10.0,
+            _PADDLE_MIN_PREDICT_TIMEOUT_S,
             _env_float("OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S", 120.0),
         )
         lowered_model = str(self.model or "").strip().lower()
         if "paddleocr-vl-1.5" in lowered_model:
             tuning = get_vendor_tuning(self.provider_id)
-            v15_default = max(default_timeout, tuning.predict_timeout_override or 180.0)
+            v15_default = max(default_timeout, tuning.predict_timeout_override or _PADDLE_VL15_PREDICT_TIMEOUT_S)
             return max(
-                10.0,
+                _PADDLE_MIN_PREDICT_TIMEOUT_S,
                 _env_float(
                     "OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S_V15",
                     v15_default,
@@ -1441,21 +1569,21 @@ class AiOcrClient(OcrProvider):
         return default_timeout
 
     def _resolve_paddle_doc_retry_timeout_s(self, *, predict_timeout_s: float) -> float:
-        default_retry_timeout_s = min(90.0, predict_timeout_s)
+        default_retry_timeout_s = min(_PADDLE_RETRY_TIMEOUT_CAP_S, predict_timeout_s)
         lowered_model = str(self.model or "").strip().lower()
         if "paddleocr-vl-1.5" in lowered_model:
             tuning = get_vendor_tuning(self.provider_id)
             retry_default = tuning.retry_timeout_override
             if retry_default is not None:
                 return max(
-                    10.0,
+                    _PADDLE_MIN_PREDICT_TIMEOUT_S,
                     _env_float(
                         "OCR_PADDLE_VL_DOCPARSER_RETRY_TIMEOUT_S",
                         min(retry_default, predict_timeout_s),
                     ),
                 )
         return max(
-            10.0,
+            _PADDLE_MIN_PREDICT_TIMEOUT_S,
             _env_float(
                 "OCR_PADDLE_VL_DOCPARSER_RETRY_TIMEOUT_S",
                 default_retry_timeout_s,
@@ -1498,7 +1626,7 @@ class AiOcrClient(OcrProvider):
         default_wait_s = (
             tuning.singleflight_wait_s
             if self._is_vendor_paddle_doc_v15()
-            else 3.0
+            else _SINGLEFLIGHT_WAIT_S
         )
         return max(
             0.0,
@@ -1654,7 +1782,7 @@ class AiOcrClient(OcrProvider):
                         f"{label} blocked by another in-flight PaddleOCR-VL doc_parser request "
                         f"after {wait_timeout_s:.1f}s"
                     )
-                time.sleep(min(0.1, max(0.01, wait_deadline - time.monotonic())))
+                time.sleep(min(_CONCURRENCY_WAIT_MAX_S, max(_CONCURRENCY_WAIT_MIN_S, wait_deadline - time.monotonic())))
 
         done = threading.Event()
         result: dict[str, Any] = {}
@@ -1690,7 +1818,7 @@ class AiOcrClient(OcrProvider):
                 self._release_paddle_doc_singleflight_lock(lock_file)
                 lock_file = None
                 raise TimeoutError(f"{label} timed out after {effective_timeout:.0f}s")
-            if done.wait(timeout=min(1.0, remaining_s)):
+            if done.wait(timeout=min(_DONE_WAIT_TIMEOUT_S, remaining_s)):
                 break
             self._maybe_log_paddle_doc_progress_trace()
         if "error" in error:
@@ -1936,7 +2064,7 @@ class AiOcrClient(OcrProvider):
                 ) from e
 
             init_timeout_s = max(
-                5.0,
+                _LAYOUT_MODEL_INIT_TIMEOUT_MIN_S,
                 _env_float("OCR_AI_LAYOUT_MODEL_INIT_TIMEOUT_S", 30.0),
             )
             model = _run_in_daemon_thread_with_timeout(
@@ -2038,7 +2166,7 @@ class AiOcrClient(OcrProvider):
                         float(bbox[2]),
                         float(bbox[3]),
                     )
-                    if x1 - x0 < 3.0 or y1 - y0 < 3.0:
+                    if x1 - x0 < _LAYOUT_BLOCK_DIMENSION_MIN_PX or y1 - y0 < _LAYOUT_BLOCK_DIMENSION_MIN_PX:
                         continue
 
                     label = _normalize_layout_label(
@@ -2133,7 +2261,7 @@ class AiOcrClient(OcrProvider):
 
         layout_model = self._get_local_layout_model()
         predict_timeout_s = max(
-            5.0,
+            _LAYOUT_BLOCK_PREDICT_TIMEOUT_MIN_S,
             _env_float("OCR_AI_LAYOUT_MODEL_PREDICT_TIMEOUT_S", 45.0),
         )
 
@@ -2293,8 +2421,8 @@ class AiOcrClient(OcrProvider):
         x0, y0, x1, y1 = bbox_n
         block_w = max(1.0, float(x1 - x0))
         block_h = max(1.0, float(y1 - y0))
-        pad_x = min(24, max(2, int(round(block_w * 0.03))))
-        pad_y = min(24, max(2, int(round(block_h * 0.18))))
+        pad_x = min(_BLOCK_CROP_PAD_MAX_PX, max(_BLOCK_CROP_PAD_MIN_PX, int(round(block_w * _BLOCK_CROP_PAD_RATIO))))
+        pad_y = min(_BLOCK_CROP_YPAD_MAX_PX, max(_BLOCK_CROP_YPAD_MIN_PX, int(round(block_h * _BLOCK_CROP_YPAD_RATIO))))
         xi0 = max(0, min(width - 1, int(math.floor(x0)) - pad_x))
         yi0 = max(0, min(height - 1, int(math.floor(y0)) - pad_y))
         xi1 = max(0, min(width, int(math.ceil(x1)) + pad_x))
@@ -2379,8 +2507,8 @@ class AiOcrClient(OcrProvider):
         ox0, oy0, ox1, oy1 = bbox_n
         block_w = max(1.0, float(ox1 - ox0))
         block_h = max(1.0, float(oy1 - oy0))
-        pad_x = min(24, max(2, int(round(block_w * 0.03))))
-        pad_y = min(24, max(2, int(round(block_h * 0.18))))
+        pad_x = min(_BLOCK_CROP_PAD_MAX_PX, max(_BLOCK_CROP_PAD_MIN_PX, int(round(block_w * _BLOCK_CROP_PAD_RATIO))))
+        pad_y = min(_BLOCK_CROP_YPAD_MAX_PX, max(_BLOCK_CROP_YPAD_MIN_PX, int(round(block_h * _BLOCK_CROP_YPAD_RATIO))))
         crop_left = max(0, min(width - 1, int(math.floor(ox0)) - pad_x))
         crop_top = max(0, min(height - 1, int(math.floor(oy0)) - pad_y))
 
@@ -2392,8 +2520,8 @@ class AiOcrClient(OcrProvider):
         if arr.ndim != 2 or arr.size <= 0:
             return None
 
-        ring_y = max(2, min(18, int(round(0.10 * float(crop_h)))))
-        ring_x = max(2, min(18, int(round(0.04 * float(crop_w)))))
+        ring_y = max(_RING_YMARGIN_MIN_PX, min(_RING_YMARGIN_MAX_PX, int(round(_RING_YMARGIN_RATIO * float(crop_h)))))
+        ring_x = max(_RING_XMARGIN_MIN_PX, min(_RING_XMARGIN_MAX_PX, int(round(_RING_XMARGIN_RATIO * float(crop_w)))))
         try:
             border_vals = np.concatenate(
                 [
@@ -2418,10 +2546,10 @@ class AiOcrClient(OcrProvider):
         if edges.shape != arr.shape:
             return None
 
-        diff_thresh = 18.0 if bg >= 150.0 else 22.0
-        edge_thresh = 22 if crop_h <= 96 else 26
+        diff_thresh = _BG_DIFF_LIGHT_THRESHOLD if bg >= _BG_DIFF_LIGHT_BG_LUMA else _BG_DIFF_DARK_THRESHOLD
+        edge_thresh = _EDGE_THRESH_LOW if crop_h <= _EDGE_HEIGHT_CUTOFF else _EDGE_THRESH_HIGH
         mask = (diff >= diff_thresh) | (edges >= edge_thresh)
-        outer_margin = max(2, min(12, int(round(0.05 * float(min(crop_w, crop_h))))))
+        outer_margin = max(_OUTER_MARGIN_MIN_PX, min(_OUTER_MARGIN_MAX_PX, int(round(_OUTER_MARGIN_RATIO * float(min(crop_w, crop_h))))))
         if outer_margin > 0:
             mask[:outer_margin, :] = False
             mask[max(0, crop_h - outer_margin) :, :] = False
@@ -2430,8 +2558,8 @@ class AiOcrClient(OcrProvider):
         if not bool(mask.any()):
             return None
 
-        row_threshold = max(2, int(round(0.0035 * float(crop_w))))
-        col_threshold = max(1, int(round(0.020 * float(crop_h))))
+        row_threshold = max(_ROW_THRESHOLD_MIN_PX, int(round(_ROW_THRESHOLD_RATIO * float(crop_w))))
+        col_threshold = max(_COL_THRESHOLD_MIN_PX, int(round(_COL_THRESHOLD_RATIO * float(crop_h))))
         row_counts = mask.sum(axis=1)
         col_counts = mask.sum(axis=0)
         ys = np.flatnonzero(row_counts >= row_threshold)
@@ -2456,14 +2584,14 @@ class AiOcrClient(OcrProvider):
         width_keep_ratio = float(content_w) / max(1.0, float(crop_w))
         height_keep_ratio = float(content_h) / max(1.0, float(crop_h))
         if (
-            keep_area_ratio >= 0.94
-            and width_keep_ratio >= 0.97
-            and height_keep_ratio >= 0.90
+            keep_area_ratio >= _KEEP_AREA_RATIO
+            and width_keep_ratio >= _KEEP_WIDTH_RATIO
+            and height_keep_ratio >= _KEEP_HEIGHT_RATIO
         ):
             return None
 
-        pad_x_local = max(2, min(18, int(round(0.08 * float(content_h)))))
-        pad_y_local = max(2, min(12, int(round(0.12 * float(content_h)))))
+        pad_x_local = max(_PAD_X_MIN_PX, min(_PAD_X_MAX_PX, int(round(_PAD_X_RATIO * float(content_h)))))
+        pad_y_local = max(_PAD_Y_MIN_PX, min(_PAD_Y_MAX_PX, int(round(_PAD_Y_RATIO * float(content_h)))))
         local_x0 = max(0, local_x0 - pad_x_local)
         local_y0 = max(0, local_y0 - pad_y_local)
         local_x1 = min(crop_w, local_x1 + pad_x_local)
@@ -2483,7 +2611,7 @@ class AiOcrClient(OcrProvider):
         tx0, ty0, tx1, ty1 = tightened_n
         tightened_w = max(1.0, float(tx1 - tx0))
         tightened_h = max(1.0, float(ty1 - ty0))
-        if tightened_w >= (0.985 * block_w) and tightened_h >= (0.94 * block_h):
+        if tightened_w >= (_TIGHTENED_WIDTH_RATIO * block_w) and tightened_h >= (_TIGHTENED_HEIGHT_RATIO * block_h):
             return None
         return [float(tx0), float(ty0), float(tx1), float(ty1)]
 
@@ -2492,7 +2620,7 @@ class AiOcrClient(OcrProvider):
         *,
         geometry_points: list[list[float]] | None,
         bbox: list[float],
-        tolerance_px: float = 1.5,
+        tolerance_px: float = _DEFAULT_TOLERANCE_PX,
     ) -> bool:
         if not geometry_points:
             return False
@@ -2592,21 +2720,21 @@ class AiOcrClient(OcrProvider):
         request_timeout_s: float,
     ) -> float:
         default_retry_timeout = max(
-            float(request_timeout_s) + 12.0,
-            float(request_timeout_s) * 1.5,
-            55.0,
+            float(request_timeout_s) + _REQUEST_TIMEOUT_BUFFER_S,
+            float(request_timeout_s) * _REQUEST_TIMEOUT_MULTIPLIER,
+            _REQUEST_TIMEOUT_CAP_S,
         )
         lowered = str(effective_model or "").strip().lower()
         if "qwen" in lowered and ("vl" in lowered or "omni" in lowered):
             return max(
-                float(request_timeout_s) + 8.0,
+                float(request_timeout_s) + _RETRY_TIMEOUT_BUFFER_S,
                 _env_float(
                     "OCR_AI_LAYOUT_BLOCK_RETRY_TIMEOUT_S_QWEN",
                     default_retry_timeout,
                 ),
             )
         return max(
-            float(request_timeout_s) + 8.0,
+            float(request_timeout_s) + _RETRY_TIMEOUT_BUFFER_S,
             _env_float(
                 "OCR_AI_LAYOUT_BLOCK_RETRY_TIMEOUT_S",
                 default_retry_timeout,
@@ -2724,14 +2852,15 @@ class AiOcrClient(OcrProvider):
         # signal — it's the model telling us "I'm not sure."
         if confidence_scores:
             avg_confidence = sum(confidence_scores) / len(confidence_scores)
-            low_conf_count = sum(1 for s in confidence_scores if s < 0.5)
+            low_conf_count = sum(1 for s in confidence_scores if s < _CONFIDENCE_BYPASS_LOW_THRESHOLD)
             low_conf_ratio = low_conf_count / len(confidence_scores)
 
-            if avg_confidence < 0.4:
+            if avg_confidence < _CONFIDENCE_BYPASS_AVG_THRESHOLD:
                 logger.info(
-                    "Layout model avg confidence %.2f < 0.4 — bypassing block OCR"
+                    "Layout model avg confidence %.2f < %.1f — bypassing block OCR"
                     " (text_blocks=%s, scores=%s, layout_model=%s, image=%s)",
                     avg_confidence,
+                    _CONFIDENCE_BYPASS_AVG_THRESHOLD,
                     len(text_blocks),
                     [round(s, 2) for s in confidence_scores[:10]],
                     self.layout_model,
@@ -2739,11 +2868,12 @@ class AiOcrClient(OcrProvider):
                 )
                 return "low_layout_confidence"
 
-            if low_conf_ratio > 0.5:
+            if low_conf_ratio > _CONFIDENCE_BYPASS_RATIO_THRESHOLD:
                 logger.info(
-                    "Layout model %.0f%% detections below 0.5 confidence — bypassing block OCR"
+                    "Layout model %.0f%% detections below %.1f confidence — bypassing block OCR"
                     " (text_blocks=%s, layout_model=%s, image=%s)",
                     low_conf_ratio * 100,
+                    _CONFIDENCE_BYPASS_LOW_THRESHOLD,
                     len(text_blocks),
                     self.layout_model,
                     Path(image_path).name,
@@ -2760,12 +2890,12 @@ class AiOcrClient(OcrProvider):
 
         if confidence_scores:
             avg_conf = sum(confidence_scores) / len(confidence_scores)
-            if avg_conf < 0.6:
+            if avg_conf < _LOW_CONFIDENCE_THRESHOLD:
                 # Mediocre confidence → lower coverage threshold (more aggressive bypass)
-                base_threshold *= 0.6
-            elif avg_conf > 0.85:
+                base_threshold *= _LOW_CONFIDENCE_COVERAGE_MULTIPLIER
+            elif avg_conf > _HIGH_CONFIDENCE_THRESHOLD:
                 # High confidence → trust the model more, raise threshold
-                base_threshold *= 1.3
+                base_threshold *= _HIGH_CONFIDENCE_COVERAGE_MULTIPLIER
 
         if text_blocks and coverage < base_threshold:
             logger.info(
@@ -2794,9 +2924,9 @@ class AiOcrClient(OcrProvider):
             height_ratio = block_h / max(1.0, float(page_h))
             aspect_ratio = block_w / max(1.0, block_h)
             if (
-                aspect_ratio < 7.0
-                or width_ratio < 0.35
-                or height_ratio > 0.18
+                aspect_ratio < _WIDE_FLAT_MIN_ASPECT_RATIO
+                or width_ratio < _WIDE_FLAT_MIN_WIDTH_RATIO
+                or height_ratio > _WIDE_FLAT_MAX_HEIGHT_RATIO
             ):
                 return None
             min_y = min(min_y, float(y0))
@@ -2804,7 +2934,7 @@ class AiOcrClient(OcrProvider):
             max_width_ratio = max(max_width_ratio, width_ratio)
 
         vertical_span_ratio = max(0.0, max_y - min_y) / max(1.0, float(page_h))
-        if vertical_span_ratio > 0.28 or max_width_ratio < 0.65:
+        if vertical_span_ratio > _WIDE_FLAT_MAX_VERTICAL_SPAN or max_width_ratio < _WIDE_FLAT_MIN_COVERAGE_RATIO:
             return None
         return "wide_flat_layout_blocks"
 
@@ -2837,7 +2967,7 @@ class AiOcrClient(OcrProvider):
         # A typical document page (A4, 300dpi, ~2500x3500) with 2000 chars
         # → density ≈ 2000 / (8750000/10000) ≈ 2.3 chars/10Kpx
         # A screenshot with sparse text might have density < 0.5
-        text_density = total_chars / (page_area / 10000.0)
+        text_density = total_chars / (page_area / _PIXELS_PER_10K)
 
         # Coherence: ratio of alphanumeric chars (real text vs garbage)
         alphanumeric = sum(
@@ -2853,13 +2983,13 @@ class AiOcrClient(OcrProvider):
         suspicious = False
         reason = None
 
-        if text_density < 0.3 and len(ocr_results) >= 3:
+        if text_density < _VALIDATION_DENSITY_THRESHOLD and len(ocr_results) >= 3:
             suspicious = True
             reason = f"very_low_density_{text_density:.2f}_chars_per_10Kpx"
-        elif coherence < 0.4 and total_chars > 10:
+        elif coherence < _VALIDATION_COHERENCE_THRESHOLD and total_chars > _VALIDATION_MIN_CHARS_FOR_COHERENCE:
             suspicious = True
             reason = f"low_coherence_{coherence:.2f}"
-        elif len(ocr_results) <= 2 and page_area > 500000:
+        elif len(ocr_results) <= _VALIDATION_TOO_FEW_BLOCKS and page_area > _VALIDATION_LARGE_IMAGE_AREA:
             # Large image but only 1-2 text blocks → layout model probably failed
             suspicious = True
             reason = f"too_few_blocks_{len(ocr_results)}_for_large_image"

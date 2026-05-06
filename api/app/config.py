@@ -5,6 +5,16 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings
 
+# ---------------------------------------------------------------------------
+# Shared defaults (used in Settings and parse_cors_allow_origins)
+# ---------------------------------------------------------------------------
+_DEFAULT_CORS_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
+_DEFAULT_CORS_ORIGINS_STR = ",".join(_DEFAULT_CORS_ORIGINS)
+
+# WARNING: This is a placeholder password for self-use mode only.
+# In production, set ADMIN_DEFAULT_PASSWORD env var to a strong value.
+_ADMIN_PLACEHOLDER_PASSWORD = "admin12345678"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -58,7 +68,7 @@ class Settings(BaseSettings):
     # Best-effort timeout for AI image-region detection. This should stay much
     # shorter than page OCR so image-region probing cannot make OCR appear stuck.
     ocr_image_region_timeout_s: int = 12
-    cors_allow_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_allow_origins: str = _DEFAULT_CORS_ORIGINS_STR
     cors_allow_origin_regex: str | None = None
     # LinuxDo OAuth settings
     linuxdo_client_id: str | None = None
@@ -75,7 +85,7 @@ class Settings(BaseSettings):
     # Deploy mode: "self" (self-use, localStorage) or "public" (multi-user, DB settings)
     deploy_mode: str = "self"
     # Default admin password for self-use mode auto-login
-    admin_default_password: str = "admin12345678"
+    admin_default_password: str = _ADMIN_PLACEHOLDER_PASSWORD
     # Rate limiting (requests per window per client IP)
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
@@ -116,7 +126,7 @@ def get_deploy_mode(db=None) -> str:
 def parse_cors_allow_origins(raw: str | None) -> list[str]:
     value = str(raw or "").strip()
     if not value:
-        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+        return list(_DEFAULT_CORS_ORIGINS)
     if value == "*":
         return ["*"]
     items: list[str] = []
@@ -124,4 +134,4 @@ def parse_cors_allow_origins(raw: str | None) -> list[str]:
         origin = item.strip()
         if origin and origin not in items:
             items.append(origin)
-    return items or ["http://localhost:3000", "http://127.0.0.1:3000"]
+    return items or list(_DEFAULT_CORS_ORIGINS)
