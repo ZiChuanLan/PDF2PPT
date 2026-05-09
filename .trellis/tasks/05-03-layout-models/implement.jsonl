@@ -1,7 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend coding conventions, API patterns, error handling"}
-{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "API endpoint patterns, dependency injection, cookie handling"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for settings page and setup wizard"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook patterns for use-model-status and new hooks"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management patterns for model selection"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow between frontend and backend"}
-{"file": ".trellis/tasks/05-03-layout-models/prd.md", "reason": "PRD with model registry, requirements, and acceptance criteria"}
