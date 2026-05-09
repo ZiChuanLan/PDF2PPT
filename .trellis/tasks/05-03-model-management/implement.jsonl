@@ -1,8 +1,0 @@
-{"type":"spec","path":".trellis/spec/backend/auth-pattern.md","note":"Backend auth pattern — JWT cookies, endpoint structure, _set_auth_cookies helper. Relevant for new model status API endpoints."}
-{"type":"spec","path":".trellis/spec/frontend/hook-guidelines.md","note":"Frontend hook patterns — useSettings(), apiFetch(), auto-save. Relevant for model status hook."}
-{"type":"spec","path":".trellis/spec/frontend/component-guidelines.md","note":"Frontend component patterns — shadcn/ui, toast, Card layout. Relevant for status indicators."}
-{"type":"spec","path":".trellis/spec/frontend/state-management.md","note":"Frontend state patterns — context providers, local state. Relevant for model status state."}
-{"type":"spec","path":".trellis/spec/guides/cross-layer-thinking-guide.md","note":"Cross-layer data flow patterns. Relevant for API → frontend model status flow."}
-{"type":"spec","path":".trellis/spec/guides/code-reuse-thinking-guide.md","note":"Code reuse patterns. Relevant for reusing existing probe functions and check endpoints."}
-{"type":"research","path":".trellis/tasks/05-03-model-management/research/job-validation-chain.md","note":"Job validation chain analysis — 3-layer validation, unused pre-flight endpoints, runtime-only failures."}
-{"type":"research","path":".trellis/tasks/05-03-model-management/research/model-readiness-detection.md","note":"Model readiness detection — 4 probes, 2 prewarm functions, no unified status API, fallback chain."}

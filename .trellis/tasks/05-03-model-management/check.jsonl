@@ -1,6 +1,0 @@
-{"type":"spec","path":".trellis/spec/backend/auth-pattern.md","note":"Backend auth pattern — check new endpoints follow JWT cookie auth."}
-{"type":"spec","path":".trellis/spec/frontend/quality-guidelines.md","note":"Frontend quality — TypeScript strict, no unused imports, proper error handling."}
-{"type":"spec","path":".trellis/spec/frontend/type-safety.md","note":"Frontend type safety — API response types, no any abuse."}
-{"type":"spec","path":".trellis/spec/guides/cross-layer-thinking-guide.md","note":"Cross-layer verification — API types match frontend types."}
-{"type":"research","path":".trellis/tasks/05-03-model-management/research/job-validation-chain.md","note":"Verify pre-flight check integration matches validation chain findings."}
-{"type":"research","path":".trellis/tasks/05-03-model-management/research/model-readiness-detection.md","note":"Verify model status API matches existing probe system."}
