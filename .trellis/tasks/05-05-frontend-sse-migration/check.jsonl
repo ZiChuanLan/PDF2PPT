@@ -1,3 +1,0 @@
-{"type": "spec", "path": ".trellis/spec/frontend/index.md", "lines": 1, "description": "Frontend development guidelines"}
-{"type": "file", "path": "web/src/app/page.tsx", "lines": 1, "description": "Main upload page - SSE migration"}
-{"type": "file", "path": "web/src/lib/api.ts", "lines": 1, "description": "API client - SSE support"}
