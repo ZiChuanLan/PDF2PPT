@@ -1,3 +1,0 @@
-{"type": "spec", "path": ".trellis/spec/backend/index.md", "lines": 1, "description": "Backend development guidelines"}
-{"type": "file", "path": "api/app/routers/jobs.py", "lines": 1, "description": "Job endpoints - streaming upload"}
-{"type": "file", "path": "api/app/worker.py", "lines": 1, "description": "Worker - cleanup improvements"}
