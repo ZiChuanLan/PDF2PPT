@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions for quality verification"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions for quality verification"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety for constants verification"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality guidelines for frontend changes"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer consistency for constants shared between frontend/backend"}
-{"file": ".trellis/tasks/05-05-hardcoded-cleanup/prd.md", "reason": "Acceptance criteria for final verification"}
