@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend pre-dev checklist and coding conventions"}
-{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Auth dependencies, user model patterns, admin role check"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend pre-dev checklist and coding conventions"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "UI component patterns for dialogs, buttons, forms"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Data fetching and state patterns for admin page"}
-{"file": ".trellis/tasks/05-01-add-username-password-login/research/auth-system.md", "reason": "Existing auth system research with user model details"}
