@@ -6,6 +6,8 @@ declare const process: {
   }
 }
 
+import { API_REQUEST_TIMEOUT_MS } from "./constants"
+
 const API_ORIGIN_STORAGE_KEY = "ppt_opencode_api_origin"
 const DEFAULT_FALLBACK_ORIGIN = "http://localhost:8000"
 const DEFAULT_FALLBACK_PORT = "8000"
@@ -251,10 +253,41 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   // Use same-origin proxy (/api/v1) to avoid cross-origin cookie issues.
   // Next.js rewrites /api/* → internal API server.
   // Cookies set for the frontend domain are automatically included.
-  return fetch(`/api/v1${normalizeApiPath(path)}`, {
-    ...init,
-    credentials: "same-origin",
-  })
+
+  // Wrap every fetch with an AbortController timeout so hung backend
+  // connections don't block the UI indefinitely.
+  const existingSignal = init?.signal ?? null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS)
+
+  // If the caller already provided a signal, wire it to also cancel our
+  // timeout-based controller.
+  if (existingSignal) {
+    if (existingSignal.aborted) {
+      clearTimeout(timer)
+      controller.abort()
+    } else {
+      existingSignal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer)
+          controller.abort()
+        },
+        { once: true }
+      )
+    }
+  }
+
+  try {
+    const response = await fetch(`/api/v1${normalizeApiPath(path)}`, {
+      ...init,
+      signal: controller.signal,
+      credentials: "same-origin",
+    })
+    return response
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export function createJobEventSource(jobId: string): EventSource {

@@ -111,7 +111,7 @@ _DEBUG_LABEL_LIMIT = 64  # Debug text limit for label (chars)
 
 # Paddle / singleflight
 _PADDLE_DOC_MAX_SIDE_PX = 6000  # Max paddle doc max side px
-_PADDLE_VL15_PREDICT_TIMEOUT_S = 180.0  # PaddleOCR-VL-1.5 predict timeout
+_PADDLE_VL15_PREDICT_TIMEOUT_S = 180.0  # PaddleOCR-VL-1.5 predict timeout (env overridable)
 _PADDLE_MIN_PREDICT_TIMEOUT_S = 10.0  # Min predict timeout (seconds)
 _PADDLE_RETRY_TIMEOUT_CAP_S = 90.0  # Default retry timeout cap (seconds)
 _SINGLEFLIGHT_WAIT_S = 3.0  # Singleflight wait default (seconds)
@@ -182,6 +182,39 @@ _TIGHTENED_HEIGHT_RATIO = 0.94  # Tightened height keep ratio
 
 # Geometry tolerance
 _DEFAULT_TOLERANCE_PX = 1.5  # Default tolerance for geometry fit (pixels)
+
+# ---------------------------------------------------------------------------
+# Runtime-overridable timeout helpers
+# ---------------------------------------------------------------------------
+# These read from api.app.config.Settings so they can be tuned via env vars
+# without code changes. Module-level constants are used as fallbacks.
+
+
+def _get_paddle_predict_timeout() -> float:
+    """PaddleOCR-VL-1.5 predict timeout (seconds).  Env: OCR_PADDLE_VL_PREDICT_TIMEOUT_S."""
+    try:
+        from ...config import get_settings
+        return float(get_settings().ocr_paddle_vl_predict_timeout_s)
+    except Exception:
+        return _PADDLE_VL15_PREDICT_TIMEOUT_S
+
+
+def _get_retry_backoff_base() -> float:
+    """Base retry backoff for AI OCR calls (seconds).  Env: OCR_AI_RETRY_BACKOFF_BASE_S."""
+    try:
+        from ...config import get_settings
+        return float(get_settings().ocr_ai_retry_backoff_base_s)
+    except Exception:
+        return _RETRY_BACKOFF_BASE_S
+
+
+def _get_rate_limited_min_delay() -> float:
+    """Minimum delay after a rate-limited response (seconds).  Env: OCR_AI_RATE_LIMITED_MIN_DELAY_S."""
+    try:
+        from ...config import get_settings
+        return float(get_settings().ocr_ai_rate_limited_min_delay_s)
+    except Exception:
+        return _RATE_LIMITED_MIN_DELAY_S
 
 # Request timeout
 _REQUEST_TIMEOUT_BUFFER_S = 12.0  # Request timeout buffer (seconds)
@@ -692,9 +725,9 @@ def _retry_delay_s_for_chat_completion(
     error: BaseException,
 ) -> float:
     status_code = _extract_error_status_code(error)
-    base_delay = min(_RETRY_BACKOFF_BASE_S, _RETRY_BACKOFF_MAX_S * (_RETRY_BACKOFF_MULTIPLIER ** max(0, int(attempt_index))))
+    base_delay = min(_get_retry_backoff_base(), _RETRY_BACKOFF_MAX_S * (_RETRY_BACKOFF_MULTIPLIER ** max(0, int(attempt_index))))
     if status_code == 429:
-        return max(_RATE_LIMITED_MIN_DELAY_S, base_delay)
+        return max(_get_rate_limited_min_delay(), base_delay)
     return max(_NON_RATE_LIMITED_MIN_DELAY_S, base_delay)
 
 
@@ -1558,7 +1591,7 @@ class AiOcrClient(OcrProvider):
         lowered_model = str(self.model or "").strip().lower()
         if "paddleocr-vl-1.5" in lowered_model:
             tuning = get_vendor_tuning(self.provider_id)
-            v15_default = max(default_timeout, tuning.predict_timeout_override or _PADDLE_VL15_PREDICT_TIMEOUT_S)
+            v15_default = max(default_timeout, tuning.predict_timeout_override or _get_paddle_predict_timeout())
             return max(
                 _PADDLE_MIN_PREDICT_TIMEOUT_S,
                 _env_float(

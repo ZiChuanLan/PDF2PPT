@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { MODEL_DOWNLOAD_POLL_INTERVAL_MS } from "@/lib/constants"
 import { toast } from "sonner"
 
 /**
@@ -85,7 +86,7 @@ export function useModelDownload(options?: {
       // Start polling
       pollTimerRef.current = setInterval(() => {
         void fetchStatus()
-      }, 1000)
+      }, MODEL_DOWNLOAD_POLL_INTERVAL_MS)
       // Immediate fetch
       void fetchStatus()
     } else if (!hasActiveDownloads && pollTimerRef.current) {

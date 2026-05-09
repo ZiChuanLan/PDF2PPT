@@ -83,43 +83,23 @@ def _try_load_measure_font(*, size_px: int, prefer_cjk: bool) -> Any | None:
     fall back to heuristic width factors.
     """
 
-    try:
-        from PIL import ImageFont
-    except Exception:
-        return None
+    from ...utils.fonts import load_pil_font
 
     key = (int(max(6, size_px)), bool(prefer_cjk))
     if key in _MEASURE_FONT_CACHE:
         return _MEASURE_FONT_CACHE[key]
 
-    candidates: list[str] = []
-    if prefer_cjk:
-        candidates.extend(
-            [
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            ]
-        )
-
-    # Latin fallbacks (Arial-like) for width estimation.
-    candidates.extend(
-        [
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
+    font, is_fallback = load_pil_font(
+        size_px=size_px,
+        prefer_cjk=prefer_cjk,
     )
 
-    for path in candidates:
-        try:
-            font = ImageFont.truetype(path, size=key[0])
-            _MEASURE_FONT_CACHE[key] = font
-            return font
-        except Exception:
-            continue
+    if is_fallback or font is None:
+        _MEASURE_FONT_CACHE[key] = None
+        return None
 
-    _MEASURE_FONT_CACHE[key] = None
-    return None
+    _MEASURE_FONT_CACHE[key] = font
+    return font
 
 
 def _measure_text_width_pt(

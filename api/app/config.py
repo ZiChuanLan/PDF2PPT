@@ -91,6 +91,55 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 60
     # Minimum free disk space (MB) required before accepting uploads
     min_disk_space_mb: int = 500
+    # -------------------------------------------------------------------
+    # Job timeout (seconds) — used as the RQ / inline-thread job timeout.
+    # When exceeded the worker is killed and the job is marked failed.
+    # Default: 3600 (1 hour).  Set via env JOB_TIMEOUT_S.
+    # -------------------------------------------------------------------
+    job_timeout_seconds: int = 3600
+
+    # -------------------------------------------------------------------
+    # OCR AI pipeline tunables — exposed as env vars so deployments can
+    # adjust retry / backoff / vendor timeouts without touching code.
+    # -------------------------------------------------------------------
+    # PaddleOCR-VL predict timeout (seconds).  Default 180 (3 minutes).
+    ocr_paddle_vl_predict_timeout_s: float = 180.0
+    # Base retry backoff for AI OCR calls (seconds).  Default 8.
+    ocr_ai_retry_backoff_base_s: float = 8.0
+    # Minimum delay after a rate-limited response (seconds).  Default 2.
+    ocr_ai_rate_limited_min_delay_s: float = 2.0
+    # OCR AI concurrency defaults & caps.
+    ocr_ai_page_concurrency_default: int = 1
+    ocr_ai_page_concurrency_max: int = 8
+    ocr_ai_block_concurrency_default: int = 1
+    ocr_ai_block_concurrency_max: int = 8
+    ocr_ai_rpm_default: int = 1
+    ocr_ai_rpm_max: int = 2000
+    ocr_ai_tpm_default: int = 1000
+    ocr_ai_tpm_max: int = 2_000_000
+    ocr_ai_max_retries_default: int = 0
+    ocr_ai_max_retries_max: int = 8
+
+    # -------------------------------------------------------------------
+    # Feature toggles
+    # -------------------------------------------------------------------
+    # Enable the AI layout assist stage (disabled by default).
+    enable_layout_assist: bool = False
+
+    # -------------------------------------------------------------------
+    # Font discovery
+    # -------------------------------------------------------------------
+    # Comma-separated extra font paths to search before the built-in
+    # platform-specific fallback lists (Linux / macOS / Windows).
+    extra_font_paths: str = ""
+
+    # -------------------------------------------------------------------
+    # JWT expiry overrides (configured here so the backend and frontend
+    # cookie maxAge can be kept in sync from a single env-var source).
+    # Keep these in sync with web/src/app/auth/callback/route.ts.
+    # -------------------------------------------------------------------
+    jwt_access_expire_minutes: int = 60
+    jwt_refresh_expire_days: int = 30
 
     class Config:
         env_file = ".env"

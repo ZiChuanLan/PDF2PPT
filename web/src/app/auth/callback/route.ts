@@ -75,6 +75,10 @@ export async function GET(request: NextRequest) {
     // This avoids relying on forwarding Set-Cookie headers from a
     // server-side fetch() response, which can be unreliable across
     // Node.js / undici versions.
+// ⚠️  BE SURE to keep these in sync with backend Settings:
+//     JWT_ACCESS_EXPIRE_MINUTES / JWT_REFRESH_EXPIRE_DAYS
+//     (api/app/config.py  +  api/app/auth.py).
+//     Defaults: access 60 min, refresh 30 days.
     const maxAgeAccess = 60 * 60 // 1 hour
     const maxAgeRefresh = 30 * 24 * 60 * 60 // 30 days
     const isSecure = request.nextUrl.protocol === "https:"

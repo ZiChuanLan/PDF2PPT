@@ -21,7 +21,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { apiFetch, createJobEventSource, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
-import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
+import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS, SSE_RECONNECT_BASE_MS } from "@/lib/constants"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
   AIOCR_CHAIN_MODE_LABELS,
@@ -478,13 +478,20 @@ export default function Home() {
 
     let mounted = true
     const sources = new Map<string, EventSource>()
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    // Track per-job reconnection attempts for exponential backoff.
+    const reconnectAttempts = new Map<string, number>()
 
-    for (const jid of activeJobIds) {
+    const MAX_BACKOFF_MS = 30_000
+
+    function setupSseForJob(jid: string): void {
       const es = createJobEventSource(jid)
       sources.set(jid, es)
 
       es.onmessage = async (event) => {
         if (!mounted) return
+        // Reset backoff on successful delivery.
+        reconnectAttempts.set(jid, 0)
         try {
           const data = JSON.parse(event.data)
           const status = data.status as JobStatusValue
@@ -521,6 +528,12 @@ export default function Home() {
             }
             es.close()
             sources.delete(jid)
+            // Clear any pending reconnect timer.
+            const existingTimer = timers.get(jid)
+            if (existingTimer) {
+              clearTimeout(existingTimer)
+              timers.delete(jid)
+            }
           }
         } catch {
           // JSON parse error — ignore
@@ -529,19 +542,50 @@ export default function Home() {
 
       es.onerror = () => {
         if (!mounted) return
+        es.close()
+        sources.delete(jid)
+
         setFileJobs((prev) =>
           prev.map((j) =>
             j.jobId === jid ? { ...j, pollError: "连接中断，正在重试..." } : j
           )
         )
-        // EventSource auto-reconnects; no manual retry needed
+
+        // Exponential backoff: SSE_RECONNECT_BASE_MS * 2^(attempts), capped at MAX_BACKOFF_MS.
+        const attempts = reconnectAttempts.get(jid) ?? 0
+        const nextAttempts = attempts + 1
+        reconnectAttempts.set(jid, nextAttempts)
+        const delay = Math.min(
+          SSE_RECONNECT_BASE_MS * Math.pow(2, nextAttempts - 1),
+          MAX_BACKOFF_MS,
+        )
+
+        // Clear any existing retry timer for this job.
+        const existingTimer = timers.get(jid)
+        if (existingTimer) {
+          clearTimeout(existingTimer)
+        }
+
+        const timer = setTimeout(() => {
+          if (!mounted) return
+          timers.delete(jid)
+          setupSseForJob(jid)
+        }, delay)
+        timers.set(jid, timer)
       }
+    }
+
+    for (const jid of activeJobIds) {
+      setupSseForJob(jid)
     }
 
     return () => {
       mounted = false
       for (const es of sources.values()) {
         es.close()
+      }
+      for (const timer of timers.values()) {
+        clearTimeout(timer)
       }
     }
   }, [activeJobIdsKey, fetchJobStatus])

@@ -105,29 +105,29 @@ _PADDLE_VL_MAX_SIDE_PX_HIGH = 6000      # upper bound
 # ---------------------------------------------------------------------------
 # Constants: OCR AI page / block concurrency
 # ---------------------------------------------------------------------------
-_OCR_AI_PAGE_CONCURRENCY_DEFAULT = 1    # default page concurrency
+_OCR_AI_PAGE_CONCURRENCY_DEFAULT = 1    # default page concurrency (overridden by Settings)
 _OCR_AI_PAGE_CONCURRENCY_LOW = 1        # minimum pages in parallel
 _OCR_AI_PAGE_CONCURRENCY_HIGH = 8       # maximum pages in parallel
 
-_OCR_AI_BLOCK_CONCURRENCY_DEFAULT = 1   # default block concurrency
+_OCR_AI_BLOCK_CONCURRENCY_DEFAULT = 1   # default block concurrency (overridden by Settings)
 _OCR_AI_BLOCK_CONCURRENCY_LOW = 1       # minimum blocks in parallel
 _OCR_AI_BLOCK_CONCURRENCY_HIGH = 8      # maximum blocks in parallel
 
 # ---------------------------------------------------------------------------
 # Constants: OCR AI rate limits (RPM / TPM)
 # ---------------------------------------------------------------------------
-_OCR_AI_RPM_DEFAULT = 1             # default requests per minute
+_OCR_AI_RPM_DEFAULT = 1             # default requests per minute (overridden by Settings)
 _OCR_AI_RPM_LOW = 1                 # minimum RPM
 _OCR_AI_RPM_HIGH = 2000             # maximum RPM
 
-_OCR_AI_TPM_DEFAULT = 1000          # default tokens per minute
+_OCR_AI_TPM_DEFAULT = 1000          # default tokens per minute (overridden by Settings)
 _OCR_AI_TPM_LOW = 1                 # minimum TPM
 _OCR_AI_TPM_HIGH = 2_000_000        # maximum TPM
 
 # ---------------------------------------------------------------------------
 # Constants: OCR AI max retries
 # ---------------------------------------------------------------------------
-_OCR_AI_MAX_RETRIES_DEFAULT = 0     # default max retries
+_OCR_AI_MAX_RETRIES_DEFAULT = 0     # default max retries (overridden by Settings)
 _OCR_AI_MAX_RETRIES_LOW = 0         # minimum retries
 _OCR_AI_MAX_RETRIES_HIGH = 8        # maximum retries
 
@@ -210,6 +210,27 @@ def get_redis_connection() -> Any:
 
 def _job_dir(job_id: str) -> Path:
     return get_job_dir(job_id)
+
+
+def _resolve_ocr_ai_concurrency_defaults():
+    """Return effective OCR AI concurrency / rate-limit defaults from Settings.
+
+    Module-level constants are used as fallbacks; Settings values take
+    precedence when configured via environment variables.
+    """
+    settings = get_settings()
+    return {
+        "page_concurrency_default": settings.ocr_ai_page_concurrency_default,
+        "page_concurrency_max": settings.ocr_ai_page_concurrency_max,
+        "block_concurrency_default": settings.ocr_ai_block_concurrency_default,
+        "block_concurrency_max": settings.ocr_ai_block_concurrency_max,
+        "rpm_default": settings.ocr_ai_rpm_default,
+        "rpm_max": settings.ocr_ai_rpm_max,
+        "tpm_default": settings.ocr_ai_tpm_default,
+        "tpm_max": settings.ocr_ai_tpm_max,
+        "max_retries_default": settings.ocr_ai_max_retries_default,
+        "max_retries_max": settings.ocr_ai_max_retries_max,
+    }
 
 
 def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
@@ -344,13 +365,15 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
         job_timeout,
     )
     # Product-side AI layout assist has been retired for speed-focused runs.
-    enable_layout_assist = False
+    # It can be re-enabled via ENABLE_LAYOUT_ASSIST=true env var.
+    settings = get_settings()
+    enable_layout_assist = settings.enable_layout_assist
     layout_assist_apply_image_regions = False
     redis_service = get_redis_service()
     set_job_id(job_id)
     set_job_stage(None)
-    settings = get_settings()
     perf_settings = RuntimePerformanceSettings.from_settings(settings)
+    ocr_concurrency = _resolve_ocr_ai_concurrency_defaults()
     default_ocr_render_dpi = int(perf_settings.ocr_render_dpi)
     scanned_render_dpi = int(perf_settings.scanned_render_dpi)
     keepalive_interval_s = float(perf_settings.keepalive_interval_s)
@@ -517,39 +540,39 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
     )
     normalized_ocr_ai_page_concurrency = _normalize_int(
         ocr_ai_page_concurrency,
-        default=_OCR_AI_PAGE_CONCURRENCY_DEFAULT,
+        default=ocr_concurrency["page_concurrency_default"],
         low=_OCR_AI_PAGE_CONCURRENCY_LOW,
-        high=_OCR_AI_PAGE_CONCURRENCY_HIGH,
+        high=ocr_concurrency["page_concurrency_max"],
     )
     normalized_ocr_ai_block_concurrency: int | None = None
     if ocr_ai_block_concurrency is not None:
         normalized_ocr_ai_block_concurrency = _normalize_int(
             ocr_ai_block_concurrency,
-            default=_OCR_AI_BLOCK_CONCURRENCY_DEFAULT,
+            default=ocr_concurrency["block_concurrency_default"],
             low=_OCR_AI_BLOCK_CONCURRENCY_LOW,
-            high=_OCR_AI_BLOCK_CONCURRENCY_HIGH,
+            high=ocr_concurrency["block_concurrency_max"],
         )
     normalized_ocr_ai_requests_per_minute: int | None = None
     if ocr_ai_requests_per_minute is not None:
         normalized_ocr_ai_requests_per_minute = _normalize_int(
             ocr_ai_requests_per_minute,
-            default=_OCR_AI_RPM_DEFAULT,
+            default=ocr_concurrency["rpm_default"],
             low=_OCR_AI_RPM_LOW,
-            high=_OCR_AI_RPM_HIGH,
+            high=ocr_concurrency["rpm_max"],
         )
     normalized_ocr_ai_tokens_per_minute: int | None = None
     if ocr_ai_tokens_per_minute is not None:
         normalized_ocr_ai_tokens_per_minute = _normalize_int(
             ocr_ai_tokens_per_minute,
-            default=_OCR_AI_TPM_DEFAULT,
+            default=ocr_concurrency["tpm_default"],
             low=_OCR_AI_TPM_LOW,
-            high=_OCR_AI_TPM_HIGH,
+            high=ocr_concurrency["tpm_max"],
         )
     normalized_ocr_ai_max_retries = _normalize_int(
         ocr_ai_max_retries,
-        default=_OCR_AI_MAX_RETRIES_DEFAULT,
+        default=ocr_concurrency["max_retries_default"],
         low=_OCR_AI_MAX_RETRIES_LOW,
-        high=_OCR_AI_MAX_RETRIES_HIGH,
+        high=ocr_concurrency["max_retries_max"],
     )
 
     try:
@@ -687,6 +710,14 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                 ocr_ai_provider = "auto"
 
         if parse_provider_id == "mineru":
+            # mineru_hybrid_ocr is deprecated and ignored.
+            # Log a one-time warning if someone still passes it.
+            if mineru_hybrid_ocr is not None:
+                logger.warning(
+                    "mineru_hybrid_ocr is deprecated and ignored (job %s); "
+                    "MinerU no longer layers local hybrid OCR alignment.",
+                    job_id,
+                )
 
             def _mineru_poll_check() -> None:
                 _abort_if_cancelled(stage=JobStage.parsing, message="Job cancelled")

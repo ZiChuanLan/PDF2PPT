@@ -29,39 +29,13 @@ def _is_layout_parse_source(source_id: Any) -> bool:
 
 
 def _load_preview_font(*, size_px: int, prefer_cjk: bool) -> Any:
-    from PIL import ImageFont
+    from ...utils.fonts import load_pil_font
 
-    key = (int(max(6, size_px)), bool(prefer_cjk))
-    cached = _PREVIEW_FONT_CACHE.get(key)
-    if cached is not None:
-        return cached
-
-    candidates: list[str] = []
-    if prefer_cjk:
-        candidates.extend(
-            [
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            ]
-        )
-    candidates.extend(
-        [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        ]
+    font, _ = load_pil_font(
+        size_px=size_px,
+        prefer_cjk=prefer_cjk,
+        cache=_PREVIEW_FONT_CACHE,
     )
-
-    for path in candidates:
-        try:
-            font = ImageFont.truetype(path, size=key[0])
-            _PREVIEW_FONT_CACHE[key] = font
-            return font
-        except Exception:
-            continue
-
-    font = ImageFont.load_default()
-    _PREVIEW_FONT_CACHE[key] = font
     return font
 
 

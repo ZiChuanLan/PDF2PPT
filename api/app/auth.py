@@ -157,12 +157,28 @@ async def fetch_user_info(access_token: str) -> Optional[dict]:
             return None
 
 
+def _get_access_token_expire_minutes() -> int:
+    """Return access token expiry in minutes from Settings (env-overridable).
+
+    Default: 60 minutes.  Override via JWT_ACCESS_EXPIRE_MINUTES env var.
+    """
+    return get_settings().jwt_access_expire_minutes
+
+
+def _get_refresh_token_expire_days() -> int:
+    """Return refresh token expiry in days from Settings (env-overridable).
+
+    Default: 30 days.  Override via JWT_REFRESH_EXPIRE_DAYS env var.
+    """
+    return get_settings().jwt_refresh_expire_days
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token."""
     settings = get_settings()
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta or timedelta(minutes=_get_access_token_expire_minutes())
     )
     to_encode.update({"exp": expire, "type": "access"})
     return jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
@@ -173,7 +189,7 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
     settings = get_settings()
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_delta or timedelta(days=_get_refresh_token_expire_days())
     )
     to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
@@ -198,7 +214,7 @@ def create_token_pair(user_id: int, role: str) -> dict:
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "expires_in": _get_access_token_expire_minutes() * 60,
     }
 
 

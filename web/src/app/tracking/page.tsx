@@ -340,7 +340,7 @@ function TrackingPageContent() {
     void fetchJobs(false)
     const timer = window.setInterval(() => {
       void fetchJobs(true)
-    }, 3000)
+    }, JOB_POLL_INTERVAL_MS)
     return () => window.clearInterval(timer)
   }, [fetchJobs])
 

@@ -297,32 +297,13 @@ def _load_ai_ocr_probe_font(*, size_px: int, prefer_cjk: bool) -> tuple[Any, boo
     if cached is not None:
         return cached
 
-    candidates: list[str] = []
-    if prefer_cjk:
-        candidates.extend(
-            [
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            ]
-        )
-    candidates.extend(
-        [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        ]
+    from ..utils.fonts import load_pil_font
+
+    font, is_fallback = load_pil_font(
+        size_px=size_px,
+        prefer_cjk=prefer_cjk,
     )
-
-    for path in candidates:
-        try:
-            font = ImageFont.truetype(path, size=key[0])
-            result = (font, False)
-            _AI_OCR_PROBE_FONT_CACHE[key] = result
-            return result
-        except Exception:
-            continue
-
-    result = (ImageFont.load_default(), True)
+    result: tuple[Any, bool] = (font, is_fallback)
     _AI_OCR_PROBE_FONT_CACHE[key] = result
     return result
 
@@ -1163,7 +1144,7 @@ async def create_job(
                     "scanned_image_region_max_aspect_ratio": scanned_image_region_max_aspect_ratio,
                     "ocr_ai_linebreak_assist": ocr_ai_linebreak_assist,
                     "ocr_strict_mode": ocr_strict_mode,
-                    "job_timeout": "1h",
+                    "job_timeout": f"{settings.job_timeout_seconds}s",
                 },
                 daemon=True,
             ).start()
@@ -1236,7 +1217,7 @@ async def create_job(
                 ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
                 ocr_strict_mode=ocr_strict_mode,
                 job_id=job_id,
-                job_timeout="1h",
+                job_timeout=f"{settings.job_timeout_seconds}s",
                 # Avoid leaking API keys in worker logs. RQ logs `job.description`
                 # by default, which otherwise includes the full function call
                 # with kwargs.
@@ -1495,7 +1476,7 @@ async def create_job_v2(
             kwargs.pop(key_name, None)
 
         # Add job_timeout to kwargs
-        kwargs["job_timeout"] = "1h"
+        kwargs["job_timeout"] = f"{settings.job_timeout_seconds}s"
 
         # Queue job for processing
         if redis_service.is_memory_backend():
