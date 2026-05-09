@@ -1,7 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec overview — auth patterns, error handling, conventions"}
-{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Auth flow patterns — JWT, cookies, user creation, relevant to setup API"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec overview — conventions, directory structure"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns — shadcn/ui usage, page structure for setup wizard"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook patterns — for useSettings and custom hook integration"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "State patterns — for wizard step state management"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer patterns — API + frontend coordination for setup flow"}
