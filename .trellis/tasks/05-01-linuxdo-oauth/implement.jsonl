@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec overview - component patterns, directory structure, state management conventions"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for login page, admin page, user menu components"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Auth state management patterns, user context, session handling"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript type definitions for user model, auth types"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Where to place new pages (/login, /admin), components, lib files"}
-{"file": ".trellis/tasks/05-01-linuxdo-oauth/research/linuxdo-oauth-api.md", "reason": "LinuxDo OAuth 2.0 endpoints, token flow, user info response format"}

@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec for quality verification - conventions and patterns"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code quality standards, lint rules, type safety requirements"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component structure and naming conventions for new pages"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Auth state patterns - verify correct context/provider usage"}
-{"file": ".trellis/tasks/05-01-linuxdo-oauth/research/linuxdo-oauth-api.md", "reason": "Verify OAuth flow implementation matches API spec"}
