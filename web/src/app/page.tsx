@@ -19,9 +19,9 @@ import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { apiFetch, createJobEventSource, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
+import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
-import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS, SSE_RECONNECT_BASE_MS } from "@/lib/constants"
+import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
   AIOCR_CHAIN_MODE_LABELS,
@@ -46,7 +46,6 @@ import {
   TERMINAL_JOB_STATUSES,
   type JobListItem,
   type JobListResponse,
-  type JobStatusResponse,
   type JobStatusValue,
 } from "@/lib/job-status"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +59,8 @@ import { Select } from "@/components/ui/select"
 import { useUploadSession } from "@/components/upload-session-provider"
 import { ModelStatusBadge } from "@/components/model-status-badge"
 import { useModelStatus, useEffectiveModelStatus } from "@/hooks/use-model-status"
+import { useSSEJobTracking } from "@/hooks/use-sse-job-tracking"
+import type { FileJobState } from "@/lib/job-types"
 
 type JobApiErrorBody = {
   code?: string
@@ -69,15 +70,6 @@ type JobApiErrorBody = {
 type JobStatusFetchError = Error & {
   statusCode?: number
   errorCode?: string
-}
-
-type FileJobState = {
-  file: File
-  jobId: string | null
-  status: JobStatusResponse | null
-  error: string | null
-  pollError: string | null
-  isSubmitting: boolean
 }
 
 const HOME_ACTIVE_JOB_STORAGE_KEY = "ppt-opencode:home:active-job-id"
@@ -459,136 +451,8 @@ export default function Home() {
   const completedCount = fileJobs.filter((j) => j.status?.status === "completed").length
   const failedCount = fileJobs.filter((j) => j.error || j.status?.status === "failed").length
 
-  // Stable list of active job IDs for SSE dependency
-  const activeJobIdsKey = React.useMemo(
-    () =>
-      fileJobs
-        .filter(
-          (j) => j.jobId && j.isSubmitting === false && (!j.status || !TERMINAL_JOB_STATUSES.has(j.status.status))
-        )
-        .map((j) => j.jobId!)
-        .join(","),
-    [fileJobs]
-  )
-
   // SSE: subscribe to active job events
-  React.useEffect(() => {
-    const activeJobIds = activeJobIdsKey.split(",").filter(Boolean)
-    if (activeJobIds.length === 0) return
-
-    let mounted = true
-    const sources = new Map<string, EventSource>()
-    const timers = new Map<string, ReturnType<typeof setTimeout>>()
-    // Track per-job reconnection attempts for exponential backoff.
-    const reconnectAttempts = new Map<string, number>()
-
-    const MAX_BACKOFF_MS = 30_000
-
-    function setupSseForJob(jid: string): void {
-      const es = createJobEventSource(jid)
-      sources.set(jid, es)
-
-      es.onmessage = async (event) => {
-        if (!mounted) return
-        // Reset backoff on successful delivery.
-        reconnectAttempts.set(jid, 0)
-        try {
-          const data = JSON.parse(event.data)
-          const status = data.status as JobStatusValue
-          const stage = data.stage as string
-          const progress = data.progress as number
-          const message = data.message as string | null
-          const error = data.error as { code?: string; message?: string } | null
-
-          setFileJobs((prev) =>
-            prev.map((j) => {
-              if (j.jobId !== jid) return j
-              const updated: FileJobState = {
-                ...j,
-                pollError: null,
-                status: j.status
-                  ? { ...j.status, status, stage, progress, message: message ?? j.status.message, error: error ?? j.status.error }
-                  : { job_id: jid, status, stage, progress, created_at: "", expires_at: "", message, error, debug_events: [] },
-              }
-              return updated
-            })
-          )
-
-          // On terminal state, fetch full response (includes debug_events)
-          if (TERMINAL_JOB_STATUSES.has(status)) {
-            try {
-              const full = await fetchJobStatus(jid)
-              if (mounted) {
-                setFileJobs((prev) =>
-                  prev.map((j) => (j.jobId === jid ? { ...j, status: full } : j))
-                )
-              }
-            } catch {
-              // Best-effort; SSE data already has the essentials
-            }
-            es.close()
-            sources.delete(jid)
-            // Clear any pending reconnect timer.
-            const existingTimer = timers.get(jid)
-            if (existingTimer) {
-              clearTimeout(existingTimer)
-              timers.delete(jid)
-            }
-          }
-        } catch {
-          // JSON parse error — ignore
-        }
-      }
-
-      es.onerror = () => {
-        if (!mounted) return
-        es.close()
-        sources.delete(jid)
-
-        setFileJobs((prev) =>
-          prev.map((j) =>
-            j.jobId === jid ? { ...j, pollError: "连接中断，正在重试..." } : j
-          )
-        )
-
-        // Exponential backoff: SSE_RECONNECT_BASE_MS * 2^(attempts), capped at MAX_BACKOFF_MS.
-        const attempts = reconnectAttempts.get(jid) ?? 0
-        const nextAttempts = attempts + 1
-        reconnectAttempts.set(jid, nextAttempts)
-        const delay = Math.min(
-          SSE_RECONNECT_BASE_MS * Math.pow(2, nextAttempts - 1),
-          MAX_BACKOFF_MS,
-        )
-
-        // Clear any existing retry timer for this job.
-        const existingTimer = timers.get(jid)
-        if (existingTimer) {
-          clearTimeout(existingTimer)
-        }
-
-        const timer = setTimeout(() => {
-          if (!mounted) return
-          timers.delete(jid)
-          setupSseForJob(jid)
-        }, delay)
-        timers.set(jid, timer)
-      }
-    }
-
-    for (const jid of activeJobIds) {
-      setupSseForJob(jid)
-    }
-
-    return () => {
-      mounted = false
-      for (const es of sources.values()) {
-        es.close()
-      }
-      for (const timer of timers.values()) {
-        clearTimeout(timer)
-      }
-    }
-  }, [activeJobIdsKey, fetchJobStatus])
+  useSSEJobTracking(fileJobs, setFileJobs, fetchJobStatus);
 
   // Toast on terminal states
   React.useEffect(() => {
