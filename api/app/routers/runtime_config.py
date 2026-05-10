@@ -53,6 +53,13 @@ class RuntimeConfigValues(BaseModel):
     OCR_AI_RPM_MAX: int = Field(default=2000, description="Max RPM cap")
     OCR_AI_TPM_MAX: int = Field(default=2_000_000, description="Max TPM cap")
     OCR_AI_MAX_RETRIES_MAX: int = Field(default=8, description="Max retries cap")
+    OCR_AI_PAGE_CONCURRENCY_DEFAULT: int = Field(default=1, description="Default page concurrency")
+    OCR_AI_BLOCK_CONCURRENCY_DEFAULT: int = Field(default=1, description="Default block concurrency")
+    OCR_AI_RPM_DEFAULT: int = Field(default=1, description="Default RPM")
+    OCR_AI_TPM_DEFAULT: int = Field(default=1000, description="Default TPM")
+    OCR_AI_MAX_RETRIES_DEFAULT: int = Field(default=0, description="Default max retries")
+    OCR_MAX_CONSECUTIVE_TIMEOUTS: int = Field(default=2, description="Circuit-breaker: consecutive timeout limit")
+    OCR_IMAGE_REGION_TIMEOUT_S: int = Field(default=12, description="AI image-region detection timeout (seconds)")
 
 
 class RuntimeConfigResponse(BaseModel):
@@ -146,6 +153,13 @@ _FIELD_ENV_MAP: dict[str, tuple[str, type]] = {
     "OCR_AI_RPM_MAX": ("OCR_AI_RPM_MAX", int),
     "OCR_AI_TPM_MAX": ("OCR_AI_TPM_MAX", int),
     "OCR_AI_MAX_RETRIES_MAX": ("OCR_AI_MAX_RETRIES_MAX", int),
+    "OCR_AI_PAGE_CONCURRENCY_DEFAULT": ("OCR_AI_PAGE_CONCURRENCY_DEFAULT", int),
+    "OCR_AI_BLOCK_CONCURRENCY_DEFAULT": ("OCR_AI_BLOCK_CONCURRENCY_DEFAULT", int),
+    "OCR_AI_RPM_DEFAULT": ("OCR_AI_RPM_DEFAULT", int),
+    "OCR_AI_TPM_DEFAULT": ("OCR_AI_TPM_DEFAULT", int),
+    "OCR_AI_MAX_RETRIES_DEFAULT": ("OCR_AI_MAX_RETRIES_DEFAULT", int),
+    "OCR_MAX_CONSECUTIVE_TIMEOUTS": ("OCR_MAX_CONSECUTIVE_TIMEOUTS", int),
+    "OCR_IMAGE_REGION_TIMEOUT_S": ("OCR_IMAGE_REGION_TIMEOUT_S", int),
 }
 
 
@@ -166,6 +180,13 @@ def _build_get_response() -> RuntimeConfigResponse:
         OCR_AI_RPM_MAX=settings.ocr_ai_rpm_max,
         OCR_AI_TPM_MAX=settings.ocr_ai_tpm_max,
         OCR_AI_MAX_RETRIES_MAX=settings.ocr_ai_max_retries_max,
+        OCR_AI_PAGE_CONCURRENCY_DEFAULT=settings.ocr_ai_page_concurrency_default,
+        OCR_AI_BLOCK_CONCURRENCY_DEFAULT=settings.ocr_ai_block_concurrency_default,
+        OCR_AI_RPM_DEFAULT=settings.ocr_ai_rpm_default,
+        OCR_AI_TPM_DEFAULT=settings.ocr_ai_tpm_default,
+        OCR_AI_MAX_RETRIES_DEFAULT=settings.ocr_ai_max_retries_default,
+        OCR_MAX_CONSECUTIVE_TIMEOUTS=settings.ocr_max_consecutive_timeouts,
+        OCR_IMAGE_REGION_TIMEOUT_S=settings.ocr_image_region_timeout_s,
     )
     return RuntimeConfigResponse(config=config)
 

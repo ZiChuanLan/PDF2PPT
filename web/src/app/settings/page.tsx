@@ -336,6 +336,13 @@ interface RuntimeConfig {
   OCR_AI_RPM_MAX: number
   OCR_AI_TPM_MAX: number
   OCR_AI_MAX_RETRIES_MAX: number
+  OCR_AI_PAGE_CONCURRENCY_DEFAULT: number
+  OCR_AI_BLOCK_CONCURRENCY_DEFAULT: number
+  OCR_AI_RPM_DEFAULT: number
+  OCR_AI_TPM_DEFAULT: number
+  OCR_AI_MAX_RETRIES_DEFAULT: number
+  OCR_MAX_CONSECUTIVE_TIMEOUTS: number
+  OCR_IMAGE_REGION_TIMEOUT_S: number
 }
 
 const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
@@ -352,6 +359,13 @@ const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   OCR_AI_RPM_MAX: 2000,
   OCR_AI_TPM_MAX: 2000000,
   OCR_AI_MAX_RETRIES_MAX: 8,
+  OCR_AI_PAGE_CONCURRENCY_DEFAULT: 1,
+  OCR_AI_BLOCK_CONCURRENCY_DEFAULT: 1,
+  OCR_AI_RPM_DEFAULT: 1,
+  OCR_AI_TPM_DEFAULT: 1000,
+  OCR_AI_MAX_RETRIES_DEFAULT: 0,
+  OCR_MAX_CONSECUTIVE_TIMEOUTS: 2,
+  OCR_IMAGE_REGION_TIMEOUT_S: 12,
 }
 
 function RuntimeConfigSection() {
@@ -568,6 +582,65 @@ function RuntimeConfigSection() {
                 hint="单次请求最大重试次数"
                 value={config.OCR_AI_MAX_RETRIES_MAX}
                 onChange={(v) => updateField("OCR_AI_MAX_RETRIES_MAX", v)}
+              />
+            </div>
+
+            {/* Concurrency Defaults */}
+            <p className="text-[11px] font-medium text-muted-foreground mt-2 mb-[-6px]">并发默认值 (用户不指定时生效)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldBlock
+                id="runtime-page-concurrency-default"
+                label="AI OCR 默认页面并发"
+                hint="未指定时的页面并发数"
+                value={config.OCR_AI_PAGE_CONCURRENCY_DEFAULT}
+                onChange={(v) => updateField("OCR_AI_PAGE_CONCURRENCY_DEFAULT", v)}
+              />
+              <FieldBlock
+                id="runtime-block-concurrency-default"
+                label="AI OCR 默认块并发"
+                hint="未指定时的文字块并发数"
+                value={config.OCR_AI_BLOCK_CONCURRENCY_DEFAULT}
+                onChange={(v) => updateField("OCR_AI_BLOCK_CONCURRENCY_DEFAULT", v)}
+              />
+              <FieldBlock
+                id="runtime-rpm-default"
+                label="AI OCR 默认 RPM"
+                hint="未指定时的每分钟最大请求"
+                value={config.OCR_AI_RPM_DEFAULT}
+                onChange={(v) => updateField("OCR_AI_RPM_DEFAULT", v)}
+              />
+              <FieldBlock
+                id="runtime-tpm-default"
+                label="AI OCR 默认 TPM"
+                hint="未指定时的每分钟最大 token"
+                value={config.OCR_AI_TPM_DEFAULT}
+                onChange={(v) => updateField("OCR_AI_TPM_DEFAULT", v)}
+              />
+              <FieldBlock
+                id="runtime-max-retries-default"
+                label="AI OCR 默认重试次数"
+                hint="未指定时的最大重试次数"
+                value={config.OCR_AI_MAX_RETRIES_DEFAULT}
+                onChange={(v) => updateField("OCR_AI_MAX_RETRIES_DEFAULT", v)}
+              />
+            </div>
+
+            {/* OCR Protection */}
+            <p className="text-[11px] font-medium text-muted-foreground mt-2 mb-[-6px]">OCR 保护机制</p>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldBlock
+                id="runtime-max-consecutive-timeouts"
+                label="OCR 最大连续超时"
+                hint="连续超时自动熔断"
+                value={config.OCR_MAX_CONSECUTIVE_TIMEOUTS}
+                onChange={(v) => updateField("OCR_MAX_CONSECUTIVE_TIMEOUTS", v)}
+              />
+              <FieldBlock
+                id="runtime-image-region-timeout"
+                label="图片区域检测超时 (秒)"
+                hint="单次 AI 图片区域识别超时"
+                value={config.OCR_IMAGE_REGION_TIMEOUT_S}
+                onChange={(v) => updateField("OCR_IMAGE_REGION_TIMEOUT_S", v)}
               />
             </div>
 

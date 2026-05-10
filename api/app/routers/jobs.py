@@ -80,6 +80,27 @@ def _normalize_upload_content_type(value: str | None) -> str:
     return str(value or "").split(";", 1)[0].strip().lower()
 
 
+def _submit_job(job_id: str, kwargs: dict[str, Any]) -> None:
+    """Submit a job for processing via Thread (memory) or RQ (Redis)."""
+    redis_service = get_redis_service()
+    if redis_service.is_memory_backend():
+        threading.Thread(
+            target=process_pdf_job,
+            kwargs={"job_id": job_id, **kwargs},
+            daemon=True,
+        ).start()
+    else:
+        redis_conn = get_redis_connection()
+        queue = Queue(connection=redis_conn)
+        queue.enqueue(
+            "app.worker.process_pdf_job",
+            job_id,
+            **kwargs,
+            job_id=job_id,
+            description=f"process_pdf_job(job_id={job_id})",
+        )
+
+
 def _classify_upload_kind(*, filename: str, content_type: str | None) -> str | None:
     suffix = Path(filename or "").suffix.lower()
     normalized_content_type = _normalize_upload_content_type(content_type)
@@ -1081,91 +1102,15 @@ async def create_job(
             redis_service.store_job_secrets(job_id, secrets)
 
         # Queue job for processing
-        if redis_service.is_memory_backend():
-            threading.Thread(
-                target=process_pdf_job,
-                kwargs={
-                    "job_id": job_id,
-                    "enable_ocr": enable_ocr,
-                    "retain_process_artifacts": retain_process_artifacts,
-                    "remove_footer_notebooklm": remove_footer_notebooklm,
-                    "enable_layout_assist": enable_layout_assist,
-                    "layout_assist_apply_image_regions": layout_assist_apply_image_regions,
-                    "provider": normalized_options.provider,
-                    # Sensitive keys stored separately in Redis (see store_job_secrets).
-                    # Worker retrieves them by job_id to avoid exposing in kwargs.
-                    "api_key": None,
-                    "baidu_doc_parse_type": normalized_options.baidu_doc_parse_type,
-                    "base_url": base_url,
-                    "model": model,
-                    "page_start": page_start,
-                    "page_end": page_end,
-                    "parse_provider": normalized_options.parse_provider,
-                    "mineru_api_token": None,
-                    "mineru_base_url": mineru_base_url,
-                    "mineru_model_version": mineru_model_version,
-                    "mineru_enable_formula": mineru_enable_formula,
-                    "mineru_enable_table": mineru_enable_table,
-                    "mineru_language": mineru_language,
-                    "mineru_is_ocr": mineru_is_ocr,
-                    "mineru_hybrid_ocr": mineru_hybrid_ocr,
-                    "ocr_provider": normalized_options.ocr_provider,
-                    "ocr_baidu_app_id": ocr_baidu_app_id,
-                    "ocr_baidu_api_key": None,
-                    "ocr_baidu_secret_key": None,
-                    "ocr_tesseract_min_confidence": ocr_tesseract_min_confidence,
-                    "ocr_tesseract_language": ocr_tesseract_language,
-                    "ocr_ai_api_key": None,
-                    "ocr_ai_provider": normalized_options.ocr_ai_provider,
-                    "ocr_ai_base_url": ocr_ai_base_url,
-                    "ocr_ai_model": ocr_ai_model,
-                    "ocr_ai_chain_mode": normalized_options.ocr_ai_chain_mode,
-                    "ocr_ai_layout_model": normalized_options.ocr_ai_layout_model,
-                    "ocr_ai_prompt_preset": ocr_ai_prompt_preset,
-                    "ocr_ai_direct_prompt_override": ocr_ai_direct_prompt_override,
-                    "ocr_ai_layout_block_prompt_override": ocr_ai_layout_block_prompt_override,
-                    "ocr_ai_image_region_prompt_override": ocr_ai_image_region_prompt_override,
-                    "ocr_paddle_vl_docparser_max_side_px": ocr_paddle_vl_docparser_max_side_px,
-                    "ocr_ai_page_concurrency": ocr_ai_page_concurrency,
-                    "ocr_ai_block_concurrency": ocr_ai_block_concurrency,
-                    "ocr_ai_requests_per_minute": ocr_ai_requests_per_minute,
-                    "ocr_ai_tokens_per_minute": ocr_ai_tokens_per_minute,
-                    "ocr_ai_max_retries": ocr_ai_max_retries,
-                    "ocr_render_dpi": ocr_render_dpi,
-                    "ocr_geometry_mode": normalized_options.ocr_geometry_mode,
-                    "text_erase_mode": normalized_options.text_erase_mode,
-                    "scanned_page_mode": normalized_options.scanned_page_mode,
-                    "ppt_generation_mode": normalized_options.ppt_generation_mode,
-                    "image_bg_clear_expand_min_pt": image_bg_clear_expand_min_pt,
-                    "image_bg_clear_expand_max_pt": image_bg_clear_expand_max_pt,
-                    "image_bg_clear_expand_ratio": image_bg_clear_expand_ratio,
-                    "scanned_image_region_min_area_ratio": scanned_image_region_min_area_ratio,
-                    "scanned_image_region_max_area_ratio": scanned_image_region_max_area_ratio,
-                    "scanned_image_region_max_aspect_ratio": scanned_image_region_max_aspect_ratio,
-                    "ocr_ai_linebreak_assist": ocr_ai_linebreak_assist,
-                    "ocr_strict_mode": ocr_strict_mode,
-                    "job_timeout": f"{settings.job_timeout_seconds}s",
-                },
-                daemon=True,
-            ).start()
-        else:
-            redis_conn = get_redis_connection()
-            queue = Queue(connection=redis_conn)
-            queue.enqueue(
-                "app.worker.process_pdf_job",
-                # NOTE: rq.Queue.enqueue reserves the kwarg name `job_id` for the
-                # RQ job identifier, so passing `job_id=...` does NOT forward it to
-                # the function. We pass our conversion job_id as a positional arg,
-                # and also set the RQ job id to match for easier debugging.
-                job_id,
+        _submit_job(
+            job_id,
+            dict(
                 enable_ocr=enable_ocr,
                 retain_process_artifacts=retain_process_artifacts,
                 remove_footer_notebooklm=remove_footer_notebooklm,
                 enable_layout_assist=enable_layout_assist,
                 layout_assist_apply_image_regions=layout_assist_apply_image_regions,
                 provider=normalized_options.provider,
-                # Sensitive keys stored separately in Redis (see store_job_secrets).
-                # Worker retrieves them by job_id to avoid exposing in RQ kwargs.
                 api_key=None,
                 baidu_doc_parse_type=normalized_options.baidu_doc_parse_type,
                 base_url=base_url,
@@ -1216,13 +1161,9 @@ async def create_job(
                 scanned_image_region_max_aspect_ratio=scanned_image_region_max_aspect_ratio,
                 ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
                 ocr_strict_mode=ocr_strict_mode,
-                job_id=job_id,
                 job_timeout=f"{settings.job_timeout_seconds}s",
-                # Avoid leaking API keys in worker logs. RQ logs `job.description`
-                # by default, which otherwise includes the full function call
-                # with kwargs.
-                description=f"process_pdf_job(job_id={job_id})",
-            )
+            ),
+        )
 
         logger.info("Job %s created and queued from %s upload", job_id, upload_kind)
 
@@ -1479,22 +1420,7 @@ async def create_job_v2(
         kwargs["job_timeout"] = f"{settings.job_timeout_seconds}s"
 
         # Queue job for processing
-        if redis_service.is_memory_backend():
-            threading.Thread(
-                target=process_pdf_job,
-                kwargs={"job_id": job_id, **kwargs},
-                daemon=True,
-            ).start()
-        else:
-            redis_conn = get_redis_connection()
-            queue = Queue(connection=redis_conn)
-            queue.enqueue(
-                "app.worker.process_pdf_job",
-                job_id,
-                **kwargs,
-                job_id=job_id,
-                description=f"process_pdf_job(job_id={job_id})",
-            )
+        _submit_job(job_id, kwargs)
 
         logger.info("Job %s created and queued via v2 endpoint", job_id)
 
