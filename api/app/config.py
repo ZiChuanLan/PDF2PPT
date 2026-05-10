@@ -134,6 +134,21 @@ class Settings(BaseSettings):
     extra_font_paths: str = ""
 
     # -------------------------------------------------------------------
+    # AI OCR timeout / tuning (P0)
+    # -------------------------------------------------------------------
+    # PaddleOCR-VL DocParser: max side pixels for downscaling. 2200 is the
+    # sweet spot that balances OCR accuracy vs. API latency / token cost.
+    # Also defined in local_providers / result_parsing — this is the canonical
+    # env-overridable source.
+    ocr_paddle_vl_docparser_max_side_px: int = 2200
+    # PaddleOCR-VL DocParser: explicit max-pixel override (integer pixels).
+    # When set, bypasses the side-px-based max-pixel derivation.  Leave empty
+    # to auto-derive from max_side_px.
+    ocr_paddle_vl_docparser_max_pixels: str = ""
+    # AiOcrTextRefiner chat-completion timeout (seconds).  Default 60.
+    ocr_ai_text_refiner_timeout_s: float = 60.0
+
+    # -------------------------------------------------------------------
     # JWT expiry overrides (configured here so the backend and frontend
     # cookie maxAge can be kept in sync from a single env-var source).
     # Keep these in sync with web/src/app/auth/callback/route.ts.

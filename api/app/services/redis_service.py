@@ -37,8 +37,11 @@ class _InMemoryRedis:
     Only supports the commands this project uses:
     - get
     - setex
+    - incr
+    - ttl
     - delete
     - keys (prefix*)
+    - pipeline
     """
 
     def __init__(self) -> None:
@@ -68,6 +71,31 @@ class _InMemoryRedis:
             entry = self._data.get(str(key))
             return entry.value if entry else None
 
+    def incr(self, key: str) -> int:
+        with self._lock:
+            self._purge_if_expired(str(key))
+            entry = self._data.get(str(key))
+            if entry is None:
+                self._data[str(key)] = _MemValue(value="1", expires_at_epoch=None)
+                return 1
+            new_val = int(entry.value) + 1
+            self._data[str(key)] = _MemValue(
+                value=str(new_val), expires_at_epoch=entry.expires_at_epoch
+            )
+            return new_val
+
+    def ttl(self, key: str) -> int:
+        with self._lock:
+            self._purge_if_expired(str(key))
+            entry = self._data.get(str(key))
+            if entry is None:
+                return -2
+            exp = entry.expires_at_epoch
+            if exp is None:
+                return -1
+            remaining = int(exp - time.time())
+            return remaining if remaining > 0 else -2
+
     def delete(self, *keys: str) -> None:
         with self._lock:
             for k in keys:
@@ -88,6 +116,42 @@ class _InMemoryRedis:
 
         value = self.get(pat)
         return [pat] if value is not None else []
+
+    def pipeline(self) -> "_InMemoryPipeline":
+        return _InMemoryPipeline(self)
+
+
+class _InMemoryPipeline:
+    """Pipeline collector that executes commands atomically under lock."""
+
+    def __init__(self, redis: _InMemoryRedis) -> None:
+        self._redis = redis
+        self._commands: list[tuple[str, tuple]] = []
+
+    def incr(self, key: str) -> "_InMemoryPipeline":
+        self._commands.append(("incr", (key,)))
+        return self
+
+    def ttl(self, key: str) -> "_InMemoryPipeline":
+        self._commands.append(("ttl", (key,)))
+        return self
+
+    def setex(self, key: str, ttl_seconds: int, value: str) -> "_InMemoryPipeline":
+        self._commands.append(("setex", (key, ttl_seconds, value)))
+        return self
+
+    def execute(self) -> list:
+        results = []
+        with self._redis._lock:
+            for cmd, args in self._commands:
+                if cmd == "incr":
+                    results.append(self._redis.incr(args[0]))
+                elif cmd == "ttl":
+                    results.append(self._redis.ttl(args[0]))
+                elif cmd == "setex":
+                    self._redis.setex(args[0], args[1], args[2])
+                    results.append(True)
+        return results
 
 
 _memory_redis = _InMemoryRedis()

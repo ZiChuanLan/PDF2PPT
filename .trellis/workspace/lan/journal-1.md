@@ -73,3 +73,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 运行时配置API + 前端设置区域 + 模型下载管理
+
+**Date**: 2026-05-10
+**Task**: 运行时配置API + 前端设置区域 + 模型下载管理
+**Branch**: `main`
+
+### Summary
+
+两个任务: (1) AIOCR链路优化 — Job超时可配、字体跨平台、前端超时/SSE退避/轮询统一; (2) 环境变量前端可配置化 — runtime config API(13字段)、前端运行时配置区域、模型下载持久化+删除、Layout Assist死代码清理。最后补充回答了28个刻意省略env var的分类明细。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1c4cf11` | (see git log) |
+| `7fe8cf0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

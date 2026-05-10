@@ -7,6 +7,8 @@ import math
 import os
 from typing import Any
 
+from app.config import get_settings
+
 from .base import _clean_str, _strip_loc_tokens
 from .deepseek_parser import _extract_deepseek_grounding_regions
 from .json_extraction import _extract_message_text
@@ -42,7 +44,10 @@ _NON_IMAGE_REGION_LABEL_TOKENS = {
 _PADDLE_DOC_VLM_PIXEL_FACTOR = 28 * 28
 _PADDLE_DOC_VLM_MIN_PIXELS = _PADDLE_DOC_VLM_PIXEL_FACTOR * 130
 _PADDLE_DOC_VLM_DEFAULT_MAX_PIXELS = _PADDLE_DOC_VLM_PIXEL_FACTOR * 1280
-_PADDLE_DOC_VLM_BASE_MAX_SIDE_PX = 2200
+
+
+def _get_base_max_side_px() -> int:
+    return int(get_settings().ocr_paddle_vl_docparser_max_side_px)
 
 
 def _quantize_paddle_doc_pixels(value: int) -> int:
@@ -58,7 +63,7 @@ def _derive_paddle_doc_predict_max_pixels(
     max_side_px: int,
     did_downscale: bool,
 ) -> int | None:
-    raw_override = _clean_str(os.getenv("OCR_PADDLE_VL_DOCPARSER_MAX_PIXELS"))
+    raw_override = _clean_str(get_settings().ocr_paddle_vl_docparser_max_pixels) if get_settings().ocr_paddle_vl_docparser_max_pixels else None
     if raw_override is not None:
         try:
             parsed_override = int(raw_override)
@@ -71,13 +76,14 @@ def _derive_paddle_doc_predict_max_pixels(
     if not did_downscale:
         return None
 
+    base_max_side_px = _get_base_max_side_px()
     normalized_max_side = max(0, int(max_side_px))
     if normalized_max_side <= 0:
         return None
-    if normalized_max_side >= _PADDLE_DOC_VLM_BASE_MAX_SIDE_PX:
+    if normalized_max_side >= base_max_side_px:
         return None
 
-    ratio = float(normalized_max_side) / float(_PADDLE_DOC_VLM_BASE_MAX_SIDE_PX)
+    ratio = float(normalized_max_side) / float(base_max_side_px)
     scaled_max_pixels = int(
         math.floor(
             (_PADDLE_DOC_VLM_DEFAULT_MAX_PIXELS * ratio * ratio)

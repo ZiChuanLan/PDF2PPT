@@ -8,9 +8,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ...models.error import AppException, ErrorCode
+from ....models.error import AppException, ErrorCode
 
-from .bbox_utils import (
+from ..bbox_utils import (
     _as_path,
     _bbox_pt_to_slide_emu,
     _coerce_bbox_pt,
@@ -18,13 +18,13 @@ from .bbox_utils import (
     _ensure_parent_dir,
     _is_near_full_page_bbox_pt,
 )
-from .color_utils import (
+from ..color_utils import (
     _hex_to_rgb,
     _pick_contrasting_text_rgb,
     _rgb_sq_distance,
 )
-from .constants import _EMU_PER_INCH, _EMU_PER_PT
-from .font_utils import (
+from ..constants import _EMU_PER_INCH, _EMU_PER_PT
+from ..font_utils import (
     _compact_text_length,
     _contains_cjk,
     _fit_mineru_text_style,
@@ -35,8 +35,8 @@ from .font_utils import (
     _prefer_wrap_for_ocr_text,
     _resolve_visual_wrap_override_for_ocr_text,
 )
-from .preview import _export_final_preview_page_image
-from .scanned_page import (
+from ..preview import _export_final_preview_page_image
+from ..scanned_page import (
     _apply_text_cutouts_to_scanned_image_region_crops,
     _build_scanned_image_region_infos,
     _clear_regions_for_transparent_crops,
@@ -49,7 +49,7 @@ from .scanned_page import (
     _sample_bbox_background_rgb,
     _sample_bbox_text_rgb,
 )
-from .slide_builder import (
+from ..slide_builder import (
     _build_transform,
     _infer_font_size_pt,
     _iter_page_elements,
@@ -57,583 +57,26 @@ from .slide_builder import (
 )
 
 
-_MD_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
-_MD_ULIST_RE = re.compile(r"^\s*[-*+]\s+")
-_MD_OLIST_RE = re.compile(r"^\s*(\d+)\.\s+")
-_MD_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*|__([^_]+)__")
-_MD_CODE_RE = re.compile(r"`([^`]+)`")
-_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^\)]+)\)")
+from .markdown_utils import _sanitize_markdown_text, _normalize_footer_brand_text
+from .probing import (
+    _maybe_export_final_preview_page_image,
+    _should_probe_visual_wrap_for_ocr_text,
+    _should_sample_local_text_colors,
+    _page_needs_ocr_sampling_render,
+    _should_center_scanned_heading,
+)
+from .text_erase import _merge_text_erase_bboxes
+from .footer import (
+    _is_notebooklm_footer_brand_normalized,
+    _is_notebooklm_footer_text_element,
+    _detect_notebooklm_footer_bbox_from_render,
+    _build_notebooklm_footer_fill_overlays,
+)
 
 
 def _is_layout_parse_source(source_id: Any) -> bool:
     normalized = str(source_id or "").strip().lower()
     return normalized in {"mineru", "baidu_doc"}
-
-
-def _maybe_export_final_preview_page_image(
-    *,
-    enabled: bool,
-    page: dict[str, Any],
-    page_index: int,
-    page_w_pt: float,
-    page_h_pt: float,
-    source_pdf: Path,
-    artifacts_dir: Path,
-    dpi: int,
-    scanned_image_region_crops: list[tuple[list[float], Path]] | None = None,
-) -> None:
-    if not enabled:
-        return
-    _export_final_preview_page_image(
-        page=page,
-        page_index=page_index,
-        page_w_pt=page_w_pt,
-        page_h_pt=page_h_pt,
-        source_pdf=source_pdf,
-        artifacts_dir=artifacts_dir,
-        dpi=int(dpi),
-        scanned_image_region_crops=scanned_image_region_crops,
-    )
-
-
-def _should_probe_visual_wrap_for_ocr_text(
-    *,
-    text: str,
-    bbox_w_pt: float,
-    bbox_h_pt: float,
-    baseline_ocr_h_pt: float,
-    is_heading: bool,
-    wrap_hint: bool,
-    ocr_linebreak_assisted: bool,
-) -> bool:
-    """Return whether a text box is worth the expensive pixel line-count probe."""
-
-    if ocr_linebreak_assisted:
-        return False
-
-    normalized = _normalize_ocr_text_for_render(text)
-    if not normalized or "\n" in normalized:
-        return False
-
-    compact_len = _compact_text_length(normalized)
-    if compact_len <= 10:
-        return False
-
-    baseline = max(4.0, float(baseline_ocr_h_pt))
-    h_ratio = max(1.0, float(bbox_h_pt)) / baseline
-    w = max(1.0, float(bbox_w_pt))
-
-    if is_heading:
-        return bool(compact_len >= 12 and w >= 120.0)
-
-    # Clear single-line labels are not worth the probe.
-    if (not wrap_hint) and compact_len <= 28 and h_ratio <= 1.14:
-        return False
-
-    # Clear multi-line / paragraph boxes are already handled well by geometry.
-    if wrap_hint and (h_ratio >= 1.55 or (compact_len >= 48 and h_ratio >= 1.35)):
-        return False
-
-    return True
-
-
-def _should_sample_local_text_colors(
-    *,
-    source_id: Any,
-    element_color: Any,
-) -> bool:
-    """Return whether local bg/text color resampling is worth the cost."""
-
-    # OCR stage already samples text color upstream. Re-sampling every box on
-    # the PPT side is expensive and rarely changes the final color materially.
-    if _hex_to_rgb(element_color) is not None:
-        return False
-
-    normalized_source = str(source_id or "").strip().lower()
-    return normalized_source in {"ocr", "mineru", "baidu_doc"}
-
-
-def _page_needs_ocr_sampling_render(
-    *,
-    page_elements: list[dict[str, Any]],
-    page_h_pt: float,
-    baseline_ocr_h_pt: float,
-) -> bool:
-    """Return whether this page needs an OCR sampling render for visual probes."""
-
-    for el in page_elements:
-        if str(el.get("source") or "").strip().lower() != "ocr":
-            continue
-
-        raw_text = str(el.get("text") or "")
-        text = _normalize_ocr_text_for_render(_sanitize_markdown_text(raw_text))
-        if not text:
-            continue
-
-        try:
-            x0, y0, x1, y1 = _coerce_bbox_pt(el.get("bbox_pt"))
-        except Exception:
-            continue
-
-        bbox_w_pt = max(1.0, float(x1 - x0))
-        bbox_h_pt = max(1.0, float(y1 - y0))
-        compact_len = _compact_text_length(text)
-        is_heading = bool(
-            y0 <= 0.20 * float(page_h_pt)
-            and bbox_h_pt >= 1.45 * float(baseline_ocr_h_pt)
-            and compact_len <= 56
-        )
-        wrap_hint = _prefer_wrap_for_ocr_text(
-            text=text,
-            bbox_w_pt=bbox_w_pt,
-            bbox_h_pt=bbox_h_pt,
-            baseline_ocr_h_pt=float(baseline_ocr_h_pt),
-        )
-        if _should_probe_visual_wrap_for_ocr_text(
-            text=text,
-            bbox_w_pt=bbox_w_pt,
-            bbox_h_pt=bbox_h_pt,
-            baseline_ocr_h_pt=float(baseline_ocr_h_pt),
-            is_heading=is_heading,
-            wrap_hint=wrap_hint,
-            ocr_linebreak_assisted=bool(el.get("ocr_linebreak_assisted")),
-        ):
-            return True
-
-        if _should_sample_local_text_colors(
-            source_id="ocr",
-            element_color=el.get("color"),
-        ):
-            return True
-
-    return False
-
-
-def _should_center_scanned_heading(
-    *,
-    x0_pt: float,
-    x1_pt: float,
-    page_w_pt: float,
-) -> bool:
-    """Return whether a scanned-page heading bbox looks visually centered."""
-
-    page_w = max(1.0, float(page_w_pt))
-    x0 = max(0.0, min(float(x0_pt), page_w))
-    x1 = max(0.0, min(float(x1_pt), page_w))
-    if x1 <= x0:
-        return False
-
-    page_center_x = 0.5 * page_w
-    bbox_center_x = 0.5 * (x0 + x1)
-    left_margin = x0
-    right_margin = page_w - x1
-
-    center_tolerance_pt = max(20.0, min(54.0, 0.055 * page_w))
-    margin_tolerance_pt = max(24.0, min(72.0, 0.07 * page_w))
-
-    return bool(
-        abs(bbox_center_x - page_center_x) <= center_tolerance_pt
-        and abs(left_margin - right_margin) <= margin_tolerance_pt
-    )
-
-
-def _merge_text_erase_bboxes(
-    boxes: list[list[float]],
-    *,
-    gap_pt: float,
-    fast_path_threshold: int = 240,
-) -> list[list[float]]:
-    """Merge nearby same-line erase boxes.
-
-    Small/medium pages still use the existing iterative merge for maximal
-    compatibility. When AI OCR returns hundreds of fragmented boxes (for
-    example some DeepSeek-OCR grounding outputs), the quadratic repeated-merge
-    loop can dominate the whole PPT stage. For those pages switch to a sweep
-    + union-find fast path that preserves transitive same-line connectivity.
-    """
-
-    merged = [
-        list(_coerce_bbox_pt(bb))
-        for bb in boxes
-        if isinstance(bb, list) and len(bb) == 4
-    ]
-    if len(merged) <= 1:
-        return merged
-
-    gap_pt = max(0.0, float(gap_pt))
-
-    if len(merged) > int(fast_path_threshold):
-        indexed = [
-            (idx, bb)
-            for idx, bb in enumerate(
-                sorted(
-                    merged,
-                    key=lambda b: (float(b[0]), float(b[1]), float(b[2]), float(b[3])),
-                )
-            )
-        ]
-        parent = list(range(len(indexed)))
-
-        def _find(index: int) -> int:
-            while parent[index] != index:
-                parent[index] = parent[parent[index]]
-                index = parent[index]
-            return index
-
-        def _union(a: int, b: int) -> None:
-            root_a = _find(a)
-            root_b = _find(b)
-            if root_a != root_b:
-                parent[root_b] = root_a
-
-        active: list[int] = []
-        for current_idx, (_, current) in enumerate(indexed):
-            x0, y0, x1, y1 = current
-            next_active: list[int] = []
-            for prev_idx in active:
-                _, prev = indexed[prev_idx]
-                px0, py0, px1, py1 = prev
-                if float(px1) < (float(x0) - gap_pt):
-                    continue
-                next_active.append(prev_idx)
-
-                y_overlap = min(float(y1), float(py1)) - max(float(y0), float(py0))
-                min_h = max(1.0, min(float(y1) - float(y0), float(py1) - float(py0)))
-                if y_overlap < (0.40 * min_h):
-                    continue
-                x_gap = max(0.0, float(x0) - float(px1))
-                if x_gap <= gap_pt:
-                    _union(current_idx, prev_idx)
-
-            next_active.append(current_idx)
-            active = next_active
-
-        grouped: dict[int, list[list[float]]] = {}
-        for idx, (_, bb) in enumerate(indexed):
-            grouped.setdefault(_find(idx), []).append(bb)
-
-        out: list[list[float]] = []
-        for component in grouped.values():
-            xs0 = [float(bb[0]) for bb in component]
-            ys0 = [float(bb[1]) for bb in component]
-            xs1 = [float(bb[2]) for bb in component]
-            ys1 = [float(bb[3]) for bb in component]
-            out.append([min(xs0), min(ys0), max(xs1), max(ys1)])
-        out.sort(key=lambda b: (float(b[1]), float(b[0])))
-        return out
-
-    changed = True
-    while changed:
-        changed = False
-        merged.sort(key=lambda b: (b[1], b[0]))
-        out: list[list[float]] = []
-        for bb in merged:
-            x0, y0, x1, y1 = _coerce_bbox_pt(bb)
-            did_merge = False
-            for i, ub in enumerate(out):
-                ux0, uy0, ux1, uy1 = _coerce_bbox_pt(ub)
-                y_overlap = min(y1, uy1) - max(y0, uy0)
-                min_h = max(1.0, min(y1 - y0, uy1 - uy0))
-                if y_overlap < (0.40 * min_h):
-                    continue
-                if x0 > ux1:
-                    x_gap = float(x0 - ux1)
-                elif ux0 > x1:
-                    x_gap = float(ux0 - x1)
-                else:
-                    x_gap = 0.0
-                if x_gap > gap_pt:
-                    continue
-                out[i] = [
-                    min(x0, ux0),
-                    min(y0, uy0),
-                    max(x1, ux1),
-                    max(y1, uy1),
-                ]
-                did_merge = True
-                changed = True
-                break
-            if not did_merge:
-                out.append([x0, y0, x1, y1])
-        merged = out
-
-    return merged
-
-
-def _sanitize_markdown_text(text: str) -> str:
-    """Remove common markdown markers while preserving readable content."""
-
-    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-    cleaned_lines: list[str] = []
-    for raw_line in normalized.split("\n"):
-        line = str(raw_line or "").strip()
-        if not line:
-            continue
-
-        line = _MD_HEADING_RE.sub("", line)
-        if _MD_ULIST_RE.match(line):
-            line = _MD_ULIST_RE.sub("", line).strip()
-            if line:
-                line = f"• {line}"
-        else:
-            line = _MD_OLIST_RE.sub(lambda m: f"{m.group(1)}. ", line)
-
-        line = _MD_LINK_RE.sub(r"\1", line)
-        line = _MD_CODE_RE.sub(r"\1", line)
-
-        while True:
-            replaced = _MD_BOLD_RE.sub(
-                lambda m: str(m.group(1) or m.group(2) or ""),
-                line,
-            )
-            if replaced == line:
-                break
-            line = replaced
-
-        line = line.strip()
-        if line:
-            cleaned_lines.append(line)
-
-    return "\n".join(cleaned_lines).strip()
-
-
-def _normalize_footer_brand_text(text: str) -> str:
-    return "".join(ch.lower() for ch in str(text or "") if ch.isalnum())
-
-
-def _is_notebooklm_footer_brand_normalized(normalized: str) -> bool:
-    value = str(normalized or "").strip().lower()
-    if not value:
-        return False
-    if "notebooklm" not in value:
-        return False
-    extra = value.replace("notebooklm", "")
-    return len(extra) <= 24
-
-
-def _is_notebooklm_footer_text_element(
-    el: dict[str, Any],
-    *,
-    page_w_pt: float,
-    page_h_pt: float,
-) -> bool:
-    raw_text = str(el.get("text") or "").strip()
-    if not raw_text:
-        return False
-
-    normalized = _normalize_footer_brand_text(raw_text)
-    if not _is_notebooklm_footer_brand_normalized(normalized):
-        return False
-
-    try:
-        x0, y0, x1, y1 = _coerce_bbox_pt(el.get("bbox_pt"))
-    except Exception:
-        return False
-
-    if x1 <= x0 or y1 <= y0 or page_w_pt <= 0.0 or page_h_pt <= 0.0:
-        return False
-
-    cx = (x0 + x1) / 2.0
-    cy = (y0 + y1) / 2.0
-    width_ratio = float(x1 - x0) / float(page_w_pt)
-    height_ratio = float(y1 - y0) / float(page_h_pt)
-    return (
-        cy >= (0.84 * float(page_h_pt))
-        and cx >= (0.72 * float(page_w_pt))
-        and width_ratio <= 0.22
-        and height_ratio <= 0.08
-    )
-
-
-def _detect_notebooklm_footer_bbox_from_render(
-    *,
-    render_path: Path,
-    page_w_pt: float,
-    page_h_pt: float,
-) -> list[float] | None:
-    """OCR the bottom-right footer area to recover small NotebookLM branding."""
-
-    try:
-        from PIL import Image, ImageOps
-        import pytesseract
-        from pytesseract import Output
-    except Exception:
-        return None
-
-    try:
-        img = Image.open(render_path).convert("RGB")
-    except Exception:
-        return None
-
-    width_px, height_px = img.size
-    if width_px <= 0 or height_px <= 0 or page_w_pt <= 0.0 or page_h_pt <= 0.0:
-        return None
-
-    crop_x0_px = max(0, min(width_px - 1, int(round(0.72 * float(width_px)))))
-    crop_y0_px = max(0, min(height_px - 1, int(round(0.84 * float(height_px)))))
-    if crop_x0_px >= width_px or crop_y0_px >= height_px:
-        return None
-
-    crop = img.crop((crop_x0_px, crop_y0_px, width_px, height_px))
-    if crop.width <= 2 or crop.height <= 2:
-        return None
-
-    scale = 2 if max(crop.size) < 700 else 1
-    ocr_img = ImageOps.autocontrast(crop.convert("L"))
-    if scale > 1:
-        ocr_img = ocr_img.resize(
-            (int(ocr_img.width * scale), int(ocr_img.height * scale)),
-            Image.Resampling.LANCZOS,
-        )
-
-    scale_x = float(crop.width) / float(ocr_img.width)
-    scale_y = float(crop.height) / float(ocr_img.height)
-
-    def _iter_line_candidates(data: dict[str, Any]) -> list[tuple[int, int, int, int]]:
-        texts = data.get("text") or []
-        lefts = data.get("left") or []
-        tops = data.get("top") or []
-        widths = data.get("width") or []
-        heights = data.get("height") or []
-        block_nums = data.get("block_num") or []
-        par_nums = data.get("par_num") or []
-        line_nums = data.get("line_num") or []
-        confs = data.get("conf") or []
-
-        words_by_line: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
-        count = min(
-            len(texts),
-            len(lefts),
-            len(tops),
-            len(widths),
-            len(heights),
-            len(block_nums),
-            len(par_nums),
-            len(line_nums),
-            len(confs),
-        )
-        for idx in range(count):
-            text = str(texts[idx] or "").strip()
-            if not text:
-                continue
-            try:
-                conf = float(confs[idx])
-            except Exception:
-                conf = -1.0
-            if conf < -0.5:
-                continue
-            try:
-                key = (
-                    int(block_nums[idx] or 0),
-                    int(par_nums[idx] or 0),
-                    int(line_nums[idx] or 0),
-                )
-                word = {
-                    "text": text,
-                    "left": int(lefts[idx] or 0),
-                    "top": int(tops[idx] or 0),
-                    "right": int(lefts[idx] or 0) + int(widths[idx] or 0),
-                    "bottom": int(tops[idx] or 0) + int(heights[idx] or 0),
-                }
-            except Exception:
-                continue
-            words_by_line.setdefault(key, []).append(word)
-
-        candidates: list[tuple[int, int, int, int]] = []
-        for words in words_by_line.values():
-            words.sort(key=lambda item: (int(item["left"]), int(item["top"])))
-            for start in range(len(words)):
-                for end in range(start, min(len(words), start + 3)):
-                    segment = words[start : end + 1]
-                    normalized = _normalize_footer_brand_text(
-                        "".join(str(item["text"]) for item in segment)
-                    )
-                    if not _is_notebooklm_footer_brand_normalized(normalized):
-                        continue
-                    x0 = min(int(item["left"]) for item in segment)
-                    y0 = min(int(item["top"]) for item in segment)
-                    x1 = max(int(item["right"]) for item in segment)
-                    y1 = max(int(item["bottom"]) for item in segment)
-                    candidates.append((x0, y0, x1, y1))
-        return candidates
-
-    best_bbox_px: tuple[int, int, int, int] | None = None
-    for psm in (6, 11):
-        try:
-            data = pytesseract.image_to_data(
-                ocr_img,
-                output_type=Output.DICT,
-                lang="eng",
-                config=f"--psm {int(psm)}",
-            )
-        except Exception:
-            continue
-        line_candidates = _iter_line_candidates(data)
-        if not line_candidates:
-            continue
-        best_bbox_px = max(
-            line_candidates,
-            key=lambda bb: ((bb[3] - bb[1]), (bb[1] + bb[3]), (bb[2] - bb[0])),
-        )
-        break
-
-    if best_bbox_px is None:
-        return None
-
-    bx0, by0, bx1, by1 = best_bbox_px
-    px0 = crop_x0_px + (float(bx0) * scale_x)
-    py0 = crop_y0_px + (float(by0) * scale_y)
-    px1 = crop_x0_px + (float(bx1) * scale_x)
-    py1 = crop_y0_px + (float(by1) * scale_y)
-    if px1 <= px0 or py1 <= py0:
-        return None
-
-    x0_pt = (px0 / float(width_px)) * float(page_w_pt)
-    y0_pt = (py0 / float(height_px)) * float(page_h_pt)
-    x1_pt = (px1 / float(width_px)) * float(page_w_pt)
-    y1_pt = (py1 / float(height_px)) * float(page_h_pt)
-    return [x0_pt, y0_pt, x1_pt, y1_pt]
-
-
-def _build_notebooklm_footer_fill_overlays(
-    *,
-    footer_elements: list[dict[str, Any]],
-    render_pix: Any | None,
-    page_h_pt: float,
-    scanned_render_dpi: int,
-    text_erase_mode: str,
-) -> list[tuple[list[float], tuple[int, int, int]]]:
-    """Return local fill overlays for NotebookLM footer cleanup on text pages."""
-
-    if render_pix is None or not footer_elements:
-        return []
-
-    overlays: list[tuple[list[float], tuple[int, int, int]]] = []
-    for el in footer_elements:
-        try:
-            x0, y0, x1, y1 = _coerce_bbox_pt(el.get("bbox_pt"))
-        except Exception:
-            continue
-        if x1 <= x0 or y1 <= y0:
-            continue
-        bbox_h_pt = max(1.0, y1 - y0)
-        pad_x_pt, pad_y_pt = _compute_text_erase_padding_pt(
-            bbox_h_pt=bbox_h_pt,
-            text_erase_mode=text_erase_mode,
-        )
-        fill_rgb = _sample_bbox_background_rgb(
-            render_pix,
-            bbox_pt=[x0, y0, x1, y1],
-            page_height_pt=float(page_h_pt),
-            dpi=int(scanned_render_dpi),
-        )
-        overlays.append(
-            (
-                [x0 - pad_x_pt, y0 - pad_y_pt, x1 + pad_x_pt, y1 + pad_y_pt],
-                fill_rgb,
-            )
-        )
-    return overlays
 
 
 def generate_pptx_from_ir(

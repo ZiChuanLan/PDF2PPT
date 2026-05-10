@@ -1715,7 +1715,8 @@ class AiOcrClient(OcrProvider):
     def _resolve_paddle_doc_max_side_px(self) -> int:
         if self._paddle_doc_max_side_px_override is not None:
             return int(self._paddle_doc_max_side_px_override)
-        return max(0, _env_int("OCR_PADDLE_VL_DOCPARSER_MAX_SIDE_PX", 2200))
+        from ...config import get_settings
+        return max(0, int(get_settings().ocr_paddle_vl_docparser_max_side_px))
 
     def _prepare_paddle_doc_predict_image(
         self, image_path: str
@@ -4661,11 +4662,12 @@ class AiOcrTextRefiner:
         max_tokens: int,
         request_label: str,
     ) -> Any:
+        from ...config import get_settings
         return _run_chat_completion_request(
             client=self.client,
             provider_id=self.provider_id,
             model=str(self.model or ""),
-            timeout_s=60.0,
+            timeout_s=get_settings().ocr_ai_text_refiner_timeout_s,
             max_retries=self.request_max_retries,
             request_limiter=self._request_limiter,
             request_label=request_label,

@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image
 
+from app.config import get_settings
+
 # ---------------------------------------------------------------------------
 # Constants: Baidu OCR thresholds
 # ---------------------------------------------------------------------------
@@ -63,9 +65,6 @@ _TESSERACT_LOOKS_EMPTY_WORD_THRESHOLD = 40
 # ---------------------------------------------------------------------------
 # Constants: PaddleOCR thresholds
 # ---------------------------------------------------------------------------
-_PADDLE_OCR_MAX_SIDE_PX = 2200
-"""Maximum side length in pixels for PaddleOCR input images."""
-
 _PADDLE_OCR_DEFAULT_CONFIDENCE = 0.85
 """Default confidence for PaddleOCR results when not provided."""
 
@@ -1194,7 +1193,7 @@ class PaddleOcrClient(OcrProvider):
         self._engine: Any | None = None
         # PaddleOCR 3.x (PaddleX pipeline) can be memory-hungry on large page
         # renders. Downscale long-edge to keep CPU inference stable.
-        self._max_side_px: int = _PADDLE_OCR_MAX_SIDE_PX
+        self._max_side_px: int = int(get_settings().ocr_paddle_vl_docparser_max_side_px)
 
         try:
             from paddleocr import PaddleOCR
