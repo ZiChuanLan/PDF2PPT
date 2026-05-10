@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { SettingsIcon, Loader2Icon } from "lucide-react"
+import { SettingsIcon, Loader2Icon, Trash2Icon } from "lucide-react"
 import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,8 @@ import type { ModelProviderStatus, ModelStatusResponse } from "@/hooks/use-model
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 import { useModelDownload, type DownloadStatusItem } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
+import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { toast } from "sonner"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,17 +146,49 @@ function ProviderRow({
   onDownload,
   onCancel,
   downloadState,
+  onStatusChange,
 }: {
   display: ProviderDisplay
   provStatus: ModelProviderStatus | null
   onDownload: (model: string) => void
   onCancel: (model: string) => void
   downloadState: DownloadStatusItem | null
+  onStatusChange?: () => void
 }) {
   const isDownloadable = display.kind === "local" && DOWNLOADABLE_MODELS[display.key]
   const needsConfig = display.kind === "remote" && provStatus && !provStatus.configured
   const layoutModelInfo = LAYOUT_MODELS[display.key]
   const isDownloading = downloadState?.status === "downloading"
+  const isDownloaded = provStatus?.ready && display.kind === "local"
+  const [deleting, setDeleting] = React.useState(false)
+
+  const handleDelete = React.useCallback(async () => {
+    const label = display.label
+    if (!window.confirm(`确认删除 ${label} 模型缓存？\n删除后可重新下载。`)) {
+      return
+    }
+    setDeleting(true)
+    try {
+      const res = await apiFetch("/models/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: display.key }),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        throw new Error(
+          (errData && (errData as { detail?: string }).detail) || `删除失败 (${res.status})`
+        )
+      }
+      const data = await res.json()
+      toast.success((data as { message?: string }).message || "已删除模型缓存")
+      onStatusChange?.()
+    } catch (e) {
+      toast.error(normalizeFetchError(e, "删除模型失败"))
+    } finally {
+      setDeleting(false)
+    }
+  }, [display.key, display.label, onStatusChange])
 
   return (
     <div className="flex items-start justify-between gap-2 py-1.5">
@@ -217,6 +251,19 @@ function ProviderRow({
             className="h-6 px-1.5 text-[10px]"
           />
         )}
+        {isDownloaded && !isDownloading && isDownloadable && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-destructive"
+            disabled={deleting}
+            onClick={handleDelete}
+          >
+            <Trash2Icon className="size-3" />
+            {deleting ? "" : "删除"}
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -234,6 +281,7 @@ function DetailsPanel({
   downloadStateMap,
   triggerRect,
   onClose,
+  onStatusChange,
 }: {
   status: ModelStatusResponse | null
   providers: ProviderDisplay[]
@@ -242,6 +290,7 @@ function DetailsPanel({
   downloadStateMap: Record<string, DownloadStatusItem>
   triggerRect: DOMRect
   onClose: () => void
+  onStatusChange?: () => void
 }) {
   const panelRef = React.useRef<HTMLDivElement>(null)
 
@@ -308,6 +357,7 @@ function DetailsPanel({
               onDownload={onDownload}
               onCancel={onCancel}
               downloadState={downloadStateMap[display.key] ?? null}
+              onStatusChange={onStatusChange}
             />
           ))}
         </>
@@ -327,6 +377,7 @@ function DetailsPanel({
               onDownload={onDownload}
               onCancel={onCancel}
               downloadState={downloadStateMap[display.key] ?? null}
+              onStatusChange={onStatusChange}
             />
           ))}
         </>
@@ -348,6 +399,7 @@ function DetailsPanel({
               onDownload={onDownload}
               onCancel={onCancel}
               downloadState={downloadStateMap[display.key] ?? null}
+              onStatusChange={onStatusChange}
             />
           ))}
         </>
@@ -473,6 +525,7 @@ export function ModelStatusBadge({
           downloadStateMap={downloads}
           triggerRect={triggerRect}
           onClose={handleClose}
+          onStatusChange={onStatusChange}
         />
       )}
     </span>

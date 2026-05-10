@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-05-06
+- **Total Sessions**: 2
+- **Last Active**: 2026-05-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~42 | Active |
+| `journal-1.md` | ~75 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-05-09 | 全流程架构审查与优化：AIOCR链路、硬编码消除、前端超时修复 | `1c4cf11` | `main` |
 | 1 | 2026-05-06 | 传统OCR选择器UI重构为卡片列表 | `281fbd3`, `312dcb3`, `e182930` | `main` |
 <!-- @@@/auto:session-history -->
 

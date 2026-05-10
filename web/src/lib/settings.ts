@@ -530,7 +530,7 @@ export function loadStoredSettings(): Settings {
   if (!Number.isFinite(pageConcurrency) || pageConcurrency < 1) {
     merged.ocrAiPageConcurrency = defaultSettings.ocrAiPageConcurrency
   } else {
-    merged.ocrAiPageConcurrency = String(Math.min(8, Math.round(pageConcurrency)))
+    merged.ocrAiPageConcurrency = String(Math.min(1000, Math.round(pageConcurrency)))
   }
   if (typeof parsedOcrAiPageConcurrencyAuto === "boolean") {
     merged.ocrAiPageConcurrencyAuto = parsedOcrAiPageConcurrencyAuto
@@ -566,20 +566,17 @@ export function loadStoredSettings(): Settings {
   if (!Number.isFinite(maxRetries) || maxRetries < 0) {
     merged.ocrAiMaxRetries = defaultSettings.ocrAiMaxRetries
   } else {
-    merged.ocrAiMaxRetries = String(Math.min(8, Math.round(maxRetries)))
+    merged.ocrAiMaxRetries = String(Math.min(1000, Math.round(maxRetries)))
   }
-  merged.enableLayoutAssist = false
-  merged.layoutAssistApplyImageRegions = false
+  // Layout Assist is controlled by server-side ENABLE_LAYOUT_ASSIST env var.
+  // The user can override via the settings page (runtime config section).
+  // No longer force-disabled here.
   if (typeof merged.ocrAiPageConcurrencyAuto !== "boolean") {
     merged.ocrAiPageConcurrencyAuto = true
   }
   if (typeof merged.ocrStrictMode !== "boolean") {
     merged.ocrStrictMode = true
   }
-  merged.visualAssistModeLocal = "off"
-  merged.visualAssistModeRemote = "off"
-  merged.visualAssistModeBaiduDoc = "off"
-  merged.visualAssistModeMineru = "off"
   delete merged.ocrGeometryMode
   delete merged.ocrAiLinebreakAssist
   delete merged.ocrAiLinebreakAssistMode

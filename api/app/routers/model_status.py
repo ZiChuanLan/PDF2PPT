@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
+import shutil
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -15,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.convert.ocr.layout_models import (
     LAYOUT_MODELS,
+    LayoutModelInfo,
     is_model_downloaded,
 )
 from app.convert.ocr.runtime_probe import (
@@ -51,6 +56,84 @@ class DownloadTask:
 # In-memory download task registry
 _download_tasks: dict[str, DownloadTask] = {}
 _download_tasks_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Download task persistence (3a: survive server restarts)
+# ---------------------------------------------------------------------------
+
+_DOWNLOADS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "downloads"
+)
+_DOWNLOAD_TASKS_FILE = os.path.join(_DOWNLOADS_DIR, "tasks.json")
+
+
+def _save_download_tasks():
+    """Persist current download tasks to disk (thread-safe snapshot)."""
+    try:
+        os.makedirs(_DOWNLOADS_DIR, exist_ok=True)
+        with _download_tasks_lock:
+            data = {
+                mid: {
+                    "model_id": t.model_id,
+                    "status": t.status,
+                    "progress": t.progress,
+                    "message": t.message,
+                    "started_at": t.started_at,
+                    "cancel_requested": t.cancel_requested,
+                }
+                for mid, t in _download_tasks.items()
+                # Only persist active/significant tasks
+                if t.status == "downloading" or t.status == "failed"
+            }
+        with open(_DOWNLOAD_TASKS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        logger.warning("Failed to persist download tasks", exc_info=True)
+
+
+def _load_download_tasks():
+    """Restore download tasks from disk on server startup.
+
+    Only restores tasks that were actively downloading or recently failed.
+    Completed/cancelled tasks are not restored.
+    """
+    try:
+        if not os.path.exists(_DOWNLOAD_TASKS_FILE):
+            return
+
+        with open(_DOWNLOAD_TASKS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        now = time.time()
+        restored = 0
+        with _download_tasks_lock:
+            for mid, raw in data.items():
+                status = raw.get("status", "failed")
+                started_at = float(raw.get("started_at", now))
+                # Don't restore very old tasks (> 1 hour)
+                if now - started_at > 3600:
+                    continue
+                # Active downloads that were interrupted get marked as failed
+                if status == "downloading":
+                    status = "failed"
+                _download_tasks[mid] = DownloadTask(
+                    model_id=raw.get("model_id", mid),
+                    status=status,
+                    progress=raw.get("progress"),
+                    message=raw.get("message", "服务器重启，下载已中断"),
+                    started_at=started_at,
+                    cancel_requested=False,
+                )
+                restored += 1
+
+        if restored > 0:
+            logger.info("Restored %d download task(s) from disk", restored)
+    except Exception:
+        logger.warning("Failed to load persisted download tasks", exc_info=True)
+
+
+# Restore tasks on module load (server startup)
+_load_download_tasks()
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +434,7 @@ def _background_download_layout_model(model_id: str):
                 else:
                     task.status = "failed"
                     task.message = "下载失败"
+        _save_download_tasks()
     except Exception as e:
         logger.exception("Background download failed for %s: %s", model_id, e)
         with _download_tasks_lock:
@@ -358,6 +442,7 @@ def _background_download_layout_model(model_id: str):
             if task:
                 task.status = "failed"
                 task.message = f"下载失败: {e}"
+        _save_download_tasks()
 
 
 def _background_download_paddleocr(model_id: str = "paddleocr"):
@@ -373,6 +458,7 @@ def _background_download_paddleocr(model_id: str = "paddleocr"):
                 if task:
                     task.status = "cancelled"
                     task.message = "下载已取消"
+            _save_download_tasks()
             return
 
         _download_paddleocr_models()
@@ -387,6 +473,7 @@ def _background_download_paddleocr(model_id: str = "paddleocr"):
                     task.status = "completed"
                     task.progress = 1.0
                     task.message = "下载完成"
+        _save_download_tasks()
     except Exception as e:
         logger.exception("Background PaddleOCR download failed: %s", e)
         with _download_tasks_lock:
@@ -394,6 +481,7 @@ def _background_download_paddleocr(model_id: str = "paddleocr"):
             if task:
                 task.status = "failed"
                 task.message = f"下载失败: {e}"
+        _save_download_tasks()
 
 
 def _resolve_layout_model_alias(model: str) -> str | None:
@@ -459,6 +547,8 @@ async def download_model(
         with _download_tasks_lock:
             _download_tasks[target_id] = DownloadTask(model_id=target_id)
 
+        _save_download_tasks()
+
         thread = threading.Thread(
             target=_background_download_layout_model,
             args=(target_id,),
@@ -488,6 +578,8 @@ async def download_model(
 
         with _download_tasks_lock:
             _download_tasks[paddle_id] = DownloadTask(model_id=paddle_id)
+
+        _save_download_tasks()
 
         thread = threading.Thread(
             target=_background_download_paddleocr,
@@ -530,6 +622,9 @@ async def get_download_status():
         ]
         for mid in expired_ids:
             del _download_tasks[mid]
+
+        if expired_ids:
+            _save_download_tasks()
 
         for mid, task in _download_tasks.items():
             items[mid] = DownloadStatusItem(
@@ -583,8 +678,181 @@ async def cancel_download(
             )
         task.cancel_requested = True
 
+    _save_download_tasks()
     return DownloadCancelResponse(
         ok=True,
         model=target_id,
         message="取消请求已发送",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Model deletion
+# ---------------------------------------------------------------------------
+
+
+class ModelDeleteRequest(BaseModel):
+    """Request to delete a downloaded model from cache."""
+
+    model: str = Field(..., description="Model identifier to delete")
+
+
+class ModelDeleteResponse(BaseModel):
+    """Delete result."""
+
+    success: bool
+    model: str
+    message: str
+
+
+def _delete_paddlex_model(model_id: str, model_info: LayoutModelInfo) -> bool:
+    """Delete a PaddleX model from its cache directory.
+
+    PaddleX caches models under ~/.paddlex/official_models/.
+    """
+    import paddlex  # type: ignore[import-untyped]
+
+    home = Path.home()
+    paddlex_cache = home / ".paddlex" / "official_models"
+    try:
+        from paddlex.utils.cache import CACHE_DIR  # type: ignore[import-untyped]
+        paddlex_cache = Path(CACHE_DIR) / "official_models"
+    except Exception:
+        pass
+
+    if not paddlex_cache.exists():
+        return False
+
+    target = (model_info.paddlex_model_name or "").lower().replace("-", "_").replace(" ", "")
+    deleted = False
+    for d in paddlex_cache.iterdir():
+        if not d.is_dir():
+            continue
+        normalized = d.name.lower().replace("-", "_").replace(" ", "")
+        if normalized == target or target in normalized:
+            try:
+                shutil.rmtree(d)
+                logger.info("Deleted PaddleX model cache: %s", d)
+                deleted = True
+            except Exception as e:
+                logger.warning("Failed to delete PaddleX model cache %s: %s", d, e)
+                raise AppException(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message=f"Failed to delete model cache: {e}",
+                    status_code=500,
+                )
+
+    return deleted
+
+
+def _delete_doclayout_yolo_model() -> bool:
+    """Delete DocLayout-YOLO model files."""
+    cache_dir = Path(os.getenv("MODEL_CACHE_DIR", "/app/data/models"))
+    model_dir = cache_dir / "doclayout_yolo"
+
+    if not model_dir.exists():
+        return False
+
+    try:
+        shutil.rmtree(model_dir)
+        logger.info("Deleted DocLayout-YOLO model cache: %s", model_dir)
+        return True
+    except Exception as e:
+        logger.warning("Failed to delete DocLayout-YOLO cache %s: %s", model_dir, e)
+        raise AppException(
+            code=ErrorCode.INTERNAL_ERROR,
+            message=f"Failed to delete model cache: {e}",
+            status_code=500,
+        )
+
+
+@router.post("/delete", response_model=ModelDeleteResponse)
+async def delete_model(
+    payload: ModelDeleteRequest,
+    admin: UserORM = Depends(require_admin),
+):
+    """Delete a downloaded model from the local cache (admin only).
+
+    Supported models:
+    - pp_doclayout_s / pp_doclayout_m / pp_doclayout_l / pp_doclayout_v3
+    - doclayout_yolo
+    - paddleocr (deletes PaddleOCR det/rec/cls model cache)
+    """
+    model = payload.model.strip().lower()
+
+    # Resolve layout model aliases
+    target_id = _resolve_layout_model_alias(model)
+    model_name = payload.model
+
+    if target_id and target_id in LAYOUT_MODELS:
+        model_info = LAYOUT_MODELS[target_id]
+
+        # Don't delete while downloading
+        with _download_tasks_lock:
+            task = _download_tasks.get(target_id)
+            if task and task.status == "downloading":
+                raise AppException(
+                    code=ErrorCode.VALIDATION_ERROR,
+                    message=f"模型 {target_id} 正在下载中，无法删除",
+                    status_code=400,
+                )
+
+        deleted = False
+        if model_info.provider == "paddlex":
+            deleted = _delete_paddlex_model(target_id, model_info)
+        elif model_info.provider == "doclayout_yolo":
+            deleted = _delete_doclayout_yolo_model()
+
+        if deleted:
+            return ModelDeleteResponse(
+                success=True,
+                model=model_name,
+                message=f"已删除 {model_info.display_name} 缓存",
+            )
+        else:
+            return ModelDeleteResponse(
+                success=True,
+                model=model_name,
+                message=f"{model_info.display_name} 缓存不存在或已删除",
+            )
+
+    if model in {"paddleocr", "paddle", "paddle_ocr"}:
+        # Delete PaddleOCR model cache (~/.paddleocr/)
+        home = Path.home()
+        paddleocr_cache = home / ".paddleocr"
+        try:
+            import paddleocr  # noqa: F401
+            # Try to find paddleocr cache at the env or default location
+            paddleocr_home = os.getenv("PADDLEOCR_HOME", "")
+            if paddleocr_home:
+                paddleocr_cache = Path(paddleocr_home).expanduser()
+        except ImportError:
+            pass
+
+        deleted = False
+        if paddleocr_cache.exists():
+            try:
+                shutil.rmtree(paddleocr_cache)
+                logger.info("Deleted PaddleOCR cache: %s", paddleocr_cache)
+                deleted = True
+            except Exception as e:
+                logger.warning("Failed to delete PaddleOCR cache %s: %s", paddleocr_cache, e)
+                raise AppException(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message=f"Failed to delete PaddleOCR cache: {e}",
+                    status_code=500,
+                )
+
+        return ModelDeleteResponse(
+            success=True,
+            model=model_name,
+            message="已删除 PaddleOCR 缓存" if deleted else "PaddleOCR 缓存不存在",
+        )
+
+    supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr"
+    raise AppException(
+        code=ErrorCode.VALIDATION_ERROR,
+        message=f"Unsupported model for deletion: {payload.model}. Supported: {supported}",
+        details={"model": payload.model},
+        status_code=400,
     )

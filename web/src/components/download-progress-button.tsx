@@ -5,6 +5,7 @@ import { DownloadIcon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { DownloadStatusItem } from "@/hooks/use-model-download"
+import { LAYOUT_MODELS } from "@/lib/layout-models"
 
 /**
  * Download button that shows progress bar + cancel when downloading,
@@ -31,6 +32,43 @@ export function DownloadProgressButton({
 }) {
   const isDownloading = downloadState?.status === "downloading"
   const progress = downloadState?.progress
+  const modelInfo = LAYOUT_MODELS[modelId]
+  const modelLabel = modelInfo?.displayName ?? label ?? modelId
+  const sizeMb = modelInfo?.sizeMb
+
+  // Elapsed time estimation for indeterminate (PaddleX) downloads
+  const elapsedRef = React.useRef<number | null>(null)
+  const [elapsedLabel, setElapsedLabel] = React.useState<string>("")
+  React.useEffect(() => {
+    if (!isDownloading || progress !== null && progress !== undefined) {
+      elapsedRef.current = null
+      setElapsedLabel("")
+      return
+    }
+    if (elapsedRef.current === null && downloadState?.started_at) {
+      elapsedRef.current = downloadState.started_at
+    }
+    const timer = window.setInterval(() => {
+      if (elapsedRef.current) {
+        const secs = Math.floor((Date.now() / 1000) - elapsedRef.current)
+        const mins = Math.floor(secs / 60)
+        const remainSecs = secs % 60
+        let label = `已用时 ${mins}m ${remainSecs}s`
+        if (sizeMb && sizeMb > 0) {
+          // Rough estimate: ~1MB/s for typical PaddleX downloads
+          const estimatedTotal = sizeMb * 1.0 // seconds per MB
+          const remaining = Math.max(0, estimatedTotal - secs)
+          if (remaining > 0) {
+            const remMins = Math.floor(remaining / 60)
+            const remSecs = Math.floor(remaining % 60)
+            label += ` · 预计剩余 ${remMins}m ${remSecs}s`
+          }
+        }
+        setElapsedLabel(label)
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [isDownloading, progress, downloadState?.started_at, sizeMb])
 
   if (isDownloading) {
     return (
@@ -46,7 +84,7 @@ export function DownloadProgressButton({
               />
             </div>
           ) : (
-            // Indeterminate progress (paddlex)
+            // Indeterminate progress (paddlex) — show pulsing bar
             <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
               <div className="absolute inset-y-0 left-0 w-1/3 animate-pulse rounded-full bg-foreground" />
             </div>
@@ -57,6 +95,12 @@ export function DownloadProgressButton({
               : "下载中..."}
           </span>
         </div>
+        {/* Model info line for PaddleX indeterminate downloads */}
+        {progress === null && sizeMb ? (
+          <div className="mb-0.5 text-[10px] text-muted-foreground">
+            {modelLabel} · {sizeMb} MB · {elapsedLabel || "正在下载中 (估算)"}
+          </div>
+        ) : null}
         {/* Cancel button */}
         <Button
           type="button"

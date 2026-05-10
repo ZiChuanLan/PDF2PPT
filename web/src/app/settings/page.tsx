@@ -318,6 +318,320 @@ type AiOcrCheckResponse = {
   check: AiOcrCheckResult
 }
 
+// ---------------------------------------------------------------------------
+// Runtime config section — self-mode only server-side env var editor
+// ---------------------------------------------------------------------------
+
+interface RuntimeConfig {
+  JOB_TIMEOUT_SECONDS: number
+  OCR_PAGE_TIMEOUT_S: number
+  OCR_TOTAL_TIMEOUT_S: number
+  OCR_PADDLE_VL_PREDICT_TIMEOUT_S: number
+  OCR_AI_RETRY_BACKOFF_BASE_S: number
+  OCR_AI_RATE_LIMITED_MIN_DELAY_S: number
+  ENABLE_LAYOUT_ASSIST: boolean
+  SCANNED_RENDER_DPI: number
+  OCR_AI_PAGE_CONCURRENCY_MAX: number
+  OCR_AI_BLOCK_CONCURRENCY_MAX: number
+  OCR_AI_RPM_MAX: number
+  OCR_AI_TPM_MAX: number
+  OCR_AI_MAX_RETRIES_MAX: number
+}
+
+const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
+  JOB_TIMEOUT_SECONDS: 3600,
+  OCR_PAGE_TIMEOUT_S: 300,
+  OCR_TOTAL_TIMEOUT_S: 3600,
+  OCR_PADDLE_VL_PREDICT_TIMEOUT_S: 180.0,
+  OCR_AI_RETRY_BACKOFF_BASE_S: 8.0,
+  OCR_AI_RATE_LIMITED_MIN_DELAY_S: 2.0,
+  ENABLE_LAYOUT_ASSIST: false,
+  SCANNED_RENDER_DPI: 200,
+  OCR_AI_PAGE_CONCURRENCY_MAX: 8,
+  OCR_AI_BLOCK_CONCURRENCY_MAX: 8,
+  OCR_AI_RPM_MAX: 2000,
+  OCR_AI_TPM_MAX: 2000000,
+  OCR_AI_MAX_RETRIES_MAX: 8,
+}
+
+function RuntimeConfigSection() {
+  const [config, setConfig] = React.useState<RuntimeConfig>(DEFAULT_RUNTIME_CONFIG)
+  const [loading, setLoading] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [isOpen, setIsOpen] = React.useState(false)
+
+  // Load current config on mount
+  React.useEffect(() => {
+    let mounted = true
+    setLoading(true)
+    setError(null)
+    void apiFetch("/config/runtime")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load runtime config")
+        const data = await res.json()
+        if (mounted && data.config) {
+          setConfig(data.config as RuntimeConfig)
+        }
+      })
+      .catch((e) => {
+        if (mounted) setError(normalizeFetchError(e, "加载运行时配置失败"))
+      })
+      .finally(() => {
+        if (mounted) setLoading(false)
+      })
+    return () => { mounted = false }
+  }, [])
+
+  const handleSave = React.useCallback(async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await apiFetch("/config/runtime", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        throw new Error(
+          (errData && (errData as { detail?: string }).detail) ||
+          `保存失败 (${res.status})`
+        )
+      }
+      toast.success("运行时配置已保存。重启服务后生效。")
+    } catch (e) {
+      const msg = normalizeFetchError(e, "保存运行时配置失败")
+      setError(msg)
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
+  }, [config])
+
+  const updateField = React.useCallback(
+    (key: keyof RuntimeConfig, value: number | boolean) => {
+      setConfig((prev) => ({ ...prev, [key]: value }))
+      setError(null)
+    },
+    []
+  )
+
+  return (
+    <div className="border border-border">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        onClick={() => setIsOpen((v) => !v)}
+      >
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-sans text-sm font-semibold uppercase tracking-[0.14em]">
+              运行时配置
+            </span>
+            <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+              服务端
+            </Badge>
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            以下配置修改后需要重启服务生效
+          </div>
+        </div>
+        <ChevronDownIcon
+          className={cn(
+            "size-4 text-muted-foreground transition-transform",
+            isOpen && "rotate-180"
+          )}
+        />
+      </button>
+      {isOpen ? (
+        <div className="grid gap-3 border-t border-border px-4 py-4">
+        {loading ? (
+          <div className="py-4 text-center text-xs text-muted-foreground">
+            加载中...
+          </div>
+        ) : (
+          <>
+            {/* Timeouts */}
+            <div className="grid grid-cols-2 gap-3">
+              <FieldBlock
+                id="runtime-job-timeout"
+                label="任务超时 (秒)"
+                hint="RQ / 内联线程作业超时时间"
+                value={config.JOB_TIMEOUT_SECONDS}
+                onChange={(v) => updateField("JOB_TIMEOUT_SECONDS", v)}
+              />
+              <FieldBlock
+                id="runtime-ocr-page-timeout"
+                label="OCR 单页超时 (秒)"
+                hint="单页 OCR 超时保护"
+                value={config.OCR_PAGE_TIMEOUT_S}
+                onChange={(v) => updateField("OCR_PAGE_TIMEOUT_S", v)}
+              />
+              <FieldBlock
+                id="runtime-ocr-total-timeout"
+                label="OCR 总超时 (秒)"
+                hint="整体 OCR 阶段超时"
+                value={config.OCR_TOTAL_TIMEOUT_S}
+                onChange={(v) => updateField("OCR_TOTAL_TIMEOUT_S", v)}
+              />
+              <FieldBlock
+                id="runtime-paddle-vl-timeout"
+                label="PaddleOCR-VL 预测超时 (秒)"
+                hint="AI OCR 单次预测超时"
+                value={config.OCR_PADDLE_VL_PREDICT_TIMEOUT_S}
+                onChange={(v) => updateField("OCR_PADDLE_VL_PREDICT_TIMEOUT_S", v)}
+                step="0.5"
+              />
+            </div>
+
+            {/* Backoff / Delay */}
+            <div className="grid grid-cols-2 gap-3">
+              <FieldBlock
+                id="runtime-retry-backoff"
+                label="AI OCR 重试退避基数 (秒)"
+                hint="重试等待时间基数"
+                value={config.OCR_AI_RETRY_BACKOFF_BASE_S}
+                onChange={(v) => updateField("OCR_AI_RETRY_BACKOFF_BASE_S", v)}
+                step="0.5"
+              />
+              <FieldBlock
+                id="runtime-rate-limit-delay"
+                label="AI OCR 限流最小延迟 (秒)"
+                hint="收到限流后最小等待"
+                value={config.OCR_AI_RATE_LIMITED_MIN_DELAY_S}
+                onChange={(v) => updateField("OCR_AI_RATE_LIMITED_MIN_DELAY_S", v)}
+                step="0.5"
+              />
+            </div>
+
+            {/* Layout Assist */}
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={config.ENABLE_LAYOUT_ASSIST}
+                  onChange={(e) => updateField("ENABLE_LAYOUT_ASSIST", e.target.checked)}
+                  className="size-4 accent-foreground"
+                />
+                <span className="text-xs font-medium">启用 Layout Assist</span>
+              </label>
+              <div className="pl-6 text-[11px] text-amber-600">
+                注意：Layout Assist 可能增加处理时间，建议先在测试文档上验证效果。
+              </div>
+            </div>
+
+            {/* Rendering DPI */}
+            <div className="grid grid-cols-2 gap-3">
+              <FieldBlock
+                id="runtime-scanned-dpi"
+                label="PPTX 底图渲染 DPI"
+                hint="PPTX 背景图片质量"
+                value={config.SCANNED_RENDER_DPI}
+                onChange={(v) => updateField("SCANNED_RENDER_DPI", v)}
+              />
+            </div>
+
+            {/* Concurrency Caps */}
+            <div className="grid grid-cols-2 gap-3">
+              <FieldBlock
+                id="runtime-page-concurrency-max"
+                label="AI OCR 最大页面并发"
+                hint="同时处理的页面数上限"
+                value={config.OCR_AI_PAGE_CONCURRENCY_MAX}
+                onChange={(v) => updateField("OCR_AI_PAGE_CONCURRENCY_MAX", v)}
+              />
+              <FieldBlock
+                id="runtime-block-concurrency-max"
+                label="AI OCR 最大块并发"
+                hint="同时处理的文字块数上限"
+                value={config.OCR_AI_BLOCK_CONCURRENCY_MAX}
+                onChange={(v) => updateField("OCR_AI_BLOCK_CONCURRENCY_MAX", v)}
+              />
+              <FieldBlock
+                id="runtime-rpm-max"
+                label="AI OCR 最大请求频率(RPM)"
+                hint="每分钟最大请求数"
+                value={config.OCR_AI_RPM_MAX}
+                onChange={(v) => updateField("OCR_AI_RPM_MAX", v)}
+              />
+              <FieldBlock
+                id="runtime-tpm-max"
+                label="AI OCR 最大 token 频率(TPM)"
+                hint="每分钟最大 token 数"
+                value={config.OCR_AI_TPM_MAX}
+                onChange={(v) => updateField("OCR_AI_TPM_MAX", v)}
+              />
+              <FieldBlock
+                id="runtime-max-retries-max"
+                label="AI OCR 最大重试次数"
+                hint="单次请求最大重试次数"
+                value={config.OCR_AI_MAX_RETRIES_MAX}
+                onChange={(v) => updateField("OCR_AI_MAX_RETRIES_MAX", v)}
+              />
+            </div>
+
+            {/* Save */}
+            <div className="flex items-center gap-3 pt-1">
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                disabled={loading || saving}
+                onClick={handleSave}
+              >
+                {saving ? "保存中..." : "保存运行时配置"}
+              </Button>
+              {error ? (
+                <span className="text-xs text-red-600">{error}</span>
+              ) : null}
+            </div>
+          </>
+        )}
+      </div>
+      ) : null}
+    </div>
+  )
+}
+
+function FieldBlock({
+  id,
+  label,
+  hint,
+  value,
+  onChange,
+  step,
+}: {
+  id: string
+  label: string
+  hint?: string
+  value: number
+  onChange: (v: number) => void
+  step?: string
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        <label className="text-muted-foreground text-xs" htmlFor={id}>
+          {label}
+        </label>
+        {hint ? <HoverHint text={hint} /> : null}
+      </div>
+      <Input
+        id={id}
+        type="number"
+        value={value}
+        step={step ?? "1"}
+        onChange={(e) => {
+          const v = Number(e.target.value)
+          if (Number.isFinite(v)) onChange(v)
+        }}
+        className="h-8 text-xs"
+      />
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const {
     settings,
@@ -2564,6 +2878,8 @@ export default function SettingsPage() {
                 ) : null}
               </CollapsibleSection>
             ) : null}
+            {/* Runtime config section — self mode only (read/write server-side env vars) */}
+            {!isPublicMode ? <RuntimeConfigSection /> : null}
           </div>
         </div>
       </div>

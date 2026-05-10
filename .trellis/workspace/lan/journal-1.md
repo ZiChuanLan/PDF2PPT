@@ -40,3 +40,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 全流程架构审查与优化：AIOCR链路、硬编码消除、前端超时修复
+
+**Date**: 2026-05-09
+**Task**: 全流程架构审查与优化：AIOCR链路、硬编码消除、前端超时修复
+**Branch**: `main`
+
+### Summary
+
+全代码库审查 + 13文件优化。后端：Job超时/OCR AI并发/JWT过期可配置化，新建共享字体发现工具。前端：apiFetch强制超时、SSE指数退避、轮询常量统一。Check agent修复2个关键bug（settings未赋值、导入路径错误）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1c4cf11` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
