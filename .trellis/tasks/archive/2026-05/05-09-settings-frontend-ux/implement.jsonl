@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-09-settings-frontend-ux/research/01-env-vs-settings-gap.md", "reason": "53 backend env vars vs 58 frontend settings — gap analysis with 73.5% unmapped"}
+{"file": ".trellis/tasks/05-09-settings-frontend-ux/research/02-model-download-architecture.md", "reason": "Model registry, download/cache/status, prewarming, frontend hooks"}
+{"file": ".trellis/tasks/05-09-settings-frontend-ux/research/03-settings-ui.md", "reason": "Settings page UI structure, controls, auto-save, API calls"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions — FastAPI, pydantic-settings, .env management"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions — Next.js App Router, React Context, hooks"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Config flow: .env → backend Settings → API → frontend Settings → UI"}

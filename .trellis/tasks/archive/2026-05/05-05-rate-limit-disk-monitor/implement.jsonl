@@ -1,0 +1,5 @@
+{"type": "spec", "path": ".trellis/spec/backend/index.md", "lines": 1, "description": "Backend development guidelines"}
+{"type": "research", "path": ".trellis/tasks/05-04-architecture-review/research/api-endpoints.md", "lines": 1, "description": "API layer architecture analysis"}
+{"type": "file", "path": "api/app/main.py", "lines": 1, "description": "FastAPI app - middleware"}
+{"type": "file", "path": "api/app/routers/jobs.py", "lines": 1, "description": "Job endpoints - disk space check"}
+{"type": "file", "path": "api/app/config.py", "lines": 1, "description": "Configuration settings"}

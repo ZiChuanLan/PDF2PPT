@@ -1,0 +1,5 @@
+{"file": "research/01-dual-redis-backend.md", "reason": "Verify InMemoryRedis pipeline fix + rate limit behavior"}
+{"file": "research/02-pptx-generator-split.md", "reason": "Verify generator split: import paths, shim, test compatibility"}
+{"file": "research/04-aiocr-constants-audit.md", "reason": "Verify all P0/P1 constants externalized, os.getenv migrated"}
+{"file": "../spec/backend/index.md", "reason": "Backend quality guidelines for check phase"}
+{"file": "../spec/guides/code-reuse-thinking-guide.md", "reason": "Ensure no duplication introduced in refactor"}

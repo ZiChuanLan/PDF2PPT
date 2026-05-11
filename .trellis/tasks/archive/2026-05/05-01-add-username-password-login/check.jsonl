@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Verify auth implementation follows backend patterns"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify frontend components follow guidelines"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify TypeScript type safety"}
+{"file": ".trellis/tasks/05-01-add-username-password-login/prd.md", "reason": "Verify implementation meets PRD requirements"}

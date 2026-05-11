@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-09-architecture-optimization/research/01-backend-pipeline.md", "reason": "Full backend pipeline architecture, conversion flow, OCR routing, job queue system"}
+{"file": ".trellis/tasks/05-09-architecture-optimization/research/02-hardcoded-values.md", "reason": "Complete audit of ~150+ hardcoded values across api/ and web/ with priorities"}
+{"file": ".trellis/tasks/05-09-architecture-optimization/research/03-frontend-architecture.md", "reason": "Frontend architecture, SSE/polling issues, state management patterns"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend coding guidelines and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend coding guidelines and conventions"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Code reuse patterns for hardcoded value extraction"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer consistency for config flow (env → backend → frontend)"}

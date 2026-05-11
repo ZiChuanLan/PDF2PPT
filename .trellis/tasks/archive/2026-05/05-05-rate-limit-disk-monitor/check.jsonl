@@ -1,0 +1,3 @@
+{"type": "spec", "path": ".trellis/spec/backend/index.md", "lines": 1, "description": "Backend development guidelines"}
+{"type": "file", "path": "api/app/main.py", "lines": 1, "description": "FastAPI app - middleware"}
+{"type": "file", "path": "api/app/routers/jobs.py", "lines": 1, "description": "Job endpoints - disk space check"}

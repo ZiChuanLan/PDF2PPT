@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend quality standards for FastAPI + Pydantic"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend quality standards for settings page changes"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code quality standards for frontend changes"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify cross-layer consistency between frontend config and backend schema"}
+{"file": ".trellis/tasks/05-03-simplify-ocr-architecture/research/job-creation-api.md", "reason": "Verify backward compatibility of old Form-based endpoint"}

@@ -1,0 +1,8 @@
+{"type": "spec", "path": ".trellis/spec/backend/index.md", "lines": 1, "description": "Backend development guidelines"}
+{"type": "research", "path": ".trellis/tasks/05-04-architecture-review/research/api-endpoints.md", "lines": 1, "description": "API layer architecture analysis"}
+{"type": "research", "path": ".trellis/tasks/05-04-architecture-review/research/worker-pipeline.md", "lines": 1, "description": "Worker pipeline analysis"}
+{"type": "research", "path": ".trellis/tasks/05-04-architecture-review/research/file-storage-cleanup.md", "lines": 1, "description": "File storage analysis"}
+{"type": "file", "path": "api/app/routers/jobs.py", "lines": 1, "description": "Job endpoints - quota check, file upload"}
+{"type": "file", "path": "api/app/services/job_cleanup.py", "lines": 1, "description": "Cleanup daemon - race condition fix"}
+{"type": "file", "path": "api/app/routers/admin.py", "lines": 1, "description": "Admin endpoints - env write backup"}
+{"type": "file", "path": "api/app/config.py", "lines": 1, "description": "Configuration settings"}

@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-09-settings-frontend-ux/prd.md", "reason": "Requirements with gap classification (A/B/C) and phased plan"}
+{"file": ".trellis/tasks/05-09-settings-frontend-ux/research/01-env-vs-settings-gap.md", "reason": "Verify all A-category gaps are actually resolved"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify new runtime config endpoint follows conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Verify settings UI additions follow conventions"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify config write-back to .env file is safe"}

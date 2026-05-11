@@ -1,0 +1,5 @@
+{"file": "research/01-dual-redis-backend.md", "reason": "Memory mode bug + all is_memory_backend call sites + InMemoryRedis method map"}
+{"file": "research/02-pptx-generator-split.md", "reason": "Generator monolith structure, 13 helpers + main function, split plan into 7 sub-modules"}
+{"file": "research/04-aiocr-constants-audit.md", "reason": "~200+ constants audit, P0/P1 classification, 38 os.getenv bypasses"}
+{"file": "../spec/backend/index.md", "reason": "Backend coding conventions"}
+{"file": "../spec/guides/index.md", "reason": "Shared thinking guides (code reuse, cross-layer)"}

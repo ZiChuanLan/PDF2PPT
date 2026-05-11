@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-09-architecture-optimization/prd.md", "reason": "PRD with optimization scope, acceptance criteria, exclusions"}
+{"file": ".trellis/tasks/05-09-architecture-optimization/research/02-hardcoded-values.md", "reason": "Check that all hardcoded values were actually made configurable"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend changes comply with conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Verify frontend changes comply with conventions"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify config flow consistency across layers"}

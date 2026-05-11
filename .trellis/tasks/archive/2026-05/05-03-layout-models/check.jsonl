@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend quality checks and conventions"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality and type safety checks"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript type consistency across layers"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify cross-layer data flow correctness"}
+{"file": ".trellis/tasks/05-03-layout-models/prd.md", "reason": "PRD acceptance criteria verification"}

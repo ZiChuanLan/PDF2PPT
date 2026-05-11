@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions; verify refactored code follows established patterns"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions; verify component organization and hook patterns"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Verify no new duplication introduced; downloaded logic deduplicated"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify error handling consistency across API boundary"}
+{"file": ".trellis/tasks/05-11-comprehensive-refactor/research/backend-api-audit.md", "reason": "Verify route conflicts resolved, deprecated params removed"}
+{"file": ".trellis/tasks/05-11-comprehensive-refactor/research/frontend-api-audit.md", "reason": "Verify silent errors fixed, duplicate logic eliminated"}
+{"file": ".trellis/tasks/05-11-comprehensive-refactor/research/frontend-interaction-audit.md", "reason": "Verify nav gaps filled, mobile issues addressed"}

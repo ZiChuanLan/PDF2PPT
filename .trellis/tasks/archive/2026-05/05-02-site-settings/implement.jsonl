@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "DB model patterns, API endpoint conventions, auth flow"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Settings state management patterns"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "UI component conventions for settings page"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Frontend-backend integration patterns"}

@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Auth patterns for password reset endpoint"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions and patterns"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions and patterns"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for new manage page"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook patterns for auth state"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow for auth features"}

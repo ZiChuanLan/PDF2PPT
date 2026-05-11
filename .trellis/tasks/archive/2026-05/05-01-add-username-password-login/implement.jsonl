@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Auth patterns and conventions for backend implementation"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec index for coding standards"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec index for coding standards"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component guidelines for frontend implementation"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety guidelines for TypeScript"}
+{"file": ".trellis/spec/guides/index.md", "reason": "General coding guides"}
+{"file": ".trellis/tasks/05-01-add-username-password-login/research/auth-system.md", "reason": "Current auth system analysis for implementation reference"}

@@ -1,0 +1,5 @@
+{"type": "spec", "path": ".trellis/spec/backend/index.md", "lines": 1, "description": "Backend development guidelines"}
+{"type": "research", "path": ".trellis/tasks/05-04-architecture-review/research/file-storage-cleanup.md", "lines": 1, "description": "File storage analysis"}
+{"type": "file", "path": "api/app/routers/jobs.py", "lines": 1, "description": "Job endpoints - streaming upload"}
+{"type": "file", "path": "api/app/worker.py", "lines": 1, "description": "Worker - cleanup improvements"}
+{"type": "file", "path": "api/app/services/job_cleanup.py", "lines": 1, "description": "Cleanup daemon"}

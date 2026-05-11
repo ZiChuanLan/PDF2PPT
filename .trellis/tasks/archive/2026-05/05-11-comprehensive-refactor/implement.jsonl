@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions: FastAPI, Redis, SQLite patterns; auth architecture"}
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "JWT + OAuth auth patterns; needed for SSE auth fix task"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions index; component/hook/state management guidelines structure"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Code reuse guidelines; eliminate duplicate download logic and shared utilities"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer consistency; ensure frontend/backend error handling alignment"}
+{"file": ".trellis/tasks/05-11-comprehensive-refactor/research/backend-api-audit.md", "reason": "Complete backend API catalog: 49 endpoints, all schemas, error formats, route conflicts"}
+{"file": ".trellis/tasks/05-11-comprehensive-refactor/research/frontend-api-audit.md", "reason": "Frontend API call catalog: 44 call sites, 3 silent error swallows, 3 duplicated downloads"}
+{"file": ".trellis/tasks/05-11-comprehensive-refactor/research/frontend-interaction-audit.md", "reason": "Page/component interaction gaps: missing nav links, mobile issues, auth guard state"}
