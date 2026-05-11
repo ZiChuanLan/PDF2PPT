@@ -9,6 +9,7 @@ import {
   EyeOffIcon,
   KeyRoundIcon,
 } from "lucide-react"
+import Link from "next/link"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -56,160 +57,14 @@ import { useSettings } from "@/hooks/use-settings"
 import { useModelStatus } from "@/hooks/use-model-status"
 import { useModelDownload } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
-
-function FieldLabel({
-  htmlFor,
-  children,
-  hint,
-}: {
-  htmlFor: string
-  children: React.ReactNode
-  hint?: string
-}) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <label className="text-muted-foreground text-xs" htmlFor={htmlFor}>
-        {children}
-      </label>
-      {hint ? <HoverHint text={hint} /> : null}
-    </div>
-  )
-}
-
-function AdvancedReveal({
-  show,
-  children,
-}: {
-  show: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      aria-hidden={!show}
-      className={`grid overflow-hidden transition-[grid-template-rows,opacity,transform,filter] duration-500 ${
-        show
-          ? "grid-rows-[1fr] translate-y-0 opacity-100 blur-0 ease-[cubic-bezier(0.16,1,0.3,1)]"
-          : "pointer-events-none grid-rows-[0fr] -translate-y-1.5 opacity-0 blur-[2px] ease-[cubic-bezier(0.4,0,0.2,1)]"
-      }`}
-    >
-      <div className="min-h-0 overflow-hidden">
-        <div
-          className={`grid gap-3 transition-[padding,opacity,transform] duration-500 ${
-            show ? "translate-y-0 pt-0.5 opacity-100" : "translate-y-1 pt-0 opacity-0"
-          }`}
-        >
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function PromptTextarea(props: React.ComponentProps<"textarea">) {
-  return (
-    <textarea
-      {...props}
-      className="min-h-[148px] w-full resize-y border border-input bg-transparent px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:bg-[#f0f0f0] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
-    />
-  )
-}
-
-function CollapsibleSection({
-  title,
-  description,
-  hint,
-  defaultOpen = false,
-  children,
-}: {
-  title: string
-  description?: string
-  hint?: string
-  defaultOpen?: boolean
-  children: React.ReactNode
-}) {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen)
-
-  return (
-    <div className="border border-border">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div>
-          <div className="font-sans text-sm font-semibold uppercase tracking-[0.14em]">
-            {title}
-          </div>
-          {description ? (
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {description}
-            </div>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          {hint ? <HoverHint text={hint} /> : null}
-          <ChevronDownIcon
-            className={cn(
-              "size-4 text-muted-foreground transition-transform",
-              isOpen && "rotate-180"
-            )}
-          />
-        </div>
-      </button>
-      {isOpen ? (
-        <div className="grid gap-3 border-t border-border px-4 py-4">
-          {children}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function SensitiveInput({
-  id,
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  autoComplete = "off",
-}: {
-  id?: string
-  value: string
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
-  placeholder?: string
-  disabled?: boolean
-  autoComplete?: string
-}) {
-  const [show, setShow] = React.useState(false)
-
-  return (
-    <div className="relative">
-      <Input
-        id={id}
-        type={show ? "text" : "password"}
-        autoComplete={autoComplete}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        disabled={disabled}
-        className="pr-10"
-      />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        className="absolute right-1 top-1/2 -translate-y-1/2"
-        onClick={() => setShow(!show)}
-      >
-        {show ? (
-          <EyeOffIcon className="size-3.5" />
-        ) : (
-          <EyeIcon className="size-3.5" />
-        )}
-      </Button>
-    </div>
-  )
-}
+import {
+  FieldLabel,
+  AdvancedReveal,
+  PromptTextarea,
+  CollapsibleSection,
+  SensitiveInput,
+  FieldBlock,
+} from "@/components/settings/settings-shared"
 
 const ocrAiProviderOptions: Array<{ id: OcrAiProvider; label: string }> = [
   { id: "auto", label: "自动识别（推荐）" },
@@ -467,7 +322,7 @@ function RuntimeConfigSection() {
         ) : (
           <>
             {/* Timeouts */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FieldBlock
                 id="runtime-job-timeout"
                 label="任务超时 (秒)"
@@ -500,7 +355,7 @@ function RuntimeConfigSection() {
             </div>
 
             {/* Backoff / Delay */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FieldBlock
                 id="runtime-retry-backoff"
                 label="AI OCR 重试退避基数 (秒)"
@@ -536,7 +391,7 @@ function RuntimeConfigSection() {
             </div>
 
             {/* Rendering DPI */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FieldBlock
                 id="runtime-scanned-dpi"
                 label="PPTX 底图渲染 DPI"
@@ -547,7 +402,7 @@ function RuntimeConfigSection() {
             </div>
 
             {/* Concurrency Caps */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FieldBlock
                 id="runtime-page-concurrency-max"
                 label="AI OCR 最大页面并发"
@@ -587,7 +442,7 @@ function RuntimeConfigSection() {
 
             {/* Concurrency Defaults */}
             <p className="text-[11px] font-medium text-muted-foreground mt-2 mb-[-6px]">并发默认值 (用户不指定时生效)</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FieldBlock
                 id="runtime-page-concurrency-default"
                 label="AI OCR 默认页面并发"
@@ -627,7 +482,7 @@ function RuntimeConfigSection() {
 
             {/* OCR Protection */}
             <p className="text-[11px] font-medium text-muted-foreground mt-2 mb-[-6px]">OCR 保护机制</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FieldBlock
                 id="runtime-max-consecutive-timeouts"
                 label="OCR 最大连续超时"
@@ -663,44 +518,6 @@ function RuntimeConfigSection() {
         )}
       </div>
       ) : null}
-    </div>
-  )
-}
-
-function FieldBlock({
-  id,
-  label,
-  hint,
-  value,
-  onChange,
-  step,
-}: {
-  id: string
-  label: string
-  hint?: string
-  value: number
-  onChange: (v: number) => void
-  step?: string
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5">
-        <label className="text-muted-foreground text-xs" htmlFor={id}>
-          {label}
-        </label>
-        {hint ? <HoverHint text={hint} /> : null}
-      </div>
-      <Input
-        id={id}
-        type="number"
-        value={value}
-        step={step ?? "1"}
-        onChange={(e) => {
-          const v = Number(e.target.value)
-          if (Number.isFinite(v)) onChange(v)
-        }}
-        className="h-8 text-xs"
-      />
     </div>
   )
 }
@@ -1106,9 +923,13 @@ export default function SettingsPage() {
     isOcrEnabledForCurrentEngine,
   ])
 
-  const onSave = React.useCallback(() => {
-    saveSettings()
-    toast.success("设置已保存")
+  const onSave = React.useCallback(async () => {
+    try {
+      await saveSettings()
+      toast.success("设置已保存")
+    } catch {
+      toast.error("保存设置失败")
+    }
   }, [saveSettings])
 
   const onResetScannedImageTuning = React.useCallback(() => {
@@ -1414,8 +1235,13 @@ export default function SettingsPage() {
 
         <div className="page-enter page-enter-delay-1 mt-4 space-y-3">
           <div className="editorial-toolbar flex flex-wrap items-center justify-between gap-2 border border-border bg-background/90 px-3 py-2">
-            <div className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-              配置操作
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" size="sm" asChild>
+                <Link href="/">返回首页</Link>
+              </Button>
+              <div className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                配置操作
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {lastSavedAt ? (

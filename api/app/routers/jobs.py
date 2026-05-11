@@ -700,14 +700,6 @@ async def create_job(
     text_erase_mode: str | None = Form(
         "fill", description="Text erase mode for scanned/mineru pages (smart, fill)"
     ),
-    enable_layout_assist: bool = Form(
-        False,
-        description="Deprecated and ignored: AI layout assistance has been retired",
-    ),
-    layout_assist_apply_image_regions: bool = Form(
-        False,
-        description="Deprecated and ignored: layout-assist image region application has been retired",
-    ),
     parse_provider: str = Form(
         "local",
         description=(
@@ -757,10 +749,6 @@ async def create_job(
     ),
     mineru_is_ocr: bool | None = Form(
         None, description="Optional MinerU per-file OCR switch"
-    ),
-    mineru_hybrid_ocr: bool | None = Form(
-        False,
-        description="Deprecated and ignored: MinerU no longer layers local hybrid OCR alignment",
     ),
     ocr_provider: str | None = Form(
         "auto",
@@ -865,13 +853,6 @@ async def create_job(
         le=400,
         description="Optional OCR render DPI for scanned-page rasterization before OCR",
     ),
-    ocr_geometry_mode: str | None = Form(
-        "auto",
-        description=(
-            "Deprecated geometry hint for aiocr (auto, local_tesseract, direct_ai). "
-            "Explicit aiocr now always stays on pure AI bbox at runtime."
-        ),
-    ),
     scanned_page_mode: str | None = Form(
         "segmented",
         description=(
@@ -950,15 +931,12 @@ async def create_job(
         ocr_baidu_app_id=ocr_baidu_app_id,
         ocr_baidu_api_key=ocr_baidu_api_key,
         ocr_baidu_secret_key=ocr_baidu_secret_key,
-        ocr_geometry_mode=ocr_geometry_mode,
         text_erase_mode=text_erase_mode,
         scanned_page_mode=scanned_page_mode,
         ppt_generation_mode=ppt_generation_mode,
         page_start=page_start,
         page_end=page_end,
     )
-    enable_layout_assist = False
-    layout_assist_apply_image_regions = False
     parse_provider_id = normalized_options.parse_provider
 
     if parse_provider_id == "v2":
@@ -1108,8 +1086,8 @@ async def create_job(
                 enable_ocr=enable_ocr,
                 retain_process_artifacts=retain_process_artifacts,
                 remove_footer_notebooklm=remove_footer_notebooklm,
-                enable_layout_assist=enable_layout_assist,
-                layout_assist_apply_image_regions=layout_assist_apply_image_regions,
+                enable_layout_assist=False,
+                layout_assist_apply_image_regions=False,
                 provider=normalized_options.provider,
                 api_key=None,
                 baidu_doc_parse_type=normalized_options.baidu_doc_parse_type,
@@ -1125,7 +1103,7 @@ async def create_job(
                 mineru_enable_table=mineru_enable_table,
                 mineru_language=mineru_language,
                 mineru_is_ocr=mineru_is_ocr,
-                mineru_hybrid_ocr=mineru_hybrid_ocr,
+                mineru_hybrid_ocr=False,
                 ocr_provider=normalized_options.ocr_provider,
                 ocr_baidu_app_id=ocr_baidu_app_id,
                 ocr_baidu_api_key=None,
@@ -1149,7 +1127,7 @@ async def create_job(
                 ocr_ai_tokens_per_minute=ocr_ai_tokens_per_minute,
                 ocr_ai_max_retries=ocr_ai_max_retries,
                 ocr_render_dpi=ocr_render_dpi,
-                ocr_geometry_mode=normalized_options.ocr_geometry_mode,
+                ocr_geometry_mode="auto",
                 text_erase_mode=normalized_options.text_erase_mode,
                 scanned_page_mode=normalized_options.scanned_page_mode,
                 ppt_generation_mode=normalized_options.ppt_generation_mode,
@@ -1562,13 +1540,38 @@ async def job_event_generator(job_id: str) -> AsyncGenerator[str, None]:
 
 
 @router.get("/{job_id}/events")
-async def stream_job_events(job_id: str):
+async def stream_job_events(
+    job_id: str,
+    current_user=Depends(get_current_user_optional),
+):
     """
     Stream job progress events via Server-Sent Events (SSE).
 
     Clients can connect to this endpoint to receive real-time updates
     about job status, stage, and progress.
+
+    Access control:
+    - Authenticated users can only stream their own jobs
+    - Jobs without an owner are publicly accessible
+    - Unauthenticated access to owned jobs returns 401
     """
+    # Perform ownership check before starting the stream
+    redis_service = get_redis_service()
+    job = redis_service.get_job(job_id)
+    if job:
+        if current_user and job.user_id and job.user_id != current_user.id:
+            raise AppException(
+                code=ErrorCode.FORBIDDEN,
+                message="You can only access your own jobs",
+                status_code=403,
+            )
+        if not current_user and job.user_id:
+            raise AppException(
+                code=ErrorCode.AUTH_REQUIRED,
+                message="Authentication required to access this job",
+                status_code=401,
+            )
+
     return StreamingResponse(
         job_event_generator(job_id),
         media_type="text/event-stream",

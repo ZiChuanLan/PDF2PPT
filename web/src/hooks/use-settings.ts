@@ -135,9 +135,10 @@ export function useSettings() {
     return () => window.clearTimeout(timer)
   }, [settings, settingsHydrated, deployMode])
 
-  const save = React.useCallback(() => {
+  const save = React.useCallback(async () => {
     if (deployMode === "self") {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+      setLastSavedAt(Date.now())
     } else {
       const prefs: Record<string, string> = {}
       for (const [key, value] of Object.entries(settings)) {
@@ -145,12 +146,15 @@ export function useSettings() {
           prefs[key] = String(value)
         }
       }
-      void apiFetch("/user/preferences", {
+      const res = await apiFetch("/user/preferences", {
         method: "PUT",
         body: JSON.stringify({ preferences: prefs }),
-      }).catch(() => { /* ignore */ })
+      })
+      if (!res.ok) {
+        throw new Error("保存设置失败")
+      }
+      setLastSavedAt(Date.now())
     }
-    setLastSavedAt(Date.now())
   }, [settings, deployMode])
 
   const clear = React.useCallback(() => {

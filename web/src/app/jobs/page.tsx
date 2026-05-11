@@ -13,6 +13,7 @@ import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { downloadJobOutput } from "@/lib/download-utils"
 import { JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import {
   JOB_STAGE_LABELS,
@@ -195,20 +196,7 @@ export default function JobsPage() {
 
   const handleDownload = React.useCallback(async (jobId: string) => {
     try {
-      const response = await apiFetch(`/jobs/${jobId}/download`)
-      if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        throw new Error(body?.message || `下载失败（HTTP ${response.status}）`)
-      }
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `output-${jobId.slice(0, 8)}.pptx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
+      await downloadJobOutput(jobId)
     } catch (e) {
       toast.error(normalizeFetchError(e, "下载失败"))
     }

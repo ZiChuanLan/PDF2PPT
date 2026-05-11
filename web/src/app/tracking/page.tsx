@@ -26,6 +26,7 @@ import {
 } from "@/lib/tracking-artifacts"
 import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError, resolveApiOrigin } from "@/lib/api"
+import { downloadJobOutput } from "@/lib/download-utils"
 import { JOB_POLL_INTERVAL_MS, TRACKING_JOB_LIMIT } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -39,6 +40,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import Link from "next/link"
 
 type JobArtifactImage = {
   page_index: number
@@ -274,20 +276,7 @@ function TrackingPageContent() {
   }, [])
 
   const handleDownloadByJobId = React.useCallback(async (targetJobId: string) => {
-    const response = await apiFetch(`/jobs/${targetJobId}/download`)
-    if (!response.ok) {
-      const body = await response.json().catch(() => null)
-      throw new Error(body?.message || `下载失败（HTTP ${response.status}）`)
-    }
-    const blob = await response.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `output-${targetJobId.slice(0, 8)}.pptx`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
+    await downloadJobOutput(targetJobId)
   }, [])
 
   const handleDeleteJobById = React.useCallback(
@@ -477,6 +466,9 @@ function TrackingPageContent() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 space-y-3">
               <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="ghost" size="sm" asChild>
+                  <Link href="/">返回首页</Link>
+                </Button>
                 <div className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   任务追踪
                 </div>

@@ -26,7 +26,8 @@ export default function AdminPage() {
   const [users, setUsers] = React.useState<AdminUser[]>([])
   const [stats, setStats] = React.useState<AdminStats | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
-  const [error, setError] = React.useState<string | null>(null)
+  const [usersError, setUsersError] = React.useState<string | null>(null)
+  const [statsError, setStatsError] = React.useState<string | null>(null)
 
   // Selection state
   const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set())
@@ -55,38 +56,41 @@ export default function AdminPage() {
 
   const fetchAdminData = React.useCallback(async () => {
     setIsLoading(true)
-    setError(null)
-    try {
-      const [usersResponse, statsResponse] = await Promise.all([
-        apiFetch(`/admin/users?limit=${ADMIN_USERS_LIMIT}`),
-        apiFetch("/admin/stats"),
-      ])
+    setUsersError(null)
+    setStatsError(null)
 
+    // Fetch users
+    try {
+      const usersResponse = await apiFetch(`/admin/users?limit=${ADMIN_USERS_LIMIT}`)
       if (!usersResponse.ok) {
         throw new Error("Failed to fetch users")
       }
-      if (!statsResponse.ok) {
-        throw new Error("Failed to fetch stats")
-      }
-
       const usersData = await usersResponse.json().catch(() => null)
-      const statsData = await statsResponse.json().catch(() => null)
-
       if (usersData?.users && Array.isArray(usersData.users)) {
         const normalized = usersData.users
           .map((u: unknown) => normalizeUser(u))
           .filter((u: AdminUser | null): u is AdminUser => u !== null)
         setUsers(normalized)
       }
+    } catch (e) {
+      setUsersError(normalizeFetchError(e, "加载用户列表失败"))
+    }
 
+    // Fetch stats independently
+    try {
+      const statsResponse = await apiFetch("/admin/stats")
+      if (!statsResponse.ok) {
+        throw new Error("Failed to fetch stats")
+      }
+      const statsData = await statsResponse.json().catch(() => null)
       if (statsData) {
         setStats(statsData)
       }
     } catch (e) {
-      setError(normalizeFetchError(e, "加载管理数据失败"))
-    } finally {
-      setIsLoading(false)
+      setStatsError(normalizeFetchError(e, "加载统计数据失败"))
     }
+
+    setIsLoading(false)
   }, [])
 
   React.useEffect(() => {
@@ -255,9 +259,15 @@ export default function AdminPage() {
           </div>
         </header>
 
-        {error ? (
+        {usersError ? (
           <div className="mt-4 border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
+            用户列表：{usersError}
+          </div>
+        ) : null}
+
+        {statsError ? (
+          <div className="mt-4 border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            统计数据：{statsError}
           </div>
         ) : null}
 

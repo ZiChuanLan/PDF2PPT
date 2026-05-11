@@ -2,35 +2,20 @@
 
 import * as React from "react"
 import Link from "next/link"
-import {
-  AlertCircleIcon,
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  DownloadIcon,
-  FileIcon,
-  Loader2Icon,
-  XIcon,
-  UploadCloudIcon,
-} from "lucide-react"
-import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
+
+import { useDropzone } from "react-dropzone"
 
 import { cn } from "@/lib/utils"
 import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
+import { downloadJobOutput } from "@/lib/download-utils"
 import { useAuth } from "@/components/auth-provider"
 import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
-  AIOCR_CHAIN_MODE_LABELS,
   defaultSettings,
   loadStoredSettings,
-  PARSE_ENGINE_MODE_LABELS,
-  PPT_GENERATION_MODE_LABELS,
   SETTINGS_STORAGE_KEY,
-  type ParseEngineMode,
   type Settings,
 } from "@/lib/settings"
 import {
@@ -39,8 +24,6 @@ import {
 } from "@/lib/run-config"
 import {
   getJobStageFlowIndex,
-  JOB_STAGE_LABELS,
-  JOB_STATUS_LABELS,
   normalizeJobListResponse,
   normalizeJobStatusResponse,
   TERMINAL_JOB_STATUSES,
@@ -50,17 +33,20 @@ import {
 } from "@/lib/job-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { JobDebugPanel } from "@/components/job-debug-panel"
-import { HoverHint } from "@/components/ui/hover-hint"
-import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
-import { PdfCanvasPreview } from "@/components/pdf-canvas-preview"
-import { Select } from "@/components/ui/select"
 import { useUploadSession } from "@/components/upload-session-provider"
-import { ModelStatusBadge } from "@/components/model-status-badge"
 import { useModelStatus, useEffectiveModelStatus } from "@/hooks/use-model-status"
 import { useSSEJobTracking } from "@/hooks/use-sse-job-tracking"
 import type { FileJobState } from "@/lib/job-types"
+import { UploadStage } from "@/components/home/upload-stage"
+import { PreviewStage } from "@/components/home/preview-stage"
+import { ConvertingStage } from "@/components/home/converting-stage"
+import {
+  formatBytes,
+  toIntOrUndefined,
+  clampPositiveInt,
+  isImageUploadFile,
+  SUPPORTED_UPLOAD_ACCEPT,
+} from "@/lib/home-utils"
 
 type JobApiErrorBody = {
   code?: string
@@ -73,45 +59,6 @@ type JobStatusFetchError = Error & {
 }
 
 const HOME_ACTIVE_JOB_STORAGE_KEY = "ppt-opencode:home:active-job-id"
-const SUPPORTED_UPLOAD_ACCEPT = {
-  "application/pdf": [".pdf"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-  "image/webp": [".webp"],
-} as const
-const SUPPORTED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"] as const
-
-function formatBytes(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B"
-  const units = ["B", "KB", "MB", "GB"] as const
-  const idx = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  const value = bytes / Math.pow(1024, idx)
-  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`
-}
-
-function toIntOrUndefined(value: string): number | undefined {
-  const trimmed = value.trim()
-  if (!trimmed) return undefined
-  const n = Number(trimmed)
-  if (!Number.isFinite(n)) return undefined
-  const i = Math.floor(n)
-  if (i <= 0) return undefined
-  return i
-}
-
-function clampPositiveInt(value: number, max?: number) {
-  const normalized = Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1
-  if (!max || max <= 0) return normalized
-  return Math.min(normalized, max)
-}
-
-function isImageUploadFile(file: File | null | undefined) {
-  if (!file) return false
-  const type = String(file.type || "").trim().toLowerCase()
-  if (type.startsWith("image/")) return true
-  const name = String(file.name || "").trim().toLowerCase()
-  return SUPPORTED_IMAGE_EXTENSIONS.some((suffix) => name.endsWith(suffix))
-}
 
 export default function Home() {
   const { user, isLoading: isAuthLoading } = useAuth()
@@ -400,20 +347,11 @@ export default function Home() {
   }, [fetchJobs])
 
   const handleDownload = React.useCallback(async (targetJobId: string) => {
-    const response = await apiFetch(`/jobs/${targetJobId}/download`)
-    if (!response.ok) {
-      const body = await response.json().catch(() => null)
-      throw new Error(body?.message || `下载失败（HTTP ${response.status}）`)
+    try {
+      await downloadJobOutput(targetJobId)
+    } catch (e) {
+      toast.error(normalizeFetchError(e, "下载失败"))
     }
-    const blob = await response.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `output-${targetJobId.slice(0, 8)}.pptx`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
   }, [])
 
   const handleDownloadAll = React.useCallback(async () => {
@@ -550,7 +488,6 @@ export default function Home() {
       { code: "done", label: "完成" },
     ] as const
 
-    // Use the "average" stage across all active jobs
     const activeStatuses = fileJobs.filter((j) => j.status).map((j) => j.status!)
     if (activeStatuses.length === 0) {
       return STEPS.map((step, i) => ({ ...step, isDone: false, isCurrent: i === 0 }))
@@ -591,952 +528,72 @@ export default function Home() {
         </p>
 
         <main className="mt-2">
-          {/* ── Stage 1: Upload (empty state) ── */}
           {stage === "upload" && (
-            <div>
-              {/* Hero section */}
-              <div className="relative mx-auto max-w-3xl py-8 md:py-14">
-                {/* Subtle gradient backdrop */}
-                <div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-gradient-to-b from-destructive/[0.03] to-transparent" />
-
-                <div className="mb-6 text-center">
-                  <h1 className="font-serif text-3xl font-semibold tracking-tight md:text-4xl">
-                    PDF2PPT
-                  </h1>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    上传 PDF 或图片，自动生成演示文稿
-                  </p>
-                </div>
-
-                <div
-                  {...getRootProps()}
-                  className={cn(
-                    "group flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-all",
-                    "min-h-[240px]",
-                    isDragActive && !isDragReject && "border-destructive bg-destructive/5 scale-[1.01]",
-                    isDragReject && "border-destructive bg-destructive/10",
-                    !isDragActive && !isDragReject && "border-border hover:border-destructive/50 hover:bg-muted/30",
-                    (!user && !isAuthLoading) && "pointer-events-none opacity-60"
-                  )}
-                >
-                  <input {...getInputProps()} />
-                  <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-destructive/10 transition-transform group-hover:scale-110">
-                    <UploadCloudIcon className="size-7 text-destructive" />
-                  </div>
-                  <p className="text-lg font-medium">
-                    {isDragActive ? "松开以上传文件" : "拖拽文件到这里"}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    支持同时上传多个文件 · PDF / PNG / JPG / WebP
-                  </p>
-                  {!user && !isAuthLoading ? (
-                    <p className="mt-3 text-xs text-destructive">请先登录后再上传文件</p>
-                  ) : null}
-                </div>
-
-                {/* Config selects below upload */}
-                <div className="mx-auto mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">解析引擎</span>
-                    <Select
-                      value={settingsSnapshot.parseEngineMode}
-                      onChange={(e) => {
-                        const mode = e.target.value as ParseEngineMode
-                        updateSettingsSnapshot((prev) => ({
-                          ...prev,
-                          parseEngineMode: mode,
-                          ocrProvider:
-                            mode === "remote_ocr" ? "aiocr"
-                            : mode === "baidu_doc" ? "baidu"
-                            : mode === "mineru_cloud" ? "auto"
-                            : "machine",
-                        }))
-                      }}
-                      className="h-7 w-28 py-1 text-xs"
-                    >
-                      {Object.entries(PARSE_ENGINE_MODE_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">生成模式</span>
-                    <Select
-                      value={settingsSnapshot.pptGenerationMode}
-                      onChange={(e) =>
-                        updateSettingsSnapshot((prev) => ({
-                          ...prev,
-                          pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
-                        }))
-                      }
-                      className="h-7 w-28 py-1 text-xs"
-                    >
-                      <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
-                      <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
-                      <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
-                    </Select>
-                  </div>
-                  <Link
-                    href="/settings"
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    高级设置
-                  </Link>
-                </div>
-
-                {/* MinerU token hint */}
-                {settingsSnapshot.parseEngineMode === "mineru_cloud" && !settingsSnapshot.mineruApiToken && (
-                  <div className="mx-auto mt-2 max-w-3xl text-center text-xs text-amber-600">
-                    云端 MinerU 需要配置 Token，请前往
-                    <Link href="/settings" className="ml-1 text-destructive hover:underline">设置页面</Link>
-                    填写
-                  </div>
-                )}
-
-                {/* Config summary */}
-                <div className="mx-auto mt-6 flex max-w-md items-center justify-center gap-2 text-xs text-muted-foreground">
-                  <span>{PARSE_ENGINE_MODE_LABELS[settingsSnapshot.parseEngineMode]}</span>
-                  {settingsSnapshot.parseEngineMode === "local_ocr" && (
-                    <>
-                      <span className="text-border">·</span>
-                      <span>{settingsSnapshot.ocrProvider === "paddleocr" ? "PaddleOCR" : "Tesseract"}</span>
-                    </>
-                  )}
-                  {settingsSnapshot.parseEngineMode === "remote_ocr" && (
-                    <>
-                      <span className="text-border">·</span>
-                      <span>{AIOCR_CHAIN_MODE_LABELS[settingsSnapshot.ocrAiChainMode]}</span>
-                    </>
-                  )}
-                  <span className="text-border">·</span>
-                  <span>{PPT_GENERATION_MODE_LABELS[settingsSnapshot.pptGenerationMode]}</span>
-                </div>
-              </div>
-            </div>
+            <UploadStage
+              getRootProps={getRootProps}
+              getInputProps={getInputProps}
+              isDragActive={isDragActive}
+              isDragReject={isDragReject}
+              settingsSnapshot={settingsSnapshot}
+              updateSettingsSnapshot={updateSettingsSnapshot}
+            />
           )}
 
-          {/* ── Stage 2: Preview + Config (files uploaded) ── */}
           {stage === "preview" && (
-            <div className="py-4">
-              {/* Back to upload */}
-              <div className="mb-4">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleResetAll}
-                >
-                  <ArrowLeftIcon className="mr-1 size-4" />
-                  重新选择文件
-                </Button>
-              </div>
-
-              {/* Dual-column layout */}
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-                {/* Left: File list + PDF preview */}
-                <div>
-                  {/* File list */}
-                  {fileCount > 1 && (
-                    <div className="mb-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          已选择 {fileCount} 个文件
-                        </span>
-                      </div>
-                      <div className="grid gap-2">
-                        {uploadFiles.map((entry, index) => (
-                          <div
-                            key={entry.file.name}
-                            className={cn(
-                              "flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors",
-                              index === previewFileIndex
-                                ? "border-destructive/40 bg-destructive/5"
-                                : "hover:bg-muted/30"
-                            )}
-                          >
-                            <button
-                              type="button"
-                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                              onClick={() => {
-                                setPreviewFileIndex(index)
-                                setPreviewPageInput("1")
-                                setPreviewPageCount(0)
-                              }}
-                            >
-                              <FileIcon className="size-4 shrink-0 text-muted-foreground" />
-                              <span className="truncate text-sm">{entry.file.name}</span>
-                              <span className="shrink-0 text-xs text-muted-foreground">
-                                {formatBytes(entry.file.size)}
-                              </span>
-                            </button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => {
-                                removeFile(index)
-                              }}
-                            >
-                              <XIcon className="size-3" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Single file info (when only 1 file) */}
-                  {fileCount === 1 && currentPreviewFile && (
-                    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{currentPreviewFile.name}</div>
-                        <div className="text-xs text-muted-foreground">{formatBytes(currentPreviewFile.size)}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button type="button" variant="ghost" size="sm" onClick={handleResetAll}>
-                          清空
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* PDF preview */}
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm text-muted-foreground">
-                      文档预览
-                      {fileCount > 1 && (
-                        <span className="ml-2 text-xs">
-                          ({previewFileIndex + 1}/{fileCount})
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-xs"
-                        disabled={previewPage <= 1}
-                        onClick={() => {
-                          setPreviewPageInput(String(clampPositiveInt(previewPage - 1, previewPageCount || undefined)))
-                        }}
-                        aria-label="预览上一页"
-                      >
-                        <ChevronLeftIcon className="size-3" />
-                      </Button>
-                      <Input
-                        inputMode="numeric"
-                        value={previewPageInput}
-                        onChange={(e) => setPreviewPageInput(e.target.value)}
-                        onBlur={(e) => handlePreviewPageCommit(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            handlePreviewPageCommit((e.target as HTMLInputElement).value)
-                          }
-                        }}
-                        className="h-8 w-20 text-center"
-                        aria-label="当前预览页"
-                      />
-                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">
-                        / {previewPageCount || "?"}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-xs"
-                        disabled={previewPageCount > 0 ? previewPage >= previewPageCount : true}
-                        onClick={() => {
-                          setPreviewPageInput(String(clampPositiveInt(previewPage + 1, previewPageCount || undefined)))
-                        }}
-                        aria-label="预览下一页"
-                      >
-                        <ChevronRightIcon className="size-3" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {filePreviewUrl ? (
-                    <div className="home-preview-stage">
-                      <PdfCanvasPreview
-                        fileUrl={filePreviewUrl}
-                        mimeType={currentPreviewFile?.type}
-                        page={previewPage}
-                        className="w-full"
-                        onPageCountChange={handlePreviewPageCountChange}
-                      />
-                    </div>
-                  ) : (
-                    <div className="home-preview-stage home-preview-empty">
-                      上传 PDF 或图片后会在这里显示预览
-                    </div>
-                  )}
-                </div>
-
-                {/* Right: Config + actions */}
-                <div className="space-y-4">
-                  {/* Page range */}
-                  <div className="home-inline-panel px-4 py-3">
-                    {isImageInput ? (
-                      <p className="text-xs leading-6 text-muted-foreground">
-                        图片输入自动包装成单页 PDF，无需设置页码范围。
-                      </p>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 accent-foreground"
-                              checked={usePageRange}
-                              onChange={(e) => {
-                                const enabled = e.target.checked
-                                setUsePageRange(enabled)
-                                if (!enabled) {
-                                  setPageStartInput("")
-                                  setPageEndInput("")
-                                }
-                              }}
-                            />
-                            限定页码范围
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="xs"
-                              disabled={!currentPreviewFile}
-                              onClick={() => {
-                                setUsePageRange(true)
-                                const current = String(previewPage)
-                                setPageStartInput(current)
-                                setPageEndInput(current)
-                              }}
-                            >
-                              单页试跑
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => {
-                                setUsePageRange(false)
-                                setPageStartInput("")
-                                setPageEndInput("")
-                              }}
-                            >
-                              整份
-                            </Button>
-                          </div>
-                        </div>
-                        {usePageRange ? (
-                          <div className="mt-2 grid grid-cols-2 gap-2">
-                            <div className="grid gap-1">
-                              <label className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                                起始页
-                              </label>
-                              <Input
-                                inputMode="numeric"
-                                placeholder="1"
-                                value={pageStartInput}
-                                onChange={(e) => setPageStartInput(e.target.value)}
-                                className="h-9"
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <label className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                                结束页
-                              </label>
-                              <Input
-                                inputMode="numeric"
-                                placeholder="5"
-                                value={pageEndInput}
-                                onChange={(e) => setPageEndInput(e.target.value)}
-                                className="h-9"
-                              />
-                            </div>
-                          </div>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Quick config */}
-                  <div className="home-inline-panel px-4 py-3">
-                    <div className="grid gap-3">
-                      <div className="grid gap-1">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <span>PPT 生成模式</span>
-                          <HoverHint text="极速优先抢时间；快速适合日常转换；精准适合效果优先。" />
-                        </div>
-                        <Select
-                          value={settingsSnapshot.pptGenerationMode}
-                          onChange={(e) =>
-                            updateSettingsSnapshot((prev) => ({
-                              ...prev,
-                              pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
-                            }))
-                          }
-                        >
-                          <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
-                          <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
-                          <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
-                        </Select>
-                      </div>
-                      <div className="grid gap-1">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <span>解析引擎</span>
-                          <HoverHint text="传统OCR用本地识别；AIOCR用远程模型；百度/MinerU自带解析。" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={settingsSnapshot.parseEngineMode}
-                            onChange={(e) => {
-                              const mode = e.target.value as ParseEngineMode
-                              updateSettingsSnapshot((prev) => ({
-                                ...prev,
-                                parseEngineMode: mode,
-                                // Only auto-set ocrProvider for non-local modes; keep user's choice for local_ocr
-                                ...(mode === "remote_ocr" ? { ocrProvider: "aiocr" as const }
-                                  : mode === "baidu_doc" ? { ocrProvider: "baidu" as const }
-                                  : mode === "mineru_cloud" ? { ocrProvider: "auto" as const }
-                                  : {}),
-                              }))
-                            }}
-                          >
-                            <option value="local_ocr">{PARSE_ENGINE_MODE_LABELS.local_ocr}</option>
-                            <option value="remote_ocr">{PARSE_ENGINE_MODE_LABELS.remote_ocr}</option>
-                            <option value="baidu_doc">{PARSE_ENGINE_MODE_LABELS.baidu_doc}</option>
-                            <option value="mineru_cloud">{PARSE_ENGINE_MODE_LABELS.mineru_cloud}</option>
-                          </Select>
-                          <ModelStatusBadge
-                            status={modelStatus}
-                            isLoading={isModelStatusLoading}
-                            parseEngineMode={settingsSnapshot.parseEngineMode}
-                            onStatusChange={() => void refetchModelStatus()}
-                          />
-                        </div>
-                      </div>
-                      {settingsSnapshot.parseEngineMode === "local_ocr" && (
-                        <div className="grid gap-1">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>OCR 提供方</span>
-                            <HoverHint text="PaddleOCR 识别精度更高；Tesseract 兼容性更好。" />
-                          </div>
-                          <div className="grid gap-1.5">
-                            {(["paddleocr", "tesseract"] as const).map((providerId) => {
-                              const isReady = modelStatus?.local?.[providerId]?.ready ?? false
-                              const isSelected = settingsSnapshot.ocrProvider === providerId
-                              const label = providerId === "paddleocr" ? "PaddleOCR" : "Tesseract"
-                              return (
-                                <div
-                                  key={providerId}
-                                  className={`flex items-center gap-2 rounded border px-2.5 py-1.5 transition-colors ${
-                                    isSelected
-                                      ? "border-foreground bg-muted/50"
-                                      : "border-border hover:border-muted-foreground/50"
-                                  }`}
-                                >
-                                  <label
-                                    htmlFor={`home-ocr-provider-${providerId}`}
-                                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
-                                  >
-                                    <input
-                                      type="radio"
-                                      id={`home-ocr-provider-${providerId}`}
-                                      name="home-ocr-provider"
-                                      value={providerId}
-                                      checked={isSelected}
-                                      onChange={(e) =>
-                                        updateSettingsSnapshot((prev) => ({
-                                          ...prev,
-                                          ocrProvider: e.target.value as Settings["ocrProvider"],
-                                        }))
-                                      }
-                                      disabled={!!modelStatus && !isReady}
-                                      className="h-3.5 w-3.5 accent-foreground"
-                                    />
-                                    <span className="text-xs font-medium">{label}</span>
-                                    {modelStatus && (
-                                      isReady ? (
-                                        <span className="flex items-center gap-0.5 text-[10px] text-emerald-600">
-                                          <CheckIcon className="size-2.5" />
-                                          就绪
-                                        </span>
-                                      ) : (
-                                        <span className="text-[10px] text-muted-foreground">
-                                          未就绪
-                                        </span>
-                                      )
-                                    )}
-                                  </label>
-                                </div>
-                              )
-                            })}
-                          </div>
-                          {/* Hint when no OCR provider is ready */}
-                          {modelStatus && !modelStatus.local.paddleocr?.ready && !modelStatus.local.tesseract?.ready && (
-                            <div className="flex items-center gap-1.5 text-xs text-amber-600 mt-1">
-                              <AlertCircleIcon className="size-3.5" />
-                              <span>本地 OCR 未就绪，请前往{" "}<Link href="/settings" className="underline">设置</Link>{" "}配置</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {settingsSnapshot.parseEngineMode === "remote_ocr" && (
-                        <div className="grid gap-1">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>识别链路</span>
-                            <HoverHint text="版面切块：先切块再逐块识别，推荐默认。文档解析：调用内置文档解析器。直出：整页直接送模型识别。" />
-                          </div>
-                          <Select
-                            value={settingsSnapshot.ocrAiChainMode}
-                            onChange={(e) =>
-                              updateSettingsSnapshot((prev) => ({
-                                ...prev,
-                                ocrAiChainMode: e.target.value as Settings["ocrAiChainMode"],
-                              }))
-                            }
-                          >
-                            <option value="layout_block">{AIOCR_CHAIN_MODE_LABELS.layout_block}</option>
-                            <option value="doc_parser">{AIOCR_CHAIN_MODE_LABELS.doc_parser}</option>
-                            <option value="direct">{AIOCR_CHAIN_MODE_LABELS.direct}</option>
-                          </Select>
-                        </div>
-                      )}
-                      {settingsSnapshot.parseEngineMode === "remote_ocr" && settingsSnapshot.ocrAiChainMode === "layout_block" && (
-                        <div className="grid gap-1">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>版面模型</span>
-                            <HoverHint text="版面分析模型，用于检测文档中的标题、段落、表格等区域。" />
-                          </div>
-                          <Select
-                            value={settingsSnapshot.ocrAiLayoutModel}
-                            onChange={(e) =>
-                              updateSettingsSnapshot((prev) => ({
-                                ...prev,
-                                ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
-                              }))
-                            }
-                          >
-                            {Object.values(LAYOUT_MODELS).map((m) => (
-                              <option key={m.modelId} value={m.modelId} disabled={!downloadedLayoutModels.has(m.modelId)}>
-                                {m.displayName} — {m.speedLabel}
-                              </option>
-                            ))}
-                          </Select>
-                          {downloadedLayoutModels.size === 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              暂无已下载的版面模型，请前往{" "}
-                              <Link href="/settings" className="underline">设置</Link>
-                              {" "}下载
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {settingsSnapshot.parseEngineMode === "remote_ocr" && (
-                        <div className="grid gap-1">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>OCR 模型</span>
-                            <HoverHint text="选择用于文字识别的 AI 模型。" />
-                          </div>
-                          {settingsSnapshot.ocrAiApiKey.trim() && settingsSnapshot.ocrAiBaseUrl.trim() ? (
-                            <Select
-                              value={
-                                ["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel)
-                                  ? settingsSnapshot.ocrAiModel
-                                  : "__custom__"
-                              }
-                              onChange={(e) => {
-                                const val = e.target.value
-                                updateSettingsSnapshot((prev) => ({
-                                  ...prev,
-                                  ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
-                                }))
-                              }}
-                            >
-                              <option value="Qwen/Qwen2.5-VL-7B-Instruct">Qwen2.5-VL-7B</option>
-                              <option value="Qwen/Qwen2.5-VL-32B-Instruct">Qwen2.5-VL-32B</option>
-                              <option value="paddleocr/PaddleOCR-VL-1.5">PaddleOCR-VL</option>
-                              <option value="deepseek-ai/DeepSeek-OCR">DeepSeek-OCR</option>
-                              <option value="openai/gpt-4o-mini">GPT-4o-mini</option>
-                              {(!["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()) && (
-                                <option value="__custom__">{settingsSnapshot.ocrAiModel}</option>
-                              )}
-                            </Select>
-                          ) : (
-                            <div className="flex items-center gap-2 text-xs text-amber-600">
-                              <AlertCircleIcon className="size-3.5" />
-                              <span>请先配置 API Key 和 Base URL</span>
-                              <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <label className="flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-foreground"
-                          checked={retainProcessArtifacts}
-                          onChange={(e) => setRetainProcessArtifacts(e.target.checked)}
-                        />
-                        <span className="flex items-center gap-1.5">
-                          保留过程图
-                          <HoverHint text="保留每页处理过程图，便于核对中间效果或排查问题。" />
-                        </span>
-                      </label>
-                      <Link
-                        href="/settings"
-                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        高级设置 <ArrowRightIcon className="size-3" />
-                      </Link>
-                    </div>
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="space-y-2">
-                    {preflightWarning && (
-                      <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                        <p className="font-medium">⚠️ {preflightWarning}</p>
-                        <div className="mt-1.5 flex gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-6 text-[11px]"
-                            onClick={() => {
-                              setPreflightAcknowledged(true)
-                              setPreflightWarning(null)
-                              void handleConvertAll()
-                            }}
-                          >
-                            仍然转换
-                          </Button>
-                          <Link href="/settings">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-[11px]"
-                            >
-                              去设置
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    )}
-                    {!user && !isAuthLoading ? (
-                      <Button type="button" variant="outline" className="w-full" asChild>
-                        <Link href="/login">登录后创建任务</Link>
-                      </Button>
-                    ) : (
-                      <>
-                        <Button
-                          type="button"
-                          className="w-full"
-                          onClick={handleConvertAll}
-                          disabled={!canStart}
-                        >
-                          {fileCount > 1 ? `全部转换 (${fileCount} 个文件)` : "开始转换"}
-                        </Button>
-                        {fileCount === 1 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => {
-                              setUsePageRange(true)
-                              const current = String(previewPage)
-                              setPageStartInput(current)
-                              setPageEndInput(current)
-                              void handleConvertAll()
-                            }}
-                            disabled={!canStart}
-                          >
-                            单页试跑（当前页）
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {actionError ? (
-                    <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                      {actionError}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+            <PreviewStage
+              uploadFiles={uploadFiles}
+              fileCount={fileCount}
+              currentPreviewFile={currentPreviewFile}
+              previewFileIndex={previewFileIndex}
+              setPreviewFileIndex={setPreviewFileIndex}
+              previewPageInput={previewPageInput}
+              setPreviewPageInput={setPreviewPageInput}
+              previewPageCount={previewPageCount}
+              handlePreviewPageCommit={handlePreviewPageCommit}
+              handlePreviewPageCountChange={handlePreviewPageCountChange}
+              isImageInput={isImageInput}
+              settingsSnapshot={settingsSnapshot}
+              updateSettingsSnapshot={updateSettingsSnapshot}
+              modelStatus={modelStatus}
+              isModelStatusLoading={isModelStatusLoading}
+              refetchModelStatus={refetchModelStatus}
+              usePageRange={usePageRange}
+              setUsePageRange={setUsePageRange}
+              pageStartInput={pageStartInput}
+              setPageStartInput={setPageStartInput}
+              pageEndInput={pageEndInput}
+              setPageEndInput={setPageEndInput}
+              retainProcessArtifacts={retainProcessArtifacts}
+              setRetainProcessArtifacts={setRetainProcessArtifacts}
+              handleResetAll={handleResetAll}
+              handleConvertAll={handleConvertAll}
+              canStart={canStart}
+              actionError={actionError}
+              preflightWarning={preflightWarning}
+              setPreflightAcknowledged={setPreflightAcknowledged}
+              downloadedLayoutModels={downloadedLayoutModels}
+              removeFile={removeFile}
+              filePreviewUrl={filePreviewUrl}
+              previewPage={previewPage}
+            />
           )}
 
-          {/* ── Stage 3: Progress + Download (converting/done) ── */}
           {stage === "converting" && (
-            <div className="mx-auto max-w-2xl py-8 md:py-12">
-              {/* Back button */}
-              <div className="mb-6">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    if (!hasActiveJobs) {
-                      handleResetAll()
-                    }
-                  }}
-                  disabled={hasActiveJobs}
-                >
-                  <ArrowLeftIcon className="mr-1 size-4" />
-                  返回
-                </Button>
-              </div>
-
-              {/* Stepped progress indicator (for single file or aggregate) */}
-              {fileJobs.length === 1 && (
-                <div className="mb-8">
-                  <div className="flex items-center">
-                    {stageSteps.map((step, index) => {
-                      const isDone = step.isDone
-                      const isCurrent = step.isCurrent
-                      const isLast = index === stageSteps.length - 1
-                      return (
-                        <React.Fragment key={step.code}>
-                          <div className="flex flex-col items-center">
-                            <div
-                              className={cn(
-                                "flex size-8 items-center justify-center rounded-full border-2 text-sm font-medium transition-colors",
-                                isDone
-                                  ? "border-destructive bg-destructive text-white"
-                                  : isCurrent
-                                    ? "border-destructive bg-white text-destructive animate-pulse"
-                                    : "border-border bg-background text-muted-foreground"
-                              )}
-                            >
-                              {isDone ? (
-                                <CheckIcon className="size-4" />
-                              ) : isCurrent ? (
-                                <Loader2Icon className="size-4 animate-spin" />
-                              ) : (
-                                <span>{index + 1}</span>
-                              )}
-                            </div>
-                            <span
-                              className={cn(
-                                "mt-2 text-xs",
-                                isDone
-                                  ? "font-medium text-destructive"
-                                  : isCurrent
-                                    ? "font-medium text-foreground"
-                                    : "text-muted-foreground"
-                              )}
-                            >
-                              {step.label}
-                            </span>
-                          </div>
-                          {!isLast ? (
-                            <div
-                              className={cn(
-                                "mx-1 mb-5 h-0.5 flex-1",
-                                isDone ? "bg-destructive" : "bg-border"
-                              )}
-                            />
-                          ) : null}
-                        </React.Fragment>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Overall progress bar */}
-              <Progress value={overallProgress} className="mb-3 h-2" />
-              <div className="mb-6 text-center text-sm text-muted-foreground">
-                {overallProgress}% · {completedCount}/{fileJobs.length} 完成
-                {failedCount > 0 && <span className="ml-2 text-destructive">· {failedCount} 失败</span>}
-              </div>
-
-              {/* File job list */}
-              <div className="mb-6 space-y-2">
-                {fileJobs.map((fj, index) => {
-                  const isDone = fj.status?.status === "completed"
-                  const isFailed = Boolean(fj.error) || fj.status?.status === "failed"
-                  const isCancelled = fj.status?.status === "cancelled"
-                  const isActive = fj.isSubmitting || (fj.status && !TERMINAL_JOB_STATUSES.has(fj.status.status))
-                  const stageLabel = fj.status?.stage
-                    ? (JOB_STAGE_LABELS[fj.status.stage] ?? fj.status.stage)
-                    : fj.isSubmitting ? "提交中…" : "等待中"
-
-                  return (
-                    <div
-                      key={`${fj.file.name}-${index}`}
-                      className={cn(
-                        "flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors",
-                        isDone && "border-green-200 bg-green-50/50",
-                        isFailed && "border-destructive/30 bg-destructive/5",
-                        isCancelled && "border-muted bg-muted/30",
-                        isActive && "border-destructive/20 bg-destructive/[0.02]",
-                        !isDone && !isFailed && !isCancelled && !isActive && "bg-muted/10"
-                      )}
-                    >
-                      {/* Status icon */}
-                      <div className="shrink-0">
-                        {fj.isSubmitting ? (
-                          <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-                        ) : isDone ? (
-                          <div className="flex size-4 items-center justify-center rounded-full bg-green-500">
-                            <CheckIcon className="size-3 text-white" />
-                          </div>
-                        ) : isFailed ? (
-                          <XIcon className="size-4 text-destructive" />
-                        ) : isActive ? (
-                          <Loader2Icon className="size-4 animate-spin text-destructive" />
-                        ) : (
-                          <div className="size-4 rounded-full border-2 border-muted-foreground/30" />
-                        )}
-                      </div>
-
-                      {/* File info */}
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm">{fj.file.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {stageLabel}
-                          {fj.status?.progress != null && fj.status.progress > 0 && ` · ${fj.status.progress}%`}
-                        </div>
-                        {fj.pollError && (
-                          <div className="text-xs text-amber-600">{fj.pollError}</div>
-                        )}
-                      </div>
-
-                      {/* Progress or actions */}
-                      <div className="shrink-0 flex items-center gap-1.5">
-                        {isDone && fj.jobId && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={async () => {
-                              try {
-                                await handleDownload(fj.jobId!)
-                              } catch (e) {
-                                toast.error(normalizeFetchError(e, "下载失败"))
-                              }
-                            }}
-                          >
-                            <DownloadIcon className="mr-1 size-3" />
-                            下载
-                          </Button>
-                        )}
-                        {isActive && fj.jobId && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => handleCancelJob(fj.jobId!)}
-                          >
-                            取消
-                          </Button>
-                        )}
-                        {(isFailed || isCancelled) && (
-                          <span className="text-xs text-muted-foreground">
-                            {fj.error || fj.status?.error?.message || (isCancelled ? "已取消" : "失败")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                {allCompleted && completedCount > 0 && (
-                  <>
-                    {completedCount > 1 ? (
-                      <Button type="button" size="lg" onClick={handleDownloadAll}>
-                        <DownloadIcon className="mr-2 size-5" />
-                        全部下载 ({completedCount})
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="lg"
-                        onClick={async () => {
-                          const done = fileJobs.find((j) => j.status?.status === "completed" && j.jobId)
-                          if (done?.jobId) {
-                            try {
-                              await handleDownload(done.jobId)
-                            } catch (e) {
-                              toast.error(normalizeFetchError(e, "下载失败"))
-                            }
-                          }
-                        }}
-                      >
-                        <DownloadIcon className="mr-2 size-5" />
-                        下载 PPTX
-                      </Button>
-                    )}
-                  </>
-                )}
-                {!hasActiveJobs && (
-                  <Button type="button" variant="outline" size="sm" onClick={handleResetAll}>
-                    处理下一批文件
-                  </Button>
-                )}
-              </div>
-
-              {/* Cancel all button */}
-              {hasActiveJobs && (
-                <div className="mt-4 flex justify-center">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={async () => {
-                      const activeIds = fileJobs
-                        .filter((j) => j.jobId && j.status && !TERMINAL_JOB_STATUSES.has(j.status.status))
-                        .map((j) => j.jobId!)
-                      for (const jid of activeIds) {
-                        await handleCancelJob(jid)
-                      }
-                    }}
-                  >
-                    取消所有任务
-                  </Button>
-                </div>
-              )}
-
-              {/* Debug log toggle */}
-              {fileJobs.some((j) => j.status?.debug_events?.length) ? (
-                <div className="mt-6">
-                  <div className="flex items-center justify-center">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowHomeLog((prev) => !prev)}
-                    >
-                      {showHomeLog ? "收起处理日志" : "查看处理日志"}
-                    </Button>
-                  </div>
-                  {showHomeLog ? (
-                    <div className="mt-3">
-                      {fileJobs
-                        .filter((j) => j.status?.debug_events?.length)
-                        .map((j) => (
-                          <div key={j.jobId} className="mb-3">
-                            <div className="mb-1 text-xs text-muted-foreground">{j.file.name}</div>
-                            <JobDebugPanel
-                              events={j.status?.debug_events || []}
-                              compact
-                              className="animate-in fade-in slide-in-from-top-2 duration-300"
-                            />
-                          </div>
-                        ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            <ConvertingStage
+              fileJobs={fileJobs}
+              overallProgress={overallProgress}
+              completedCount={completedCount}
+              failedCount={failedCount}
+              hasActiveJobs={hasActiveJobs}
+              allCompleted={allCompleted}
+              stageSteps={stageSteps}
+              showHomeLog={showHomeLog}
+              setShowHomeLog={setShowHomeLog}
+              handleResetAll={handleResetAll}
+              handleCancelJob={handleCancelJob}
+              handleDownload={handleDownload}
+              handleDownloadAll={handleDownloadAll}
+            />
           )}
         </main>
       </div>

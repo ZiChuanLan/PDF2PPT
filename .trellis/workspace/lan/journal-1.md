@@ -107,3 +107,38 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Redis双轨修复 + AIOCR常量外部化 + PPTX生成器拆分 + 前端SSE钩子提取
+
+**Date**: 2026-05-10
+**Task**: Redis双轨修复 + AIOCR常量外部化 + PPTX生成器拆分 + 前端SSE钩子提取
+**Branch**: `main`
+
+### Summary
+
+6个阶段: (1) InMemoryRedis.pipeline() Bug修复—内存模式限流失效; (2) ~40个P0/P1 AIOCR常量外部化到config.py,消除max_side_px三处重复定义; (3) pptx/generator.py(2221L)拆分为generator/包6文件; (4) 运行时配置API扩展+7字段(默认并发度+OCR保护参数); (5) JobRunner统一调度(_submit_job消除~84行重复分支); (6) page.tsx前端SSE逻辑提取为useSSEJobTracking钩子(~130行) + FileJobState类型共享。所有验证通过: compileall/tsc/lint清洁。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `36ffaa4` | (see git log) |
+| `bb16d52` | (see git log) |
+| `a9c5a28` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
