@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ..ocr.utils import _contains_cjk, _is_cjk_char
+
 
 def _map_font_name(name: str | None) -> str | None:
     if not name:
@@ -20,31 +22,6 @@ def _map_font_name(name: str | None) -> str | None:
         "Courier": "Courier New",
     }
     return mapping.get(n, n)
-
-
-def _contains_cjk(text: str) -> bool:
-    for ch in text or "":
-        code = ord(ch)
-        if (
-            0x4E00 <= code <= 0x9FFF  # CJK Unified Ideographs
-            or 0x3400 <= code <= 0x4DBF  # CJK Unified Ideographs Extension A
-            or 0x3040 <= code <= 0x30FF  # Hiragana + Katakana
-            or 0xAC00 <= code <= 0xD7AF  # Hangul Syllables
-        ):
-            return True
-    return False
-
-
-def _is_cjk_char(ch: str) -> bool:
-    if not ch:
-        return False
-    code = ord(ch)
-    return (
-        0x4E00 <= code <= 0x9FFF  # CJK Unified Ideographs
-        or 0x3400 <= code <= 0x4DBF  # CJK Unified Ideographs Extension A
-        or 0x3040 <= code <= 0x30FF  # Hiragana + Katakana
-        or 0xAC00 <= code <= 0xD7AF  # Hangul Syllables
-    )
 
 
 def _char_width_factor(ch: str) -> float:

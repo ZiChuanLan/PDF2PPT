@@ -14,7 +14,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 
@@ -220,7 +219,7 @@ function LoginForm() {
     <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center px-4 py-10">
       <Card className="w-full max-w-xl border-border bg-background/95 backdrop-blur">
         <CardHeader className="border-b border-border">
-          <CardTitle>用户登录</CardTitle>
+          <h1 className="font-serif text-2xl leading-none tracking-tight">用户登录</h1>
           <CardDescription>
             使用账号密码或 LinuxDo 账号登录以访问工作台。
           </CardDescription>

@@ -60,7 +60,8 @@ export function useSettings() {
       .then((data: { mode: DeployMode }) => {
         if (mounted) setDeployMode(data.mode)
       })
-      .catch(() => {
+      .catch((e) => {
+        console.error("Failed to fetch deploy mode:", e)
         // Default to self on error
         if (mounted) setDeployMode("self")
       })
@@ -127,7 +128,8 @@ export function useSettings() {
           .then((res) => {
             if (res.ok) setLastSavedAt(Date.now())
           })
-          .catch(() => {
+          .catch((e) => {
+            console.error("Failed to save settings:", e)
             // Silently fail - will retry on next change
           })
       }

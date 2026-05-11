@@ -1202,7 +1202,7 @@ export default function SettingsPage() {
   ])
 
   return (
-    <div className="min-h-dvh bg-background">
+    <main className="min-h-dvh bg-background">
       {ocrModelSuggestionLayer}
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 md:px-6 md:py-10">
         <header className="editorial-page-header newsprint-texture page-enter border border-border bg-background p-5 md:p-6">
@@ -2782,6 +2782,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   )
 }

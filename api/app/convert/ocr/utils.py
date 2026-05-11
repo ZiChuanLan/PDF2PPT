@@ -150,3 +150,24 @@ def _is_paddleocr_vl_model(model_name: str | None) -> bool:
     if not cleaned:
         return False
     return "paddleocr-vl" in cleaned.lower()
+
+
+def _contains_cjk(text: str) -> bool:
+    """Return True if *text* contains any character in common CJK blocks."""
+    for ch in text:
+        if _is_cjk_char(ch):
+            return True
+    return False
+
+
+def _is_cjk_char(ch: str) -> bool:
+    """Return True if *ch* is a single CJK character."""
+    if not ch:
+        return False
+    code = ord(ch)
+    return (
+        0x4E00 <= code <= 0x9FFF  # CJK Unified Ideographs
+        or 0x3400 <= code <= 0x4DBF  # CJK Unified Ideographs Extension A
+        or 0x3040 <= code <= 0x30FF  # Hiragana + Katakana
+        or 0xAC00 <= code <= 0xD7AF  # Hangul Syllables
+    )

@@ -139,7 +139,7 @@ export default function SiteSettingsPage() {
   ]
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <main className="mx-auto max-w-3xl px-4 py-8">
       <header className="mb-6">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link href="/admin" className="hover:text-foreground">管理后台</Link>
@@ -273,6 +273,6 @@ export default function SiteSettingsPage() {
           {isSaving ? "保存中..." : "保存配置"}
         </Button>
       </div>
-    </div>
+    </main>
   )
 }

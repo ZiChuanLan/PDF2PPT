@@ -203,10 +203,12 @@ export default function JobsPage() {
   }, [])
 
   return (
-    <div className="min-h-dvh bg-background">
+    <main className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
         <header className="flex items-center justify-between py-4">
-          <div className="flex items-center gap-3">
+          <div>
+            <h1 className="font-serif text-2xl leading-tight tracking-tight">任务记录</h1>
+            <div className="flex items-center gap-3">
             <Button type="button" variant="ghost" size="sm" asChild>
               <Link href="/">
                 <ArrowLeftIcon className="mr-1 size-4" />
@@ -217,12 +219,13 @@ export default function JobsPage() {
               任务记录
             </div>
           </div>
+          </div>
           <Badge variant="outline" className="text-xs">
             共 {jobs.length} 个任务
           </Badge>
         </header>
 
-        <main className="mt-4">
+        <section className="mt-4">
           {/* Status filter tabs */}
           <div className="mb-6 flex flex-wrap gap-2">
             {(Object.entries(STATUS_FILTER_LABELS) as [StatusFilter, string][]).map(
@@ -429,8 +432,8 @@ export default function JobsPage() {
               <span>自动刷新中</span>
             </div>
           )}
-        </main>
+        </section>
       </div>
-    </div>
+    </main>
   )
 }

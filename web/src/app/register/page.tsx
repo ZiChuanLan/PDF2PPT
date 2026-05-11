@@ -13,7 +13,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 
@@ -113,7 +112,7 @@ export default function RegisterPage() {
     <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center px-4 py-10">
       <Card className="w-full max-w-xl border-border bg-background/95 backdrop-blur">
         <CardHeader className="border-b border-border">
-          <CardTitle>注册新账号</CardTitle>
+          <h1 className="font-serif text-2xl leading-none tracking-tight">注册新账号</h1>
           <CardDescription>
             使用邀请码注册一个新账号。邀请码由管理员发放。
           </CardDescription>

@@ -505,11 +505,14 @@ export default function Home() {
   }, [fileJobs])
 
   return (
-    <div className="min-h-dvh bg-background">
+    <main className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
         <header className="flex items-center justify-between py-4">
-          <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-            {editionDate} · 文档工作台
+          <div>
+            <h1 className="font-serif text-2xl leading-tight tracking-tight">PDF2PPT 工作台</h1>
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+              {editionDate} · 文档工作台
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="text-xs">
@@ -527,7 +530,7 @@ export default function Home() {
             : "尚无进行中的任务"}
         </p>
 
-        <main className="mt-2">
+        <section className="mt-2">
           {stage === "upload" && (
             <UploadStage
               getRootProps={getRootProps}
@@ -595,8 +598,8 @@ export default function Home() {
               handleDownloadAll={handleDownloadAll}
             />
           )}
-        </main>
+        </section>
       </div>
-    </div>
+    </main>
   )
 }

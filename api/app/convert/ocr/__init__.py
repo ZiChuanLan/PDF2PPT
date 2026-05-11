@@ -34,7 +34,6 @@ from .routing import (
     normalize_ocr_route_kind,
     should_allow_main_ai_reuse,
 )
-from .utils import _coerce_bbox_xyxy
 from .vendors import (
     AiOcrVendorAdapter,
     AiOcrVendorProfile,
@@ -46,34 +45,23 @@ from .vendors import (
     get_vendor_tuning,
 )
 
-# Backward compat aliases — these classes were removed but some external code
-# may still import them.  They all resolve to the base AiOcrVendorAdapter.
-SiliconFlowAiOcrAdapter = AiOcrVendorAdapter
-PpioAiOcrAdapter = AiOcrVendorAdapter
-NovitaAiOcrAdapter = AiOcrVendorAdapter
-DeepSeekAiOcrAdapter = AiOcrVendorAdapter
-
 __all__ = [
     "AiOcrClient",
     "AiOcrTextRefiner",
     "AiOcrVendorAdapter",
     "AiOcrVendorProfile",
     "BaiduOcrClient",
-    "DeepSeekAiOcrAdapter",
-    "NovitaAiOcrAdapter",
     "OcrManager",
     "OcrProvider",
     "OpenAiAiOcrAdapter",
     "OcrRoutePlan",
     "PaddleOcrClient",
-    "PpioAiOcrAdapter",
     "ROUTE_KIND_HYBRID_AUTO",
     "ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR",
     "ROUTE_KIND_MACHINE_OCR",
     "ROUTE_KIND_REMOTE_DOC_PARSER",
     "ROUTE_KIND_REMOTE_PROMPT_OCR",
     "ROUTE_KIND_UNKNOWN",
-    "SiliconFlowAiOcrAdapter",
     "TesseractOcrClient",
     "VendorConfig",
     "VendorTuningConfig",

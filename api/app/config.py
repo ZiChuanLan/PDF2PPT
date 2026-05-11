@@ -11,9 +11,11 @@ from pydantic_settings import BaseSettings
 _DEFAULT_CORS_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _DEFAULT_CORS_ORIGINS_STR = ",".join(_DEFAULT_CORS_ORIGINS)
 
-# WARNING: This is a placeholder password for self-use mode only.
-# In production, set ADMIN_DEFAULT_PASSWORD env var to a strong value.
-_ADMIN_PLACEHOLDER_PASSWORD = "admin12345678"
+# WARNING: Hardcoded default passwords are forbidden.
+# The admin_default_password field is only used as a fallback when the env var is unset.
+# In production, always set ADMIN_DEFAULT_PASSWORD to a strong random value.
+# The startup guard in main.py checks for a weak default and emits a loud warning.
+_ADMIN_PLACEHOLDER_PASSWORD = ""
 
 
 class Settings(BaseSettings):

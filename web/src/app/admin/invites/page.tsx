@@ -128,7 +128,7 @@ export default function AdminInvitesPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-background">
+    <main className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
         <header className="editorial-page-header newsprint-texture page-enter border border-border bg-background">
           <div className="px-5 py-5 md:px-6 md:py-6">
@@ -297,6 +297,6 @@ export default function AdminInvitesPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   )
 }

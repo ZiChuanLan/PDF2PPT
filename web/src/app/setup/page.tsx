@@ -13,7 +13,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
@@ -214,7 +213,7 @@ export default function SetupPage() {
     <main className="flex min-h-screen items-center justify-center px-4 py-10">
       <Card className="w-full max-w-xl border-border bg-background/95 backdrop-blur">
         <CardHeader className="border-b border-border">
-          <CardTitle>首次部署设置</CardTitle>
+          <h1 className="font-serif text-2xl leading-none tracking-tight">首次部署设置</h1>
           <CardDescription>
             完成以下步骤来初始化您的 PDF2PPT 服务
           </CardDescription>
