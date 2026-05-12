@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/05-12-round-3-refactor-remaining-large-files-quality-gaps-from-round-2-audit/prd.md", "reason": "Acceptance criteria to verify against"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/untouched-modules.md", "reason": "Verify A, B, F items completed per audit findings"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/remaining-large-files.md", "reason": "Verify A, G items completed per audit findings"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/quality-gaps.md", "reason": "Verify C, D, E items completed per audit findings"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend changes follow guidelines"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Verify frontend changes follow guidelines"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify a11y compliance per component guidelines"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify quality standards met"}

@@ -209,3 +209,38 @@ P0 split 3 giant files (page.tsx 1545→610, settings/page.tsx 2961→2777, main
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Round 3 Refactor: adapters, fonts, worker, a11y, error handling, dead code
+
+**Date**: 2026-05-12
+**Task**: Round 3 Refactor: adapters, fonts, worker, a11y, error handling, dead code
+**Branch**: `main`
+
+### Summary
+
+3 groups: (G1) mineru 1967→584 + baidu_doc 1178→335 + ocr_stage 1249→227 + font_utils 1038→193 into 13 sub-modules + worker.py 1178→862 with JobOptions dataclass; (G2) skip-to-content + aria-labels + checkbox labels + dropzone role + PDF alt text, 8 silent catches → console.error, 3 logger.warning → logger.exception, Makefile test target, .env.example docs; (G3) delete pptx_generator.py shim, 11 numpy imports → top-level, package.json test:unit fix, _create_job_core() in jobs.py, download isolation in models.py, settings/page.tsx skip documented
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `031e9de` | (see git log) |
+| `0832107` | (see git log) |
+| `caae8a4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

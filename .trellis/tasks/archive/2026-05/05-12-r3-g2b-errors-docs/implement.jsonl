@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend error handling patterns"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook conventions for error handling"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Backend logging conventions"}
+{"file": ".trellis/spec/backend/config.md", "reason": "Config conventions for .env.example alignment"}

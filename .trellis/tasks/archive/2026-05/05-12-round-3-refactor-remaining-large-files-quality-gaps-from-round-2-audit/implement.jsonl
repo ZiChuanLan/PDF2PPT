@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/05-12-round-3-refactor-remaining-large-files-quality-gaps-from-round-2-audit/prd.md", "reason": "Task PRD with full requirements (3 groups, 28 items)"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/untouched-modules.md", "reason": "Source of A, B, F findings — large files, duplicate code, dead code"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/remaining-large-files.md", "reason": "Source of A, G findings — specific extraction targets and line counts"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/quality-gaps.md", "reason": "Source of C, D, E findings — accessibility, error handling, docs"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend guidelines for A1-A5, B1-B3, D5-D6, G2-G3"}
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Backend patterns reference"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend guidelines for C1-C5, D1-D4, G1"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for C group accessibility and G1 extraction"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook patterns for D1-D4 error handling fixes"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality standards for C, D groups"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State patterns for G1 settings extraction"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety for all frontend changes"}

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-05-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~211 | Active |
+| `journal-1.md` | ~246 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-05-12 | Round 3 Refactor: adapters, fonts, worker, a11y, error handling, dead code | `031e9de`, `0832107`, `caae8a4` | `main` |
 | 6 | 2026-05-12 | Round 2 Refactor: split OCR/PPTX giants, routers, frontend, fix quality debt | `a57c5dd`, `29ae9f4` | `main` |
 | 5 | 2026-05-11 | Comprehensive Refactor: split giant files, fix silent errors, merge routers | `a57c5dd` | `main` |
 | 4 | 2026-05-10 | Redis双轨修复 + AIOCR常量外部化 + PPTX生成器拆分 + 前端SSE钩子提取 | `36ffaa4`, `bb16d52`, `a9c5a28` | `main` |

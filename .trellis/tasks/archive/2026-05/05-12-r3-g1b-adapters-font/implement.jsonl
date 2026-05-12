@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-12-r3-g1b-adapters-font/prd.md", "reason": "Task PRD"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/untouched-modules.md", "reason": "Source: adapter/font_utils findings + duplicate code"}
+{"file": ".trellis/tasks/archive/2026-05/05-11-comprehensive-refactor-round2/research/remaining-large-files.md", "reason": "Source: ocr_stage.py extraction targets"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend guidelines"}
