@@ -69,8 +69,8 @@ export function OutputQualitySection({
         <>
           <div className="grid gap-2">
             <FieldLabel htmlFor="provider" required>
-              PPT生成AI提供商
-              <HoverHint text="选择用于生成 PPT 的 AI 提供方" />
+              内容生成AI
+              <HoverHint text="选择用于生成PPT内容（标题、正文等）的AI服务" />
             </FieldLabel>
             <Select
               id="provider"
