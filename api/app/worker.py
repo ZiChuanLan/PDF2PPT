@@ -51,85 +51,15 @@ from .worker_helpers import (
     run_ppt_stage,
     setup_ocr_runtime,
 )
+from .worker_helpers._job_options import JobOptions
+from .worker_helpers._param_normalizer import (
+    OCR_RENDER_DPI_TURBO_CAP,
+    OCR_RENDER_DPI_FAST_CAP,
+    normalize_job_options,
+)
 
 
 logger = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Constants: OCR render DPI bounds
-# ---------------------------------------------------------------------------
-OCR_RENDER_DPI_MIN = 72          # minimum allowed OCR render DPI
-OCR_RENDER_DPI_MAX = 400         # maximum allowed OCR render DPI
-OCR_RENDER_DPI_TURBO_CAP = 120   # turbo mode caps effective DPI to this value
-OCR_RENDER_DPI_FAST_CAP = 160    # fast mode caps effective DPI to this value
-
-# ---------------------------------------------------------------------------
-# Constants: Image background clear expand parameters
-# ---------------------------------------------------------------------------
-_IMG_BG_CLEAR_EXPAND_MIN_PT_DEFAULT = 0.35   # default min expansion in points
-_IMG_BG_CLEAR_EXPAND_MIN_PT_LOW = 0.0        # lower bound for min expansion
-_IMG_BG_CLEAR_EXPAND_MIN_PT_HIGH = 6.0       # upper bound for min expansion
-
-_IMG_BG_CLEAR_EXPAND_MAX_PT_DEFAULT = 1.5    # default max expansion in points
-_IMG_BG_CLEAR_EXPAND_MAX_PT_LOW = 0.0        # lower bound for max expansion
-_IMG_BG_CLEAR_EXPAND_MAX_PT_HIGH = 8.0       # upper bound for max expansion
-
-_IMG_BG_CLEAR_EXPAND_RATIO_DEFAULT = 0.012   # default expansion ratio
-_IMG_BG_CLEAR_EXPAND_RATIO_LOW = 0.0         # lower bound for expansion ratio
-_IMG_BG_CLEAR_EXPAND_RATIO_HIGH = 0.12       # upper bound for expansion ratio
-
-# ---------------------------------------------------------------------------
-# Constants: Scanned image region detection bounds
-# ---------------------------------------------------------------------------
-_SCANNED_REGION_MIN_AREA_RATIO_DEFAULT = 0.0025  # default min area ratio
-_SCANNED_REGION_MIN_AREA_RATIO_LOW = 0.0         # lower bound
-_SCANNED_REGION_MIN_AREA_RATIO_HIGH = 0.35       # upper bound
-
-_SCANNED_REGION_MAX_AREA_RATIO_DEFAULT = 0.72    # default max area ratio
-_SCANNED_REGION_MAX_AREA_RATIO_LOW = 0.05        # lower bound
-_SCANNED_REGION_MAX_AREA_RATIO_HIGH = 1.0        # upper bound (100% of page)
-_SCANNED_REGION_MAX_AREA_CLAMP = 1.0             # clamp ceiling for max area
-_SCANNED_REGION_AREA_RATIO_STEP = 0.05           # step to ensure max > min
-
-_SCANNED_REGION_MAX_ASPECT_RATIO_DEFAULT = 4.8   # default max aspect ratio
-_SCANNED_REGION_MAX_ASPECT_RATIO_LOW = 1.2       # lower bound
-_SCANNED_REGION_MAX_ASPECT_RATIO_HIGH = 30.0     # upper bound
-
-# ---------------------------------------------------------------------------
-# Constants: PaddleVL docparser max side pixels
-# ---------------------------------------------------------------------------
-_PADDLE_VL_MAX_SIDE_PX_DEFAULT = 2200    # default max side in pixels
-_PADDLE_VL_MAX_SIDE_PX_LOW = 0          # lower bound (0 = unlimited)
-_PADDLE_VL_MAX_SIDE_PX_HIGH = 6000      # upper bound
-
-# ---------------------------------------------------------------------------
-# Constants: OCR AI page / block concurrency
-# ---------------------------------------------------------------------------
-_OCR_AI_PAGE_CONCURRENCY_DEFAULT = 1    # default page concurrency (overridden by Settings)
-_OCR_AI_PAGE_CONCURRENCY_LOW = 1        # minimum pages in parallel
-_OCR_AI_PAGE_CONCURRENCY_HIGH = 8       # maximum pages in parallel
-
-_OCR_AI_BLOCK_CONCURRENCY_DEFAULT = 1   # default block concurrency (overridden by Settings)
-_OCR_AI_BLOCK_CONCURRENCY_LOW = 1       # minimum blocks in parallel
-_OCR_AI_BLOCK_CONCURRENCY_HIGH = 8      # maximum blocks in parallel
-
-# ---------------------------------------------------------------------------
-# Constants: OCR AI rate limits (RPM / TPM)
-# ---------------------------------------------------------------------------
-_OCR_AI_RPM_DEFAULT = 1             # default requests per minute (overridden by Settings)
-_OCR_AI_RPM_LOW = 1                 # minimum RPM
-_OCR_AI_RPM_HIGH = 2000             # maximum RPM
-
-_OCR_AI_TPM_DEFAULT = 1000          # default tokens per minute (overridden by Settings)
-_OCR_AI_TPM_LOW = 1                 # minimum TPM
-_OCR_AI_TPM_HIGH = 2_000_000        # maximum TPM
-
-# ---------------------------------------------------------------------------
-# Constants: OCR AI max retries
-# ---------------------------------------------------------------------------
-_OCR_AI_MAX_RETRIES_DEFAULT = 0     # default max retries (overridden by Settings)
-_OCR_AI_MAX_RETRIES_LOW = 0         # minimum retries
-_OCR_AI_MAX_RETRIES_HIGH = 8        # maximum retries
 
 # ---------------------------------------------------------------------------
 # Constants: Progress reporting
@@ -233,137 +163,18 @@ def _resolve_ocr_ai_concurrency_defaults():
     }
 
 
-def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
-    job_id: str,
-    *,
-    enable_ocr: bool = False,
-    retain_process_artifacts: bool = False,
-    remove_footer_notebooklm: bool = False,
-    text_erase_mode: str | None = None,
-    enable_layout_assist: bool = False,
-    layout_assist_apply_image_regions: bool = False,
-    provider: str | None = None,
-    api_key: str | None = None,
-    baidu_doc_parse_type: str | None = None,
-    base_url: str | None = None,
-    model: str | None = None,
-    page_start: int | None = None,
-    page_end: int | None = None,
-    parse_provider: str | None = None,
-    mineru_api_token: str | None = None,
-    mineru_base_url: str | None = None,
-    mineru_model_version: str | None = None,
-    mineru_enable_formula: bool | None = None,
-    mineru_enable_table: bool | None = None,
-    mineru_language: str | None = None,
-    mineru_is_ocr: bool | None = None,
-    mineru_hybrid_ocr: bool | None = None,
-    ocr_provider: str | None = None,
-    ocr_baidu_app_id: str | None = None,
-    ocr_baidu_api_key: str | None = None,
-    ocr_baidu_secret_key: str | None = None,
-    ocr_tesseract_min_confidence: float | None = None,
-    ocr_tesseract_language: str | None = None,
-    ocr_ai_api_key: str | None = None,
-    ocr_ai_provider: str | None = None,
-    ocr_ai_base_url: str | None = None,
-    ocr_ai_model: str | None = None,
-    ocr_ai_chain_mode: str | None = None,
-    ocr_ai_layout_model: str | None = None,
-    ocr_ai_prompt_preset: str | None = None,
-    ocr_ai_direct_prompt_override: str | None = None,
-    ocr_ai_layout_block_prompt_override: str | None = None,
-    ocr_ai_image_region_prompt_override: str | None = None,
-    ocr_paddle_vl_docparser_max_side_px: int | None = None,
-    ocr_ai_page_concurrency: int | None = None,
-    ocr_ai_block_concurrency: int | None = None,
-    ocr_ai_requests_per_minute: int | None = None,
-    ocr_ai_tokens_per_minute: int | None = None,
-    ocr_ai_max_retries: int | None = None,
-    ocr_render_dpi: int | None = None,
-    ocr_geometry_mode: str | None = None,
-    scanned_page_mode: str | None = None,
-    ppt_generation_mode: str | None = None,
-    image_bg_clear_expand_min_pt: float | None = None,
-    image_bg_clear_expand_max_pt: float | None = None,
-    image_bg_clear_expand_ratio: float | None = None,
-    scanned_image_region_min_area_ratio: float | None = None,
-    scanned_image_region_max_area_ratio: float | None = None,
-    scanned_image_region_max_aspect_ratio: float | None = None,
-    ocr_ai_linebreak_assist: bool | None = None,
-    ocr_strict_mode: bool | None = True,
-    job_timeout: str | None = None,
-) -> None:
+def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
     """RQ job handler: process a single PDF-to-PPT conversion job."""
 
     # Retrieve sensitive keys stored separately in Redis (not in RQ kwargs).
     # This prevents API keys from being exposed in RQ job descriptions or logs.
     _secrets = _retrieve_job_secrets(job_id)
-    api_key = _secrets.get("api_key") or api_key
-    mineru_api_token = _secrets.get("mineru_api_token") or mineru_api_token
-    ocr_baidu_api_key = _secrets.get("ocr_baidu_api_key") or ocr_baidu_api_key
-    ocr_baidu_secret_key = _secrets.get("ocr_baidu_secret_key") or ocr_baidu_secret_key
-    ocr_ai_api_key = _secrets.get("ocr_ai_api_key") or ocr_ai_api_key
+    options.api_key = _secrets.get("api_key") or options.api_key
+    options.mineru_api_token = _secrets.get("mineru_api_token") or options.mineru_api_token
+    options.ocr_baidu_api_key = _secrets.get("ocr_baidu_api_key") or options.ocr_baidu_api_key
+    options.ocr_baidu_secret_key = _secrets.get("ocr_baidu_secret_key") or options.ocr_baidu_secret_key
+    options.ocr_ai_api_key = _secrets.get("ocr_ai_api_key") or options.ocr_ai_api_key
 
-    _ = (
-        enable_ocr,
-        retain_process_artifacts,
-        remove_footer_notebooklm,
-        text_erase_mode,
-        enable_layout_assist,
-        layout_assist_apply_image_regions,
-        provider,
-        api_key,
-        baidu_doc_parse_type,
-        base_url,
-        model,
-        page_start,
-        page_end,
-        parse_provider,
-        mineru_api_token,
-        mineru_base_url,
-        mineru_model_version,
-        mineru_enable_formula,
-        mineru_enable_table,
-        mineru_language,
-        mineru_is_ocr,
-        mineru_hybrid_ocr,
-        ocr_provider,
-        ocr_baidu_app_id,
-        ocr_baidu_api_key,
-        ocr_baidu_secret_key,
-        ocr_tesseract_min_confidence,
-        ocr_tesseract_language,
-        ocr_ai_api_key,
-        ocr_ai_provider,
-        ocr_ai_base_url,
-        ocr_ai_model,
-        ocr_ai_chain_mode,
-        ocr_ai_layout_model,
-        ocr_ai_prompt_preset,
-        ocr_ai_direct_prompt_override,
-        ocr_ai_layout_block_prompt_override,
-        ocr_ai_image_region_prompt_override,
-        ocr_paddle_vl_docparser_max_side_px,
-        ocr_ai_page_concurrency,
-        ocr_ai_block_concurrency,
-        ocr_ai_requests_per_minute,
-        ocr_ai_tokens_per_minute,
-        ocr_ai_max_retries,
-        ocr_render_dpi,
-        ocr_geometry_mode,
-        scanned_page_mode,
-        ppt_generation_mode,
-        image_bg_clear_expand_min_pt,
-        image_bg_clear_expand_max_pt,
-        image_bg_clear_expand_ratio,
-        scanned_image_region_min_area_ratio,
-        scanned_image_region_max_area_ratio,
-        scanned_image_region_max_aspect_ratio,
-        ocr_ai_linebreak_assist,
-        ocr_strict_mode,
-        job_timeout,
-    )
     # Product-side AI layout assist has been retired for speed-focused runs.
     # It can be re-enabled via ENABLE_LAYOUT_ASSIST=true env var.
     settings = get_settings()
@@ -408,171 +219,44 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
 
     def _select_provider() -> OpenAiProvider | AnthropicProvider | None:
         selected = _select_layout_assist_provider(
-            provider=provider,
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            ocr_ai_api_key=ocr_ai_api_key,
-            ocr_ai_base_url=ocr_ai_base_url,
-            ocr_ai_model=ocr_ai_model,
+            provider=options.provider,
+            api_key=options.api_key,
+            base_url=options.base_url,
+            model=options.model,
+            ocr_ai_api_key=options.ocr_ai_api_key,
+            ocr_ai_base_url=options.ocr_ai_base_url,
+            ocr_ai_model=options.ocr_ai_model,
         )
         if (
             selected is not None
-            and (not clean_str(api_key))
-            and clean_str(ocr_ai_api_key)
+            and (not clean_str(options.api_key))
+            and clean_str(options.ocr_ai_api_key)
         ):
             logger.info(
                 "Using OCR AI credentials for layout assist (main API key missing)"
             )
         return selected
 
-    normalized_text_erase_mode = normalize_text_erase_mode(text_erase_mode)
-    normalized_scanned_page_mode = normalize_scanned_page_mode(scanned_page_mode)
-    normalized_ppt_generation_mode = normalize_ppt_generation_mode(ppt_generation_mode)
+    # --- Normalize string enum fields ---
+    normalized_text_erase_mode = normalize_text_erase_mode(options.text_erase_mode)
+    normalized_scanned_page_mode = normalize_scanned_page_mode(options.scanned_page_mode)
+    normalized_ppt_generation_mode = normalize_ppt_generation_mode(options.ppt_generation_mode)
     fast_ppt_generation = normalized_ppt_generation_mode == "fast"
     turbo_ppt_generation = normalized_ppt_generation_mode == "turbo"
     speed_ppt_generation = fast_ppt_generation or turbo_ppt_generation
 
-    def _normalize_float(
-        value: float | None,
-        *,
-        default: float,
-        low: float,
-        high: float,
-    ) -> float:
-        try:
-            num = float(value) if value is not None else float(default)
-        except Exception:
-            num = float(default)
-        if num < low:
-            num = float(low)
-        if num > high:
-            num = float(high)
-        return float(num)
+    # --- Normalize all numeric parameters via extracted module ---
+    normalize_job_options(options, default_ocr_render_dpi, ocr_concurrency)
 
-    def _normalize_int(
-        value: int | None,
-        *,
-        default: int,
-        low: int,
-        high: int,
-    ) -> int:
-        try:
-            num = int(value) if value is not None else int(default)
-        except Exception:
-            num = int(default)
-        if num < low:
-            num = int(low)
-        if num > high:
-            num = int(high)
-        return int(num)
+    # --- Derived values after normalization ---
+    effective_ocr_render_dpi = int(options.ocr_render_dpi)
+    if turbo_ppt_generation:
+        effective_ocr_render_dpi = min(effective_ocr_render_dpi, OCR_RENDER_DPI_TURBO_CAP)
+    elif fast_ppt_generation:
+        effective_ocr_render_dpi = min(effective_ocr_render_dpi, OCR_RENDER_DPI_FAST_CAP)
 
-    effective_ocr_render_dpi = _normalize_int(
-        ocr_render_dpi,
-        default=default_ocr_render_dpi,
-        low=OCR_RENDER_DPI_MIN,
-        high=OCR_RENDER_DPI_MAX,
-    )
     fast_skip_image_region_detection = (
         speed_ppt_generation and normalized_scanned_page_mode == "fullpage"
-    )
-    if turbo_ppt_generation:
-        effective_ocr_render_dpi = min(int(effective_ocr_render_dpi), OCR_RENDER_DPI_TURBO_CAP)
-    elif fast_ppt_generation:
-        effective_ocr_render_dpi = min(int(effective_ocr_render_dpi), OCR_RENDER_DPI_FAST_CAP)
-
-    normalized_image_bg_clear_expand_min_pt = _normalize_float(
-        image_bg_clear_expand_min_pt,
-        default=_IMG_BG_CLEAR_EXPAND_MIN_PT_DEFAULT,
-        low=_IMG_BG_CLEAR_EXPAND_MIN_PT_LOW,
-        high=_IMG_BG_CLEAR_EXPAND_MIN_PT_HIGH,
-    )
-    normalized_image_bg_clear_expand_max_pt = _normalize_float(
-        image_bg_clear_expand_max_pt,
-        default=_IMG_BG_CLEAR_EXPAND_MAX_PT_DEFAULT,
-        low=_IMG_BG_CLEAR_EXPAND_MAX_PT_LOW,
-        high=_IMG_BG_CLEAR_EXPAND_MAX_PT_HIGH,
-    )
-    if (
-        normalized_image_bg_clear_expand_max_pt
-        < normalized_image_bg_clear_expand_min_pt
-    ):
-        normalized_image_bg_clear_expand_max_pt = (
-            normalized_image_bg_clear_expand_min_pt
-        )
-    normalized_image_bg_clear_expand_ratio = _normalize_float(
-        image_bg_clear_expand_ratio,
-        default=_IMG_BG_CLEAR_EXPAND_RATIO_DEFAULT,
-        low=_IMG_BG_CLEAR_EXPAND_RATIO_LOW,
-        high=_IMG_BG_CLEAR_EXPAND_RATIO_HIGH,
-    )
-    normalized_scanned_image_region_min_area_ratio = _normalize_float(
-        scanned_image_region_min_area_ratio,
-        default=_SCANNED_REGION_MIN_AREA_RATIO_DEFAULT,
-        low=_SCANNED_REGION_MIN_AREA_RATIO_LOW,
-        high=_SCANNED_REGION_MIN_AREA_RATIO_HIGH,
-    )
-    normalized_scanned_image_region_max_area_ratio = _normalize_float(
-        scanned_image_region_max_area_ratio,
-        default=_SCANNED_REGION_MAX_AREA_RATIO_DEFAULT,
-        low=_SCANNED_REGION_MAX_AREA_RATIO_LOW,
-        high=_SCANNED_REGION_MAX_AREA_RATIO_HIGH,
-    )
-    if (
-        normalized_scanned_image_region_max_area_ratio
-        <= normalized_scanned_image_region_min_area_ratio
-    ):
-        normalized_scanned_image_region_max_area_ratio = min(
-            _SCANNED_REGION_MAX_AREA_CLAMP,
-            normalized_scanned_image_region_min_area_ratio + _SCANNED_REGION_AREA_RATIO_STEP,
-        )
-    normalized_scanned_image_region_max_aspect_ratio = _normalize_float(
-        scanned_image_region_max_aspect_ratio,
-        default=_SCANNED_REGION_MAX_ASPECT_RATIO_DEFAULT,
-        low=_SCANNED_REGION_MAX_ASPECT_RATIO_LOW,
-        high=_SCANNED_REGION_MAX_ASPECT_RATIO_HIGH,
-    )
-    normalized_ocr_paddle_vl_docparser_max_side_px = _normalize_int(
-        ocr_paddle_vl_docparser_max_side_px,
-        default=_PADDLE_VL_MAX_SIDE_PX_DEFAULT,
-        low=_PADDLE_VL_MAX_SIDE_PX_LOW,
-        high=_PADDLE_VL_MAX_SIDE_PX_HIGH,
-    )
-    normalized_ocr_ai_page_concurrency = _normalize_int(
-        ocr_ai_page_concurrency,
-        default=ocr_concurrency["page_concurrency_default"],
-        low=_OCR_AI_PAGE_CONCURRENCY_LOW,
-        high=ocr_concurrency["page_concurrency_max"],
-    )
-    normalized_ocr_ai_block_concurrency: int | None = None
-    if ocr_ai_block_concurrency is not None:
-        normalized_ocr_ai_block_concurrency = _normalize_int(
-            ocr_ai_block_concurrency,
-            default=ocr_concurrency["block_concurrency_default"],
-            low=_OCR_AI_BLOCK_CONCURRENCY_LOW,
-            high=ocr_concurrency["block_concurrency_max"],
-        )
-    normalized_ocr_ai_requests_per_minute: int | None = None
-    if ocr_ai_requests_per_minute is not None:
-        normalized_ocr_ai_requests_per_minute = _normalize_int(
-            ocr_ai_requests_per_minute,
-            default=ocr_concurrency["rpm_default"],
-            low=_OCR_AI_RPM_LOW,
-            high=ocr_concurrency["rpm_max"],
-        )
-    normalized_ocr_ai_tokens_per_minute: int | None = None
-    if ocr_ai_tokens_per_minute is not None:
-        normalized_ocr_ai_tokens_per_minute = _normalize_int(
-            ocr_ai_tokens_per_minute,
-            default=ocr_concurrency["tpm_default"],
-            low=_OCR_AI_TPM_LOW,
-            high=ocr_concurrency["tpm_max"],
-        )
-    normalized_ocr_ai_max_retries = _normalize_int(
-        ocr_ai_max_retries,
-        default=ocr_concurrency["max_retries_default"],
-        low=_OCR_AI_MAX_RETRIES_LOW,
-        high=ocr_concurrency["max_retries_max"],
     )
 
     try:
@@ -584,13 +268,13 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                 status_code=400,
             )
 
-        parse_provider_id = normalize_parse_provider(parse_provider)
-        baidu_doc_parse_type_id = normalize_baidu_doc_parse_type(baidu_doc_parse_type)
+        parse_provider_id = normalize_parse_provider(options.parse_provider)
+        baidu_doc_parse_type_id = normalize_baidu_doc_parse_type(options.baidu_doc_parse_type)
         if parse_provider_id not in {"local", "mineru", "baidu_doc", "v2"}:
             raise AppException(
                 code=ErrorCode.VALIDATION_ERROR,
                 message="Unsupported parse provider",
-                details={"parse_provider": parse_provider},
+                details={"parse_provider": options.parse_provider},
             )
 
         reported_progress = 0
@@ -675,20 +359,20 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             # - force AI OCR credentials via SiliconFlow/OpenAI-compatible config
             parse_provider_id = "local"
             normalized_scanned_page_mode = "fullpage"
-            enable_ocr = True
+            options.enable_ocr = True
 
             resolved_api_key = (
-                clean_str(ocr_ai_api_key)
-                or clean_str(api_key)
+                clean_str(options.ocr_ai_api_key)
+                or clean_str(options.api_key)
             )
             resolved_base_url = (
-                clean_str(ocr_ai_base_url)
-                or clean_str(base_url)
+                clean_str(options.ocr_ai_base_url)
+                or clean_str(options.base_url)
                 or "https://api.siliconflow.cn/v1"
             )
             resolved_model = (
-                clean_str(ocr_ai_model)
-                or clean_str(model)
+                clean_str(options.ocr_ai_model)
+                or clean_str(options.model)
                 or "Pro/deepseek-ai/deepseek-ocr"
             )
 
@@ -702,17 +386,17 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                     status_code=400,
                 )
 
-            ocr_provider = "aiocr"
-            ocr_ai_api_key = resolved_api_key
-            ocr_ai_base_url = resolved_base_url
-            ocr_ai_model = resolved_model
-            if not clean_str(ocr_ai_provider):
-                ocr_ai_provider = "auto"
+            options.ocr_provider = "aiocr"
+            options.ocr_ai_api_key = resolved_api_key
+            options.ocr_ai_base_url = resolved_base_url
+            options.ocr_ai_model = resolved_model
+            if not clean_str(options.ocr_ai_provider):
+                options.ocr_ai_provider = "auto"
 
         if parse_provider_id == "mineru":
             # mineru_hybrid_ocr is deprecated and ignored.
             # Log a one-time warning if someone still passes it.
-            if mineru_hybrid_ocr is not None:
+            if options.mineru_hybrid_ocr is not None:
                 logger.warning(
                     "mineru_hybrid_ocr is deprecated and ignored (job %s); "
                     "MinerU no longer layers local hybrid OCR alignment.",
@@ -726,15 +410,15 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             ir = parse_pdf_to_ir_with_mineru(
                 input_pdf,
                 artifacts_dir / "mineru",
-                token=clean_str(mineru_api_token),
-                base_url=clean_str(mineru_base_url),
-                model_version=clean_str(mineru_model_version) or "vlm",
-                enable_formula=mineru_enable_formula,
-                enable_table=mineru_enable_table,
-                language=clean_str(mineru_language),
-                is_ocr=mineru_is_ocr,
-                page_start=page_start,
-                page_end=page_end,
+                token=clean_str(options.mineru_api_token),
+                base_url=clean_str(options.mineru_base_url),
+                model_version=clean_str(options.mineru_model_version) or "vlm",
+                enable_formula=options.mineru_enable_formula,
+                enable_table=options.mineru_enable_table,
+                language=clean_str(options.mineru_language),
+                is_ocr=options.mineru_is_ocr,
+                page_start=options.page_start,
+                page_end=options.page_end,
                 data_id=job_id,
                 cancel_check=_mineru_poll_check,
             )
@@ -744,24 +428,24 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                 _abort_if_cancelled(stage=JobStage.parsing, message="Job cancelled")
                 _refresh_job_ttl()
 
-            enable_ocr = False
+            options.enable_ocr = False
             enable_layout_assist = False
             ir = parse_pdf_to_ir_with_baidu_doc(
                 input_pdf,
                 artifacts_dir / "baidu_doc",
-                api_key=clean_str(ocr_baidu_api_key),
-                secret_key=clean_str(ocr_baidu_secret_key),
+                api_key=clean_str(options.ocr_baidu_api_key),
+                secret_key=clean_str(options.ocr_baidu_secret_key),
                 parse_type=baidu_doc_parse_type_id,
-                page_start=page_start,
-                page_end=page_end,
+                page_start=options.page_start,
+                page_end=options.page_end,
                 cancel_check=_baidu_poll_check,
             )
         else:
             ir = parse_pdf_to_ir(
                 input_pdf,
                 artifacts_dir,
-                page_start=page_start,
-                page_end=page_end,
+                page_start=options.page_start,
+                page_end=options.page_end,
             )
         # Persist parsed IR for debugging. We'll overwrite with the final IR at end.
         (job_path / "ir.parsed.json").write_text(
@@ -792,7 +476,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             for page in (ir.get("pages") or [])
         )
         should_attempt_ocr = (
-            parse_provider_id == "local" and scanned_pages_exist and bool(enable_ocr)
+            parse_provider_id == "local" and scanned_pages_exist and bool(options.enable_ocr)
         )
         ocr_setup = None
         ocr_manager = None
@@ -801,15 +485,15 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
         linebreak_enabled = False
         auto_linebreak_enabled = False
         ocr_debug_payload: dict[str, Any] | None = None
-        effective_ocr_provider = normalize_requested_ocr_provider(ocr_provider)
-        effective_ocr_ai_provider = normalize_ai_ocr_provider(ocr_ai_provider)
-        effective_ocr_ai_base_url = clean_str(ocr_ai_base_url)
-        effective_ocr_ai_model = clean_str(ocr_ai_model)
+        effective_ocr_provider = normalize_requested_ocr_provider(options.ocr_provider)
+        effective_ocr_ai_provider = normalize_ai_ocr_provider(options.ocr_ai_provider)
+        effective_ocr_ai_base_url = clean_str(options.ocr_ai_base_url)
+        effective_ocr_ai_model = clean_str(options.ocr_ai_model)
         effective_tesseract_language = (
-            clean_str(ocr_tesseract_language) or "chi_sim+eng"
+            clean_str(options.ocr_tesseract_language) or "chi_sim+eng"
         )
         effective_tesseract_min_conf: float | None = None
-        strict_ocr_mode = bool(True if ocr_strict_mode is None else ocr_strict_mode)
+        strict_ocr_mode = bool(True if options.ocr_strict_mode is None else options.ocr_strict_mode)
 
         if not scanned_pages_exist:
             _set_processing_progress(
@@ -842,35 +526,35 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             )
 
             ocr_setup = setup_ocr_runtime(
-                provider=provider,
-                api_key=api_key,
-                base_url=base_url,
-                model=model,
-                ocr_provider=ocr_provider,
-                ocr_baidu_app_id=ocr_baidu_app_id,
-                ocr_baidu_api_key=ocr_baidu_api_key,
-                ocr_baidu_secret_key=ocr_baidu_secret_key,
-                ocr_tesseract_min_confidence=ocr_tesseract_min_confidence,
-                ocr_tesseract_language=ocr_tesseract_language,
-                ocr_ai_api_key=ocr_ai_api_key,
-                ocr_ai_provider=ocr_ai_provider,
-                ocr_ai_base_url=ocr_ai_base_url,
-                ocr_ai_model=ocr_ai_model,
-                ocr_ai_chain_mode=ocr_ai_chain_mode,
-                ocr_ai_layout_model=ocr_ai_layout_model,
-                ocr_ai_prompt_preset=ocr_ai_prompt_preset,
-                ocr_ai_direct_prompt_override=ocr_ai_direct_prompt_override,
-                ocr_ai_layout_block_prompt_override=ocr_ai_layout_block_prompt_override,
-                ocr_ai_image_region_prompt_override=ocr_ai_image_region_prompt_override,
-                ocr_paddle_vl_docparser_max_side_px=normalized_ocr_paddle_vl_docparser_max_side_px,
-                ocr_ai_page_concurrency=normalized_ocr_ai_page_concurrency,
-                ocr_ai_block_concurrency=normalized_ocr_ai_block_concurrency,
-                ocr_ai_requests_per_minute=normalized_ocr_ai_requests_per_minute,
-                ocr_ai_tokens_per_minute=normalized_ocr_ai_tokens_per_minute,
-                ocr_ai_max_retries=normalized_ocr_ai_max_retries,
-                ocr_geometry_mode=ocr_geometry_mode,
-                ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
-                ocr_strict_mode=ocr_strict_mode,
+                provider=options.provider,
+                api_key=options.api_key,
+                base_url=options.base_url,
+                model=options.model,
+                ocr_provider=options.ocr_provider,
+                ocr_baidu_app_id=options.ocr_baidu_app_id,
+                ocr_baidu_api_key=options.ocr_baidu_api_key,
+                ocr_baidu_secret_key=options.ocr_baidu_secret_key,
+                ocr_tesseract_min_confidence=options.ocr_tesseract_min_confidence,
+                ocr_tesseract_language=options.ocr_tesseract_language,
+                ocr_ai_api_key=options.ocr_ai_api_key,
+                ocr_ai_provider=options.ocr_ai_provider,
+                ocr_ai_base_url=options.ocr_ai_base_url,
+                ocr_ai_model=options.ocr_ai_model,
+                ocr_ai_chain_mode=options.ocr_ai_chain_mode,
+                ocr_ai_layout_model=options.ocr_ai_layout_model,
+                ocr_ai_prompt_preset=options.ocr_ai_prompt_preset,
+                ocr_ai_direct_prompt_override=options.ocr_ai_direct_prompt_override,
+                ocr_ai_layout_block_prompt_override=options.ocr_ai_layout_block_prompt_override,
+                ocr_ai_image_region_prompt_override=options.ocr_ai_image_region_prompt_override,
+                ocr_paddle_vl_docparser_max_side_px=options.ocr_paddle_vl_docparser_max_side_px,
+                ocr_ai_page_concurrency=options.ocr_ai_page_concurrency,
+                ocr_ai_block_concurrency=options.ocr_ai_block_concurrency,
+                ocr_ai_requests_per_minute=options.ocr_ai_requests_per_minute,
+                ocr_ai_tokens_per_minute=options.ocr_ai_tokens_per_minute,
+                ocr_ai_max_retries=options.ocr_ai_max_retries,
+                ocr_geometry_mode=options.ocr_geometry_mode,
+                ocr_ai_linebreak_assist=options.ocr_ai_linebreak_assist,
+                ocr_strict_mode=options.ocr_strict_mode,
             )
             ocr_manager = ocr_setup.ocr_manager
             text_refiner = ocr_setup.text_refiner
@@ -885,45 +569,45 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             linebreak_enabled = ocr_setup.linebreak_enabled
             auto_linebreak_enabled = ocr_setup.auto_linebreak_enabled
             ocr_debug_payload = build_ocr_debug_payload(
-                provider_requested=(ocr_provider or "auto"),
+                provider_requested=(options.ocr_provider or "auto"),
                 ocr_render_dpi=int(effective_ocr_render_dpi),
                 scanned_render_dpi=int(scanned_render_dpi),
-                ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
+                ocr_ai_linebreak_assist=options.ocr_ai_linebreak_assist,
                 setup=ocr_setup,
             )
             ocr_debug_payload["env_PATH"] = os.environ.get("PATH")
 
             def _build_page_ocr_runtime():
                 return setup_ocr_runtime(
-                    provider=provider,
-                    api_key=api_key,
-                    base_url=base_url,
-                    model=model,
-                    ocr_provider=ocr_provider,
-                    ocr_baidu_app_id=ocr_baidu_app_id,
-                    ocr_baidu_api_key=ocr_baidu_api_key,
-                    ocr_baidu_secret_key=ocr_baidu_secret_key,
-                    ocr_tesseract_min_confidence=ocr_tesseract_min_confidence,
-                    ocr_tesseract_language=ocr_tesseract_language,
-                    ocr_ai_api_key=ocr_ai_api_key,
-                    ocr_ai_provider=ocr_ai_provider,
-                    ocr_ai_base_url=ocr_ai_base_url,
-                    ocr_ai_model=ocr_ai_model,
-                    ocr_ai_chain_mode=ocr_ai_chain_mode,
-                    ocr_ai_layout_model=ocr_ai_layout_model,
-                    ocr_ai_prompt_preset=ocr_ai_prompt_preset,
-                    ocr_ai_direct_prompt_override=ocr_ai_direct_prompt_override,
-                    ocr_ai_layout_block_prompt_override=ocr_ai_layout_block_prompt_override,
-                    ocr_ai_image_region_prompt_override=ocr_ai_image_region_prompt_override,
-                    ocr_paddle_vl_docparser_max_side_px=normalized_ocr_paddle_vl_docparser_max_side_px,
-                    ocr_ai_page_concurrency=normalized_ocr_ai_page_concurrency,
-                    ocr_ai_block_concurrency=normalized_ocr_ai_block_concurrency,
-                    ocr_ai_requests_per_minute=normalized_ocr_ai_requests_per_minute,
-                    ocr_ai_tokens_per_minute=normalized_ocr_ai_tokens_per_minute,
-                    ocr_ai_max_retries=normalized_ocr_ai_max_retries,
-                    ocr_geometry_mode=ocr_geometry_mode,
-                    ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
-                    ocr_strict_mode=ocr_strict_mode,
+                    provider=options.provider,
+                    api_key=options.api_key,
+                    base_url=options.base_url,
+                    model=options.model,
+                    ocr_provider=options.ocr_provider,
+                    ocr_baidu_app_id=options.ocr_baidu_app_id,
+                    ocr_baidu_api_key=options.ocr_baidu_api_key,
+                    ocr_baidu_secret_key=options.ocr_baidu_secret_key,
+                    ocr_tesseract_min_confidence=options.ocr_tesseract_min_confidence,
+                    ocr_tesseract_language=options.ocr_tesseract_language,
+                    ocr_ai_api_key=options.ocr_ai_api_key,
+                    ocr_ai_provider=options.ocr_ai_provider,
+                    ocr_ai_base_url=options.ocr_ai_base_url,
+                    ocr_ai_model=options.ocr_ai_model,
+                    ocr_ai_chain_mode=options.ocr_ai_chain_mode,
+                    ocr_ai_layout_model=options.ocr_ai_layout_model,
+                    ocr_ai_prompt_preset=options.ocr_ai_prompt_preset,
+                    ocr_ai_direct_prompt_override=options.ocr_ai_direct_prompt_override,
+                    ocr_ai_layout_block_prompt_override=options.ocr_ai_layout_block_prompt_override,
+                    ocr_ai_image_region_prompt_override=options.ocr_ai_image_region_prompt_override,
+                    ocr_paddle_vl_docparser_max_side_px=options.ocr_paddle_vl_docparser_max_side_px,
+                    ocr_ai_page_concurrency=options.ocr_ai_page_concurrency,
+                    ocr_ai_block_concurrency=options.ocr_ai_block_concurrency,
+                    ocr_ai_requests_per_minute=options.ocr_ai_requests_per_minute,
+                    ocr_ai_tokens_per_minute=options.ocr_ai_tokens_per_minute,
+                    ocr_ai_max_retries=options.ocr_ai_max_retries,
+                    ocr_geometry_mode=options.ocr_geometry_mode,
+                    ocr_ai_linebreak_assist=options.ocr_ai_linebreak_assist,
+                    ocr_strict_mode=options.ocr_strict_mode,
                 )
 
             if ocr_setup.setup_warning:
@@ -934,7 +618,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                     f"ocr_setup_failed_best_effort: error={ocr_setup.setup_warning}"
                 )
             if (
-                ocr_ai_linebreak_assist is True
+                options.ocr_ai_linebreak_assist is True
                 and ocr_setup.linebreak_enabled
                 and ocr_setup.linebreak_mode != "ai_refiner"
             ):
@@ -974,7 +658,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
                 raise RuntimeError("internal error: OCR debug payload missing")
             linebreak_assist_effective = (
                 False
-                if ocr_ai_linebreak_assist is False
+                if options.ocr_ai_linebreak_assist is False
                 else (True if linebreak_enabled else None)
             )
             run_ocr_stage(
@@ -1021,16 +705,16 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             "output_pptx": output_pptx,
             "artifacts_dir": artifacts_dir,
             "scanned_render_dpi": int(scanned_render_dpi),
-            "remove_footer_notebooklm": bool(remove_footer_notebooklm),
+            "remove_footer_notebooklm": bool(options.remove_footer_notebooklm),
             "normalized_text_erase_mode": normalized_text_erase_mode,
             "normalized_scanned_page_mode": normalized_scanned_page_mode,
             "normalized_ppt_generation_mode": normalized_ppt_generation_mode,
-            "normalized_image_bg_clear_expand_min_pt": normalized_image_bg_clear_expand_min_pt,
-            "normalized_image_bg_clear_expand_max_pt": normalized_image_bg_clear_expand_max_pt,
-            "normalized_image_bg_clear_expand_ratio": normalized_image_bg_clear_expand_ratio,
-            "normalized_scanned_image_region_min_area_ratio": normalized_scanned_image_region_min_area_ratio,
-            "normalized_scanned_image_region_max_area_ratio": normalized_scanned_image_region_max_area_ratio,
-            "normalized_scanned_image_region_max_aspect_ratio": normalized_scanned_image_region_max_aspect_ratio,
+            "normalized_image_bg_clear_expand_min_pt": options.image_bg_clear_expand_min_pt,
+            "normalized_image_bg_clear_expand_max_pt": options.image_bg_clear_expand_max_pt,
+            "normalized_image_bg_clear_expand_ratio": options.image_bg_clear_expand_ratio,
+            "normalized_scanned_image_region_min_area_ratio": options.scanned_image_region_min_area_ratio,
+            "normalized_scanned_image_region_max_area_ratio": options.scanned_image_region_max_area_ratio,
+            "normalized_scanned_image_region_max_aspect_ratio": options.scanned_image_region_max_aspect_ratio,
             "export_final_preview_images": artifact_export_policy.final_preview_images,
             "set_processing_progress": _set_processing_progress,
             "abort_if_cancelled": _abort_if_cancelled,
@@ -1138,7 +822,7 @@ def process_pdf_job(  # type: ignore[reportGeneralTypeIssues]
             redis_service.delete_job_secrets(job_id)
         except Exception:
             pass
-        if not bool(retain_process_artifacts):
+        if not bool(options.retain_process_artifacts):
             try:
                 removed = cleanup_job_process_artifacts(job_path)
                 if removed:

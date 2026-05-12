@@ -1,0 +1,818 @@
+"""Private extraction helpers for Baidu document parser adapter."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+
+from app.models.error import AppException, ErrorCode
+from app.utils.text import clean_str as _clean_str
+
+def _raise_if_baidu_error(payload: Any, *, context: str) -> None:
+    if not isinstance(payload, dict):
+        return
+    error_code = payload.get("error_code")
+    if error_code in (None, "", 0, "0"):
+        return
+    error_msg = payload.get("error_msg")
+    message = f"Baidu document parser {context} failed"
+    if isinstance(error_msg, str) and error_msg.strip():
+        message = f"{message}: {error_msg.strip()}"
+    raise AppException(
+        code=ErrorCode.CONVERSION_FAILED,
+        message=message,
+        details={
+            "error_code": error_code,
+            "error_msg": error_msg,
+            "payload": payload,
+        },
+        status_code=502,
+    )
+
+
+def _maybe_parse_json(value: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text or text[0] not in "[{":
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except Exception:
+            return None
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip().lower().replace("pt", "").strip()
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except Exception:
+        return None
+
+
+def _extract_page_size(entry: Any) -> tuple[float, float] | None:
+    if not isinstance(entry, dict):
+        return None
+
+    page_size = entry.get("page_size")
+    if isinstance(page_size, (list, tuple)) and len(page_size) >= 2:
+        width = _coerce_float(page_size[0])
+        height = _coerce_float(page_size[1])
+        if width and height and width > 0 and height > 0:
+            return (float(width), float(height))
+
+    width = _coerce_float(entry.get("page_width") or entry.get("page_w"))
+    height = _coerce_float(entry.get("page_height") or entry.get("page_h"))
+    if width and height and width > 0 and height > 0:
+        return (float(width), float(height))
+
+    meta = entry.get("meta")
+    if isinstance(meta, dict):
+        width = _coerce_float(meta.get("page_width") or meta.get("page_w") or meta.get("width"))
+        height = _coerce_float(
+            meta.get("page_height") or meta.get("page_h") or meta.get("height")
+        )
+        if width and height and width > 0 and height > 0:
+            return (float(width), float(height))
+
+    return None
+
+
+def _has_explicit_page_idx(entry: Any) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    return any(
+        key in entry
+        for key in ("page_idx", "page_index", "page", "page_no", "page_num", "page_id")
+    )
+
+
+def _looks_like_page_container(entry: Any) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    if any(
+        key in entry
+        for key in (
+            "bbox",
+            "box",
+            "rect",
+            "rectangle",
+            "polygon",
+            "poly",
+            "points",
+            "position",
+            "location",
+            "coordinates",
+            "coordinate",
+        )
+    ):
+        return False
+    if any(
+        key in entry
+        for key in (
+            "text",
+            "content",
+            "value",
+            "words",
+            "markdown",
+            "html",
+            "type",
+            "kind",
+            "category",
+            "block_type",
+            "layout_type",
+            "label",
+            "name",
+            "cls",
+        )
+    ):
+        return False
+    return any(
+        key in entry
+        for key in (
+            "blocks",
+            "items",
+            "elements",
+            "layouts",
+            "paragraphs",
+            "regions",
+            "pages",
+        )
+    )
+
+
+def _extract_loose_page_size(entry: Any) -> tuple[float, float] | None:
+    if not isinstance(entry, dict):
+        return None
+
+    size = entry.get("size")
+    if isinstance(size, dict):
+        width = _coerce_float(size.get("width") or size.get("w"))
+        height = _coerce_float(size.get("height") or size.get("h"))
+        if width and height and width > 0 and height > 0:
+            return (float(width), float(height))
+
+    width = _coerce_float(entry.get("width"))
+    height = _coerce_float(entry.get("height"))
+    if width and height and width > 0 and height > 0:
+        return (float(width), float(height))
+    return None
+
+
+def _extract_page_idx(entry: Any, *, fallback: int | None = None) -> int | None:
+    if isinstance(entry, dict):
+        for key in ("page_idx", "page_index", "page", "page_no", "page_num", "page_id"):
+            if key not in entry:
+                continue
+            value = entry.get(key)
+            try:
+                page_idx = int(value)
+            except Exception:
+                continue
+            if key == "page_no" and page_idx > 0:
+                return page_idx - 1
+            return page_idx
+    return fallback
+
+
+def _extract_position_bbox_candidate(value: Any) -> tuple[float, float, float, float] | None:
+    if isinstance(value, dict):
+        left = _coerce_float(value.get("left") or value.get("x"))
+        top = _coerce_float(value.get("top") or value.get("y"))
+        width = _coerce_float(value.get("width") or value.get("w"))
+        height = _coerce_float(value.get("height") or value.get("h"))
+        if (
+            left is not None
+            and top is not None
+            and width is not None
+            and height is not None
+            and width > 0
+            and height > 0
+        ):
+            return (
+                float(left),
+                float(top),
+                float(left + width),
+                float(top + height),
+            )
+        return _extract_bbox_candidate(value.get("polygon") or value.get("points"))
+
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        coords = [_coerce_float(item) for item in value]
+        if all(item is not None for item in coords):
+            x, y, width, height = (float(item) for item in coords if item is not None)
+            if width > 0 and height > 0:
+                return (x, y, x + width, y + height)
+    return _extract_bbox_candidate(value)
+
+
+def _extract_bbox_candidate(value: Any) -> tuple[float, float, float, float] | None:
+    if isinstance(value, dict):
+        position = value.get("position")
+        if position is not None:
+            bbox = _extract_position_bbox_candidate(position)
+            if bbox is not None:
+                return bbox
+
+        for key in (
+            "bbox",
+            "box",
+            "rect",
+            "rectangle",
+            "polygon",
+            "poly",
+            "points",
+            "location",
+            "coordinates",
+            "coordinate",
+        ):
+            nested = value.get(key)
+            if nested is not None:
+                bbox = _extract_bbox_candidate(nested)
+                if bbox is not None:
+                    return bbox
+
+        left = _coerce_float(value.get("left") or value.get("x0") or value.get("x"))
+        top = _coerce_float(value.get("top") or value.get("y0") or value.get("y"))
+        right = _coerce_float(value.get("right") or value.get("x1"))
+        bottom = _coerce_float(value.get("bottom") or value.get("y1"))
+        width = _coerce_float(value.get("width") or value.get("w"))
+        height = _coerce_float(value.get("height") or value.get("h"))
+        if (
+            left is not None
+            and top is not None
+            and right is not None
+            and bottom is not None
+        ):
+            return (float(left), float(top), float(right), float(bottom))
+        if (
+            left is not None
+            and top is not None
+            and width is not None
+            and height is not None
+        ):
+            return (
+                float(left),
+                float(top),
+                float(left + width),
+                float(top + height),
+            )
+        return None
+
+    if isinstance(value, (list, tuple)):
+        if len(value) == 4:
+            coords = [_coerce_float(item) for item in value]
+            if all(item is not None for item in coords):
+                x0, y0, x1, y1 = (float(item) for item in coords if item is not None)
+                if x1 <= x0 or y1 <= y0:
+                    return (x0, y0, x0 + x1, y0 + y1)
+                return (x0, y0, x1, y1)
+        if len(value) >= 8:
+            coords = [_coerce_float(item) for item in value]
+            if all(item is not None for item in coords):
+                xs = [float(item) for idx, item in enumerate(coords) if idx % 2 == 0 and item is not None]
+                ys = [float(item) for idx, item in enumerate(coords) if idx % 2 == 1 and item is not None]
+                if xs and ys:
+                    return (min(xs), min(ys), max(xs), max(ys))
+        if value and all(isinstance(item, (list, tuple)) and len(item) >= 2 for item in value):
+            xs: list[float] = []
+            ys: list[float] = []
+            for item in value:
+                x = _coerce_float(item[0])
+                y = _coerce_float(item[1])
+                if x is None or y is None:
+                    return None
+                xs.append(float(x))
+                ys.append(float(y))
+            if xs and ys:
+                return (min(xs), min(ys), max(xs), max(ys))
+        if value and all(isinstance(item, dict) for item in value):
+            xs: list[float] = []
+            ys: list[float] = []
+            for item in value:
+                x = _coerce_float(item.get("x") or item.get("left"))
+                y = _coerce_float(item.get("y") or item.get("top"))
+                if x is None or y is None:
+                    return None
+                xs.append(float(x))
+                ys.append(float(y))
+            if xs and ys:
+                return (min(xs), min(ys), max(xs), max(ys))
+    return None
+
+
+def _extract_text(entry: Any) -> str:
+    if isinstance(entry, str):
+        return entry.strip()
+    if isinstance(entry, list):
+        parts = [_extract_text(item) for item in entry]
+        return "\n".join([part for part in parts if part]).strip()
+    if not isinstance(entry, dict):
+        return ""
+
+    for key in ("text", "block_content", "content", "words", "value", "markdown", "title"):
+        value = entry.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    for key in ("lines", "paragraphs", "cells", "spans", "texts", "children"):
+        value = entry.get(key)
+        if isinstance(value, list):
+            parts = [_extract_text(item) for item in value]
+            merged = "\n".join([part for part in parts if part]).strip()
+            if merged:
+                return merged
+    return ""
+
+
+def _extract_kind(entry: Any) -> str:
+    if not isinstance(entry, dict):
+        return ""
+    for key in (
+        "type",
+        "kind",
+        "category",
+        "block_type",
+        "layout_type",
+        "label",
+        "name",
+        "cls",
+        "role",
+    ):
+        value = entry.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    return ""
+
+
+def _extract_image_path(entry: Any) -> str | None:
+    if not isinstance(entry, dict):
+        return None
+    for key in ("image_path", "image_url", "file_url", "url"):
+        value = entry.get(key)
+        cleaned = _clean_str(value if isinstance(value, str) else None)
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _normalize_bbox_to_pdf_pt(
+    bbox: tuple[float, float, float, float],
+    *,
+    payload_page_size: tuple[float, float] | None,
+    pdf_page_size: tuple[float, float] | None,
+) -> list[float] | None:
+    if pdf_page_size is None:
+        return None
+    pdf_w, pdf_h = pdf_page_size
+    if pdf_w <= 0 or pdf_h <= 0:
+        return None
+
+    x0, y0, x1, y1 = bbox
+    left = min(float(x0), float(x1))
+    right = max(float(x0), float(x1))
+    top = min(float(y0), float(y1))
+    bottom = max(float(y0), float(y1))
+    if right <= left or bottom <= top:
+        return None
+
+    max_x = max(abs(left), abs(right))
+    max_y = max(abs(top), abs(bottom))
+
+    if max(max_x, max_y) <= 1.2:
+        left *= pdf_w
+        right *= pdf_w
+        top *= pdf_h
+        bottom *= pdf_h
+    else:
+        payload_w = float(payload_page_size[0]) if payload_page_size else 0.0
+        payload_h = float(payload_page_size[1]) if payload_page_size else 0.0
+        if payload_w > 0 and payload_h > 0:
+            looks_like_1000_grid = payload_w <= 1100.0 and payload_h <= 1100.0
+            if looks_like_1000_grid and max(max_x, max_y) <= 1100.0:
+                left = left / payload_w * pdf_w
+                right = right / payload_w * pdf_w
+                top = top / payload_h * pdf_h
+                bottom = bottom / payload_h * pdf_h
+            elif right <= payload_w * 1.05 and bottom <= payload_h * 1.05:
+                left = left / payload_w * pdf_w
+                right = right / payload_w * pdf_w
+                top = top / payload_h * pdf_h
+                bottom = bottom / payload_h * pdf_h
+        elif right <= pdf_w * 1.05 and bottom <= pdf_h * 1.05:
+            pass
+        elif max(max_x, max_y) <= 1100.0:
+            left = left / 1000.0 * pdf_w
+            right = right / 1000.0 * pdf_w
+            top = top / 1000.0 * pdf_h
+            bottom = bottom / 1000.0 * pdf_h
+        else:
+            scale_x = pdf_w / max(1.0, right)
+            scale_y = pdf_h / max(1.0, bottom)
+            scale = min(scale_x, scale_y)
+            left *= scale
+            right *= scale
+            top *= scale
+            bottom *= scale
+
+    left = max(0.0, min(float(pdf_w), float(left)))
+    right = max(0.0, min(float(pdf_w), float(right)))
+    top = max(0.0, min(float(pdf_h), float(top)))
+    bottom = max(0.0, min(float(pdf_h), float(bottom)))
+    if right <= left or bottom <= top:
+        return None
+    return [left, top, right, bottom]
+
+
+def _collect_page_payload(
+    node: Any,
+    *,
+    fallback_page_idx: int | None = None,
+    out_pages: dict[int, tuple[float, float]],
+) -> None:
+    if isinstance(node, list):
+        for idx, item in enumerate(node):
+            child_fallback = fallback_page_idx if fallback_page_idx is not None else idx
+            _collect_page_payload(
+                item,
+                fallback_page_idx=child_fallback,
+                out_pages=out_pages,
+            )
+        return
+    if not isinstance(node, dict):
+        return
+
+    page_idx = _extract_page_idx(node, fallback=fallback_page_idx)
+    page_size = _extract_page_size(node)
+    looks_like_page = _looks_like_page_container(node)
+    if page_size is None and (
+        _has_explicit_page_idx(node) or (fallback_page_idx is not None and looks_like_page)
+    ):
+        page_size = _extract_loose_page_size(node)
+    if page_idx is not None and page_size is not None:
+        out_pages[int(page_idx)] = page_size
+        if looks_like_page:
+            return
+
+    for value in node.values():
+        if isinstance(value, (dict, list)):
+            _collect_page_payload(value, fallback_page_idx=page_idx, out_pages=out_pages)
+
+
+def _score_page_size_alignment(
+    payload_page_size: tuple[float, float],
+    pdf_page_size: tuple[float, float],
+) -> int:
+    try:
+        payload_w = float(payload_page_size[0])
+        payload_h = float(payload_page_size[1])
+        pdf_w = float(pdf_page_size[0])
+        pdf_h = float(pdf_page_size[1])
+    except Exception:
+        return 0
+    if payload_w <= 0 or payload_h <= 0 or pdf_w <= 0 or pdf_h <= 0:
+        return 0
+
+    score = 0
+    payload_ratio = payload_w / payload_h
+    pdf_ratio = pdf_w / pdf_h
+    if abs(payload_ratio - pdf_ratio) <= 0.03 * max(abs(payload_ratio), abs(pdf_ratio), 1.0):
+        score += 1
+
+    scale_w = payload_w / pdf_w
+    scale_h = payload_h / pdf_h
+    if abs(scale_w - scale_h) <= 0.08 * max(abs(scale_w), abs(scale_h), 1.0):
+        score += 1
+
+    if abs(payload_w - pdf_w) <= 2.0 and abs(payload_h - pdf_h) <= 2.0:
+        score += 1
+    return score
+
+
+def _resolve_pdf_page_idx(
+    page_idx: int,
+    *,
+    payload_page_sizes: dict[int, tuple[float, float]],
+    pdf_page_sizes: dict[int, tuple[float, float]],
+) -> int | None:
+    if not pdf_page_sizes:
+        return None
+
+    normalized_page_idx = int(page_idx)
+    if not payload_page_sizes:
+        if normalized_page_idx in pdf_page_sizes:
+            return normalized_page_idx
+        for candidate in (normalized_page_idx - 1, normalized_page_idx + 1):
+            if candidate in pdf_page_sizes:
+                return int(candidate)
+        return None
+
+    candidate_shifts: set[int] = {0, -1, 1}
+    for payload_key in payload_page_sizes:
+        for pdf_key in pdf_page_sizes:
+            candidate_shifts.add(int(pdf_key) - int(payload_key))
+
+    best_key: tuple[int, int, int, int, int] | None = None
+    best_pdf_page_idx: int | None = None
+    for shift in sorted(candidate_shifts):
+        resolved_page_idx = int(normalized_page_idx + shift)
+        page_hits = 0
+        alignment_score = 0
+        for payload_key, payload_page_size in payload_page_sizes.items():
+            pdf_page_size = pdf_page_sizes.get(int(payload_key) + int(shift))
+            if pdf_page_size is None:
+                continue
+            page_hits += 1
+            alignment_score += _score_page_size_alignment(payload_page_size, pdf_page_size)
+
+        target_hit = 1 if resolved_page_idx in pdf_page_sizes else 0
+        prefer_zero = 1 if shift == 0 else 0
+        key = (
+            int(page_hits),
+            int(alignment_score),
+            int(target_hit),
+            int(prefer_zero),
+            int(-abs(int(shift))),
+        )
+        if best_key is None or key > best_key:
+            best_key = key
+            best_pdf_page_idx = resolved_page_idx
+
+    if best_pdf_page_idx is not None and best_pdf_page_idx in pdf_page_sizes:
+        return int(best_pdf_page_idx)
+    if normalized_page_idx in pdf_page_sizes:
+        return normalized_page_idx
+    return None
+
+
+def _build_content_item(
+    entry: dict[str, Any],
+    *,
+    page_idx: int | None,
+    payload_page_sizes: dict[int, tuple[float, float]],
+    pdf_page_sizes: dict[int, tuple[float, float]],
+) -> dict[str, Any] | None:
+    if page_idx is None:
+        return None
+
+    bbox = _extract_bbox_candidate(entry)
+    if bbox is None:
+        return None
+
+    resolved_pdf_page_idx = _resolve_pdf_page_idx(
+        int(page_idx),
+        payload_page_sizes=payload_page_sizes,
+        pdf_page_sizes=pdf_page_sizes,
+    )
+    if resolved_pdf_page_idx is None:
+        return None
+    pdf_page_size = pdf_page_sizes.get(int(resolved_pdf_page_idx))
+    if pdf_page_size is None:
+        return None
+    bbox_pt = _normalize_bbox_to_pdf_pt(
+        bbox,
+        payload_page_size=payload_page_sizes.get(int(page_idx)),
+        pdf_page_size=pdf_page_size,
+    )
+    if bbox_pt is None:
+        return None
+
+    kind = _extract_kind(entry)
+    text = _extract_text(entry)
+    rel_image_path = _extract_image_path(entry)
+    if not text and not kind and not rel_image_path:
+        return None
+
+    item: dict[str, Any] = {
+        "page_idx": int(page_idx),
+        "bbox": bbox_pt,
+        "bbox_mode": "absolute",
+        "type": kind or ("image" if rel_image_path else "text"),
+    }
+    if text:
+        item["text"] = text
+    if rel_image_path:
+        item["image_path"] = rel_image_path
+    text_level = entry.get("text_level") or entry.get("level")
+    if text_level is not None:
+        item["text_level"] = text_level
+    return item
+
+
+def _collect_content_items(
+    node: Any,
+    *,
+    page_idx: int | None,
+    payload_page_sizes: dict[int, tuple[float, float]],
+    pdf_page_sizes: dict[int, tuple[float, float]],
+    out_items: list[dict[str, Any]],
+    seen: set[tuple[int, str, str, str]],
+) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _collect_content_items(
+                item,
+                page_idx=page_idx,
+                payload_page_sizes=payload_page_sizes,
+                pdf_page_sizes=pdf_page_sizes,
+                out_items=out_items,
+                seen=seen,
+            )
+        return
+
+    parsed = _maybe_parse_json(node)
+    if parsed is not None and parsed is not node:
+        _collect_content_items(
+            parsed,
+            page_idx=page_idx,
+            payload_page_sizes=payload_page_sizes,
+            pdf_page_sizes=pdf_page_sizes,
+            out_items=out_items,
+            seen=seen,
+        )
+        return
+
+    if not isinstance(node, dict):
+        return
+
+    current_page_idx = _extract_page_idx(node, fallback=page_idx)
+    item = _build_content_item(
+        node,
+        page_idx=current_page_idx,
+        payload_page_sizes=payload_page_sizes,
+        pdf_page_sizes=pdf_page_sizes,
+    )
+    if item is not None:
+        key = (
+            int(item["page_idx"]),
+            json.dumps(item.get("bbox"), ensure_ascii=True),
+            str(item.get("text") or ""),
+            str(item.get("type") or ""),
+        )
+        if key not in seen:
+            seen.add(key)
+            out_items.append(item)
+
+    for key, value in node.items():
+        if key in _SKIP_CHILD_KEYS:
+            continue
+        if not isinstance(value, (dict, list, str)):
+            continue
+        _collect_content_items(
+            value,
+            page_idx=current_page_idx,
+            payload_page_sizes=payload_page_sizes,
+            pdf_page_sizes=pdf_page_sizes,
+            out_items=out_items,
+            seen=seen,
+        )
+
+
+# _SKIP_CHILD_KEYS defined in baidu_doc_adapter.py to avoid circular dep
+def _get_skip_child_keys() -> set[str]:
+    return {
+        "bbox", "box", "rect", "rectangle", "polygon", "poly",
+        "points", "position", "location", "coordinate", "coordinates",
+        "text", "content", "value", "words", "markdown", "html",
+        "label", "type", "kind", "category", "block_type", "layout_type",
+        "name", "cls", "score", "confidence", "prob",
+        "page_idx", "page_index", "page", "page_no", "page_num", "page_id",
+        "index", "id",
+        "file_url", "result_url", "image_path", "image_url", "url",
+        "w", "width", "h", "height",
+        "page_width", "page_height", "page_w", "page_h", "page_size", "size",
+    }
+
+
+_SKIP_CHILD_KEYS = _get_skip_child_keys()
+
+
+def _extract_result_container(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    for key in ("result", "data", "res"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+    return payload
+
+
+def _extract_status(payload: Any) -> str:
+    container = _extract_result_container(payload)
+    for source in (container, payload if isinstance(payload, dict) else {}):
+        for key in ("status", "task_status", "state"):
+            value = source.get(key)
+            cleaned = _clean_str(value if isinstance(value, str) else None)
+            if cleaned:
+                return cleaned.lower()
+    return ""
+
+
+def _extract_task_id(payload: Any) -> str | None:
+    container = _extract_result_container(payload)
+    for source in (container, payload if isinstance(payload, dict) else {}):
+        value = source.get("task_id")
+        cleaned = _clean_str(value if isinstance(value, str) else None)
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _find_result_url(payload: Any) -> str | None:
+    if isinstance(payload, dict):
+        for key in (
+            "parse_result_url",
+            "result_url",
+            "result_file_url",
+            "result_json_url",
+            "json_result_url",
+            "file_url",
+            "url",
+        ):
+            value = payload.get(key)
+            cleaned = _clean_str(value if isinstance(value, str) else None)
+            if cleaned and cleaned.startswith(("http://", "https://")):
+                return cleaned
+        for value in payload.values():
+            found = _find_result_url(value)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for item in payload:
+            found = _find_result_url(item)
+            if found:
+                return found
+    return None
+
+
+def _looks_like_parse_result_payload(value: Any) -> bool:
+    if isinstance(value, list):
+        return len(value) > 0
+    if not isinstance(value, dict):
+        return False
+    if any(key in value for key in ("pages", "layouts", "tables", "images", "cells", "matrix")):
+        return True
+    return False
+
+
+def _resolve_result_payload(payload: Any, *, client: httpx.Client) -> tuple[Any, str]:
+    container = _extract_result_container(payload)
+    candidate_values: list[tuple[Any, str]] = []
+    for key in ("result_data", "json_result", "data", "res"):
+        if key in container:
+            candidate_values.append((container.get(key), f"inline:{key}"))
+        if isinstance(payload, dict) and key in payload:
+            candidate_values.append((payload.get(key), f"inline:{key}"))
+
+    for value, label in candidate_values:
+        parsed = _maybe_parse_json(value)
+        if parsed is not None:
+            return parsed, label
+        if _looks_like_parse_result_payload(value):
+            return value, label
+
+    result_url = _find_result_url(container) or _find_result_url(payload)
+    if result_url:
+        response = client.get(result_url)
+        response.raise_for_status()
+        try:
+            return response.json(), "remote:json_url"
+        except Exception:
+            parsed = _maybe_parse_json(response.text)
+            if parsed is not None:
+                return parsed, "remote:text_url"
+            raise AppException(
+                code=ErrorCode.CONVERSION_FAILED,
+                message="Baidu document parser result URL did not return JSON",
+                details={"result_url": result_url},
+                status_code=502,
+            )
+
+    for value, label in ((container, "inline:result"), (payload, "inline:payload")):
+        parsed = _maybe_parse_json(value)
+        if parsed is not None:
+            return parsed, label
+        if _looks_like_parse_result_payload(value):
+            return value, label
+
+    raise AppException(
+        code=ErrorCode.CONVERSION_FAILED,
+        message="Baidu document parser returned no usable result payload",
+        details={"payload": payload},
+        status_code=502,
+    )

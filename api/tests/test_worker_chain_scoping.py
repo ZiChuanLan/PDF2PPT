@@ -10,6 +10,7 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from app import worker
+from app.worker_helpers._job_options import JobOptions
 
 
 class _FakeRedisService:
@@ -92,9 +93,11 @@ def test_layout_assist_no_longer_forces_ocr_stage(monkeypatch, tmp_path) -> None
 
     worker.process_pdf_job(
         "job-layout-assist-only",
-        parse_provider="local",
-        enable_ocr=False,
-        enable_layout_assist=True,
+        options=JobOptions(
+            parse_provider="local",
+            enable_ocr=False,
+            enable_layout_assist=True,
+        ),
     )
 
     assert setup_calls == []
@@ -178,10 +181,12 @@ def test_fast_ppt_generation_forwards_ocr_image_region_skip(
 
     worker.process_pdf_job(
         "job-fast-ocr",
-        parse_provider="local",
-        enable_ocr=True,
-        ocr_provider="aiocr",
-        ppt_generation_mode="fast",
+        options=JobOptions(
+            parse_provider="local",
+            enable_ocr=True,
+            ocr_provider="aiocr",
+            ppt_generation_mode="fast",
+        ),
     )
 
     assert captured_ocr_kwargs["skip_image_region_detection"] is True

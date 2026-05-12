@@ -75,17 +75,19 @@ from ..convert.ocr import (
 )
 from ..services.redis_service import get_redis_service
 from ..worker import get_redis_connection, process_pdf_job
+from ..worker_helpers._job_options import JobOptions
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
 def _submit_job(job_id: str, kwargs: dict[str, Any]) -> None:
     """Submit a job for processing via Thread (memory) or RQ (Redis)."""
+    job_options = JobOptions(**kwargs)
     redis_service = get_redis_service()
     if redis_service.is_memory_backend():
         threading.Thread(
             target=process_pdf_job,
-            kwargs={"job_id": job_id, **kwargs},
+            kwargs={"job_id": job_id, "options": job_options},
             daemon=True,
         ).start()
     else:
@@ -94,7 +96,7 @@ def _submit_job(job_id: str, kwargs: dict[str, Any]) -> None:
         queue.enqueue(
             "app.worker.process_pdf_job",
             job_id,
-            **kwargs,
+            options=job_options,
             job_id=job_id,
             description=f"process_pdf_job(job_id={job_id})",
         )
