@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.auth import decode_token
@@ -112,3 +112,20 @@ async def require_admin(
             detail="Admin access required",
         )
     return current_user
+
+
+async def validate_csrf(
+    x_csrf_token: Optional[str] = Header(None, alias="X-CSRF-Token"),
+) -> None:
+    """Validate CSRF token for state-changing requests.
+
+    Expects CSRF token in X-CSRF-Token header.
+    Raises 403 if token is missing or invalid.
+    """
+    from app.security import validate_csrf_token
+
+    if not validate_csrf_token(x_csrf_token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or missing CSRF token",
+        )

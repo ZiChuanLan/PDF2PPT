@@ -126,6 +126,43 @@ async def request_id_middleware(request: Request, call_next):
                     response.headers["X-Request-ID"] = request_id
                     return response
 
+        # CSRF protection for state-changing requests
+        # Skip CSRF check for:
+        # - GET/HEAD/OPTIONS requests (safe methods)
+        # - /api/v1/auth/login (initial login, no session yet)
+        # - /api/v1/auth/callback (OAuth callback, state validation is sufficient)
+        # - /api/v1/auth/login-password (password login, no session yet)
+        # - /api/v1/auth/register (registration, no session yet)
+        # - /api/v1/auth/auto-login (auto-login for self-use mode)
+        # - /api/v1/setup/* (setup wizard, no session yet)
+        if request.method.upper() in {"POST", "PUT", "DELETE", "PATCH"}:
+            csrf_exempt_paths = {
+                "/api/v1/auth/login",
+                "/api/v1/auth/callback",
+                "/api/v1/auth/login-password",
+                "/api/v1/auth/register",
+                "/api/v1/auth/auto-login",
+            }
+            csrf_exempt_prefixes = {"/api/v1/setup/"}
+
+            needs_csrf = path not in csrf_exempt_paths and not any(
+                path.startswith(prefix) for prefix in csrf_exempt_prefixes
+            )
+
+            if needs_csrf:
+                from app.security import validate_csrf_token
+                csrf_token = request.headers.get("X-CSRF-Token")
+                if not validate_csrf_token(csrf_token):
+                    response = JSONResponse(
+                        status_code=403,
+                        content={
+                            "code": "csrf_validation_failed",
+                            "message": "Invalid or missing CSRF token",
+                        },
+                    )
+                    response.headers["X-Request-ID"] = request_id
+                    return response
+
     # Rate limiting (skip health check and static assets)
     if not request.url.path.startswith("/health") and request.url.path.startswith("/api/"):
         from app.services.redis_service import get_redis_service

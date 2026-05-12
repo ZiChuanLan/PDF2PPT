@@ -23,7 +23,7 @@ def _set_auth_cookies(
         max_age=3600,
         httponly=True,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
     response.set_cookie(
@@ -32,7 +32,7 @@ def _set_auth_cookies(
         max_age=30 * 24 * 3600,
         httponly=True,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
 
@@ -86,12 +86,21 @@ async def complete_setup(
     logger.info("Setup: deploy_mode set to %s", payload.deploy_mode)
 
     # 2. Create admin user
-    user = create_user_with_password(
-        db,
-        username=payload.username,
-        password=payload.password,
-        role=UserRole.admin,
-    )
+    try:
+        user = create_user_with_password(
+            db,
+            username=payload.username,
+            password=payload.password,
+            role=UserRole.admin,
+        )
+    except ValueError as e:
+        # Password validation failed
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=str(e),
+            status_code=400,
+        )
+
     if not user:
         raise AppException(
             code=ErrorCode.INTERNAL_ERROR,

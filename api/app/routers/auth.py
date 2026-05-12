@@ -48,11 +48,16 @@ async def login(origin: Optional[str] = None):
     If origin is provided, uses it to build a dynamic redirect_uri
     so cookies are set for the correct hostname.
     """
+    from app.security import generate_csrf_token
+
     state = generate_state()
     authorize_url = get_authorize_url(state, origin=origin)
+    csrf_token = generate_csrf_token()
+
     return {
         "authorize_url": authorize_url,
         "state": state,
+        "csrf_token": csrf_token,
     }
 
 
@@ -142,8 +147,8 @@ async def logout(response: Response):
     """Logout by clearing auth cookies."""
     from app.config import get_settings
     secure = get_settings().cookie_secure
-    response.delete_cookie("access_token", path="/", httponly=True, secure=secure, samesite="lax")
-    response.delete_cookie("refresh_token", path="/", httponly=True, secure=secure, samesite="lax")
+    response.delete_cookie("access_token", path="/", httponly=True, secure=secure, samesite="strict")
+    response.delete_cookie("refresh_token", path="/", httponly=True, secure=secure, samesite="strict")
     return {"message": "Logged out successfully"}
 
 
@@ -265,7 +270,16 @@ async def register(
         )
 
     # Create user
-    user = create_user_with_password(db, payload.username, payload.password)
+    try:
+        user = create_user_with_password(db, payload.username, payload.password)
+    except ValueError as e:
+        # Password validation failed
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=str(e),
+            status_code=400,
+        )
+
     if not user:
         raise AppException(
             code=ErrorCode.VALIDATION_ERROR,
@@ -386,12 +400,22 @@ async def change_password(
     Requires the old password for verification.
     """
     from app.auth import hash_password, verify_password
+    from app.security import validate_password_strength
 
     # Verify old password
     if not verify_password(payload.old_password, current_user.password_hash):
         raise AppException(
             code=ErrorCode.AUTH_FAILED,
             message="当前密码不正确",
+            status_code=400,
+        )
+
+    # Validate new password strength
+    is_valid, error_msg = validate_password_strength(payload.new_password)
+    if not is_valid:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=error_msg or "密码不符合要求",
             status_code=400,
         )
 
@@ -417,7 +441,7 @@ def _set_auth_cookies(
         max_age=3600,
         httponly=True,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
     # Refresh token cookie - 30 days
@@ -427,6 +451,6 @@ def _set_auth_cookies(
         max_age=30 * 24 * 3600,
         httponly=True,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )

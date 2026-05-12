@@ -121,10 +121,11 @@ async def exchange_code_for_token(code: str, redirect_uri: Optional[str] = None)
                 },
             )
             if response.status_code != 200:
+                from app.security import sanitize_log_message
                 logger.error(
                     "Token exchange failed: status=%d body=%s",
                     response.status_code,
-                    response.text[:_DEBUG_RESPONSE_TEXT_LIMIT],
+                    sanitize_log_message(response.text[:_DEBUG_RESPONSE_TEXT_LIMIT]),
                 )
                 return None
             return response.json()
@@ -145,10 +146,11 @@ async def fetch_user_info(access_token: str) -> Optional[dict]:
                 },
             )
             if response.status_code != 200:
+                from app.security import sanitize_log_message
                 logger.error(
                     "User info fetch failed: status=%d body=%s",
                     response.status_code,
-                    response.text[:_DEBUG_RESPONSE_TEXT_LIMIT],
+                    sanitize_log_message(response.text[:_DEBUG_RESPONSE_TEXT_LIMIT]),
                 )
                 return None
             return response.json()
@@ -237,6 +239,13 @@ def create_user_with_password(
     db: Session, username: str, password: str, role: UserRole = UserRole.user
 ) -> Optional[UserORM]:
     """Create a new user with password authentication."""
+    # Validate password strength
+    from app.security import validate_password_strength
+    is_valid, error_msg = validate_password_strength(password)
+    if not is_valid:
+        logger.warning("Password validation failed for user %s: %s", username, error_msg)
+        raise ValueError(error_msg)
+
     # Check if username already exists
     existing = db.query(UserORM).filter(UserORM.username == username).first()
     if existing:

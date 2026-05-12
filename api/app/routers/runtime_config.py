@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.dependencies import require_admin
 from app.logging_config import get_logger
 from app.models.user import UserORM
+from app.models.error import AppException, ErrorCode
 
 logger = get_logger(__name__)
 
@@ -163,6 +164,78 @@ _FIELD_ENV_MAP: dict[str, tuple[str, type]] = {
 }
 
 
+def _validate_runtime_config(config: RuntimeConfigValues) -> list[str]:
+    """Validate runtime configuration values.
+
+    Returns list of validation error messages (empty if valid).
+    """
+    errors = []
+
+    # Timeout validations (10s - 3600s)
+    timeout_fields = [
+        ("JOB_TIMEOUT_SECONDS", 10, 3600),
+        ("OCR_PAGE_TIMEOUT_S", 10, 3600),
+        ("OCR_TOTAL_TIMEOUT_S", 10, 7200),
+        ("OCR_IMAGE_REGION_TIMEOUT_S", 5, 300),
+    ]
+    for field, min_val, max_val in timeout_fields:
+        value = getattr(config, field, None)
+        if value is not None and not (min_val <= value <= max_val):
+            errors.append(f"{field} must be between {min_val} and {max_val} seconds")
+
+    # Float timeout validations
+    float_timeout_fields = [
+        ("OCR_PADDLE_VL_PREDICT_TIMEOUT_S", 10.0, 600.0),
+        ("OCR_AI_RETRY_BACKOFF_BASE_S", 0.1, 60.0),
+        ("OCR_AI_RATE_LIMITED_MIN_DELAY_S", 0.1, 30.0),
+    ]
+    for field, min_val, max_val in float_timeout_fields:
+        value = getattr(config, field, None)
+        if value is not None and not (min_val <= value <= max_val):
+            errors.append(f"{field} must be between {min_val} and {max_val} seconds")
+
+    # DPI validations (50 - 600)
+    if config.SCANNED_RENDER_DPI is not None:
+        if not (50 <= config.SCANNED_RENDER_DPI <= 600):
+            errors.append("SCANNED_RENDER_DPI must be between 50 and 600")
+
+    # Concurrency validations (1 - 100)
+    concurrency_fields = [
+        "OCR_AI_PAGE_CONCURRENCY_MAX",
+        "OCR_AI_BLOCK_CONCURRENCY_MAX",
+        "OCR_AI_PAGE_CONCURRENCY_DEFAULT",
+        "OCR_AI_BLOCK_CONCURRENCY_DEFAULT",
+    ]
+    for field in concurrency_fields:
+        value = getattr(config, field, None)
+        if value is not None and not (1 <= value <= 100):
+            errors.append(f"{field} must be between 1 and 100")
+
+    # RPM/TPM validations
+    if config.OCR_AI_RPM_MAX is not None and not (1 <= config.OCR_AI_RPM_MAX <= 10000):
+        errors.append("OCR_AI_RPM_MAX must be between 1 and 10000")
+    if config.OCR_AI_RPM_DEFAULT is not None and not (1 <= config.OCR_AI_RPM_DEFAULT <= 10000):
+        errors.append("OCR_AI_RPM_DEFAULT must be between 1 and 10000")
+    if config.OCR_AI_TPM_MAX is not None and not (100 <= config.OCR_AI_TPM_MAX <= 10_000_000):
+        errors.append("OCR_AI_TPM_MAX must be between 100 and 10,000,000")
+    if config.OCR_AI_TPM_DEFAULT is not None and not (100 <= config.OCR_AI_TPM_DEFAULT <= 10_000_000):
+        errors.append("OCR_AI_TPM_DEFAULT must be between 100 and 10,000,000")
+
+    # Retry validations (0 - 20)
+    retry_fields = ["OCR_AI_MAX_RETRIES_MAX", "OCR_AI_MAX_RETRIES_DEFAULT"]
+    for field in retry_fields:
+        value = getattr(config, field, None)
+        if value is not None and not (0 <= value <= 20):
+            errors.append(f"{field} must be between 0 and 20")
+
+    # Consecutive timeout validation (1 - 10)
+    if config.OCR_MAX_CONSECUTIVE_TIMEOUTS is not None:
+        if not (1 <= config.OCR_MAX_CONSECUTIVE_TIMEOUTS <= 10):
+            errors.append("OCR_MAX_CONSECUTIVE_TIMEOUTS must be between 1 and 10")
+
+    return errors
+
+
 def _build_get_response() -> RuntimeConfigResponse:
     """Build the GET response from the live Settings object."""
     settings = get_settings()
@@ -221,6 +294,16 @@ async def update_runtime_config(
     Only the fields present in the request body are updated; omitted fields
     keep their current .env values.
     """
+    # Validate configuration values
+    validation_errors = _validate_runtime_config(payload)
+    if validation_errors:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Invalid configuration values",
+            details={"errors": validation_errors},
+            status_code=400,
+        )
+
     # Build the updates dict — only include fields that were explicitly set
     # in the request body (Pydantic excludes unset fields from model_dump by
     # default, but the user may send all fields.  We write all received fields.)
@@ -248,14 +331,21 @@ async def update_runtime_config(
     new_content = _update_env_content(raw, updates)
     os.makedirs(os.path.dirname(ENV_FILE_PATH), exist_ok=True)
 
-    # Create backup before writing
+    # Create backup before writing (MANDATORY)
     backup_path = ENV_FILE_PATH + ".bak"
     try:
         if os.path.exists(ENV_FILE_PATH):
             import shutil
             shutil.copy2(ENV_FILE_PATH, backup_path)
-    except Exception:
-        logger.warning("Failed to create .env backup", exc_info=True)
+            logger.info("Created .env backup at %s", backup_path)
+    except Exception as e:
+        logger.error("Failed to create .env backup: %s", e)
+        raise AppException(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to create backup of .env file. Configuration not updated.",
+            details={"error": str(e)},
+            status_code=500,
+        )
 
     with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
         f.write(new_content)
