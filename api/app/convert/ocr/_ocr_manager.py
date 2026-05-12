@@ -18,8 +18,18 @@ from ._ocr_remote import (
     resolve_remote_ocr_client_spec,
 )
 from ._baidu_ocr import BaiduOcrClient
-from ._tesseract_ocr import TesseractOcrClient
+from ._tesseract_ocr import TesseractOcrClient, _TESSERACT_DEFAULT_MIN_CONFIDENCE
 from ._paddle_ocr import LazyPaddleOcrClient, PaddleOcrClient
+from ._ocr_constants import (
+    _BAND_CLOSE_Y_THRESHOLD_MULTIPLIER,
+    _BAND_OVERLAP_THRESHOLD_MULTIPLIER,
+    _BAND_X_GAP_THRESHOLD_HEIGHT_MULTIPLIER,
+    _BAND_X_GAP_THRESHOLD_RATIO,
+    _MERGE_GAP_THRESHOLD_MULTIPLIER,
+    _MERGE_GAP_THRESHOLD_RATIO,
+    _MERGE_Y_THRESHOLD_MULTIPLIER,
+    _MERGE_Y_THRESHOLD_RATIO,
+)
 from ._ocr_postprocess import (
     _build_primary_ocr_quality_notes,
     _dedupe_overlapping_ocr_items,
@@ -30,39 +40,6 @@ from ._ocr_postprocess import (
     _normalize_bbox_px,
     _normalize_ocr_items_as_lines,
 )
-
-# ---------------------------------------------------------------------------
-# Constants: OCR merge / normalization
-# ---------------------------------------------------------------------------
-_MERGE_GAP_THRESHOLD_MULTIPLIER = 1.8
-"""Multiplier for median line height in horizontal gap threshold calculation."""
-
-_MERGE_GAP_THRESHOLD_RATIO = 0.025
-"""Ratio of image width for horizontal gap threshold calculation."""
-
-_MERGE_Y_THRESHOLD_MULTIPLIER = 0.70
-"""Multiplier for median line height in Y-center threshold calculation."""
-
-_MERGE_Y_THRESHOLD_RATIO = 0.006
-"""Ratio of image height for Y-center threshold calculation."""
-
-# ---------------------------------------------------------------------------
-# Constants: Band clustering (line merging)
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Constants: Band clustering (line merging)
-# ---------------------------------------------------------------------------
-_BAND_X_GAP_THRESHOLD_RATIO = 0.04
-"""Ratio of image width for horizontal gap threshold in band clustering."""
-
-_BAND_X_GAP_THRESHOLD_HEIGHT_MULTIPLIER = 6.0
-"""Multiplier for median height in horizontal gap threshold."""
-
-_BAND_CLOSE_Y_THRESHOLD_MULTIPLIER = 0.55
-"""Multiplier for median height in close-Y detection."""
-
-_BAND_OVERLAP_THRESHOLD_MULTIPLIER = 0.35
-"""Multiplier for overlap threshold relative to min box height."""
 
 # ---------------------------------------------------------------------------
 # Constants: Overlap merge threshold

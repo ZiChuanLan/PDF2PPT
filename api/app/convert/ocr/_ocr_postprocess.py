@@ -9,7 +9,22 @@ from PIL import Image
 
 from .ai_client import AiOcrTextRefiner, _clone_image_region_payload, _is_multiline_candidate_for_linebreak_assist
 from .base import _ACRONYM_ALLOWLIST, _clean_str
+from ._ocr_constants import (
+    _BAND_CLOSE_Y_THRESHOLD_MULTIPLIER,
+    _BAND_OVERLAP_THRESHOLD_MULTIPLIER,
+    _BAND_X_GAP_THRESHOLD_HEIGHT_MULTIPLIER,
+    _BAND_X_GAP_THRESHOLD_RATIO,
+    _MERGE_GAP_THRESHOLD_MULTIPLIER,
+    _MERGE_GAP_THRESHOLD_RATIO,
+    _MERGE_Y_THRESHOLD_MULTIPLIER,
+    _MERGE_Y_THRESHOLD_RATIO,
+)
 from .utils import _coerce_bbox_xyxy, _contains_cjk, _is_cjk_char
+
+# Import TYPE_CHECKING to avoid circular import at runtime
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ._ocr_manager import OcrManager
 
 # ---------------------------------------------------------------------------
 # Constants: Noise detection
@@ -1628,7 +1643,7 @@ def ocr_image_to_elements(
     *,
     page_width_pt: float,
     page_height_pt: float,
-    ocr_manager: OcrManager,
+    ocr_manager: "OcrManager",
     text_refiner: AiOcrTextRefiner | None = None,
     linebreak_refiner: AiOcrTextRefiner | None = None,
     strict_no_fallback: bool = True,

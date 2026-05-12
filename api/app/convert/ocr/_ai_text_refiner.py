@@ -11,7 +11,8 @@ from typing import Any, Dict, List
 import numpy as np
 from PIL import Image
 
-from .base import _env_float, _env_int
+from .base import _env_float
+from ._ai_helpers import _env_int
 from .vendors import (
     _create_ai_ocr_vendor_adapter,
     _normalize_ai_ocr_model_name,

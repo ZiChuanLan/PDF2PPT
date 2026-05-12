@@ -38,11 +38,21 @@ from .result_parsing import (
     _extract_paddle_doc_parser_output,
     _scale_paddle_doc_parser_output,
 )
+from .routing import ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR, ROUTE_KIND_REMOTE_DOC_PARSER, ROUTE_KIND_REMOTE_PROMPT_OCR
 from .vendors import get_vendor_tuning
 from .utils import _coerce_bbox_xyxy
 from ._ai_helpers import (
-    _compact_debug_text,
+    _CONCURRENCY_WAIT_MAX_S,
+    _CONCURRENCY_WAIT_MIN_S,
+    _DEBUG_LABEL_LIMIT,
+    _DEBUG_TEXTS_LIMIT,
+    _DEBUG_TEXT_CONTENT_LIMIT,
+    _DONE_WAIT_TIMEOUT_S,
+    _PADDLE_MIN_PREDICT_TIMEOUT_S,
+    _PADDLE_RETRY_TIMEOUT_CAP_S,
+    _SINGLEFLIGHT_WAIT_S,
     _clone_image_region_payload,
+    _compact_debug_text,
     _coerce_layout_geometry_points,
     _get_paddle_predict_timeout,
     _layout_geometry_kind,

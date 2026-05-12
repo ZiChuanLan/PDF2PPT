@@ -15,6 +15,7 @@ from typing import Any
 from .base import _clean_str, _env_flag, _env_float, _normalize_paddle_doc_backend, _normalize_paddle_doc_server_url, _resolve_paddle_doc_model_and_pipeline, _run_in_daemon_thread_with_timeout
 from .result_parsing import _derive_paddle_doc_predict_max_pixels, _normalize_layout_label
 from .routing import ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
+from ._ai_rate_limiter import _AiRequestRateLimiter, _AiRequestReservation
 from .utils import _coerce_bbox_xyxy, _is_paddleocr_vl_model
 
 # ---------------------------------------------------------------------------
@@ -150,6 +151,10 @@ def _env_int(name: str, default: int) -> int:
     except Exception:
         return int(default)
     return int(value)
+
+
+def _get_paddle_predict_timeout() -> float:
+    return _PADDLE_VL15_PREDICT_TIMEOUT_S
 
 
 def _utc_now_iso() -> str:

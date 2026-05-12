@@ -72,6 +72,7 @@ from .vendors import (
 
 # --- Sub-module imports ---
 from ._ai_helpers import (
+    _PADDLE_DOC_MAX_SIDE_PX,
     _clone_image_region_payload,
     _coerce_int_in_range,
     _compact_debug_text,

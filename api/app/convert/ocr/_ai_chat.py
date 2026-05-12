@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 
 from PIL import Image
 
-from .base import _env_flag, _env_float, _env_int
+from .base import _env_flag, _env_float
 from .deepseek_parser import _extract_deepseek_tagged_items, _is_deepseek_ocr_model, _looks_like_ocr_prompt_echo_text
 from .json_extraction import _extract_json_list, _extract_message_text, _extract_partial_json_object_list
 from .prompts import build_ai_ocr_direct_prompt, build_ai_ocr_image_region_prompt, normalize_ai_ocr_prompt_override, normalize_ai_ocr_prompt_preset, resolve_ai_ocr_prompt_preset
@@ -22,6 +22,7 @@ from .vendors import _should_send_image_first_for_ai_ocr, get_vendor_tuning
 from ._ai_helpers import (
     _clone_image_region_payload,
     _compact_debug_text,
+    _env_int,
     _run_chat_completion_request,
     _sanitize_debug_value,
 )

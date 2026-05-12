@@ -44,6 +44,7 @@ from .vendors import (
     get_vendor_config,
     get_vendor_tuning,
 )
+from .utils import _coerce_bbox_xyxy
 
 __all__ = [
     "AiOcrClient",
