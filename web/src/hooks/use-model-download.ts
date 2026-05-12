@@ -71,8 +71,9 @@ export function useModelDownload(options?: {
         }
         return body.downloads
       })
-    } catch {
-      // Silent fail — polling will retry
+    } catch (e) {
+      console.error("Failed to fetch model download status:", e)
+      // Polling will retry
     }
   }, [])
 

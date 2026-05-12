@@ -155,6 +155,7 @@ export function PreviewStage({
                       onClick={() => {
                         removeFile(index)
                       }}
+                      aria-label="删除文件"
                     >
                       <XIcon className="size-3" />
                     </Button>
@@ -235,7 +236,7 @@ export function PreviewStage({
           </div>
 
           {filePreviewUrl ? (
-            <div className="home-preview-stage">
+            <div className="home-preview-stage" role="img" aria-label="PDF 预览">
               <PdfCanvasPreview
                 fileUrl={filePreviewUrl}
                 mimeType={currentPreviewFile?.type}

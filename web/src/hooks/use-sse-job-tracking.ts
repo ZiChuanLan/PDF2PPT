@@ -98,7 +98,8 @@ export function useSSEJobTracking(
                   prev.map((j) => (j.jobId === jid ? { ...j, status: full } : j)),
                 );
               }
-            } catch {
+            } catch (e) {
+              console.error("Failed to fetch full job status on terminal state:", e)
               // Best-effort; SSE data already has the essentials
             }
             es.close();
@@ -110,8 +111,8 @@ export function useSSEJobTracking(
               reconnectTimers.current.delete(jid);
             }
           }
-        } catch {
-          // JSON parse error — ignore
+        } catch (e) {
+          console.error("Failed to parse SSE event data:", e)
         }
       };
 

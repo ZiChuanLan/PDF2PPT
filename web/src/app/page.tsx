@@ -137,6 +137,7 @@ export default function Home() {
       setJobs(rows)
       setQueueSize(normalized.queueSize)
     } catch (e) {
+      console.error("Failed to fetch jobs:", e)
       if (!silent) {
         setActionError(normalizeFetchError(e, "加载任务列表失败"))
       }
@@ -341,7 +342,8 @@ export default function Home() {
       await apiFetch(`/jobs/${targetJobId}/cancel`, { method: "POST" })
       toast("已发送取消请求")
       void fetchJobs(true)
-    } catch {
+    } catch (e) {
+      console.error("Failed to cancel job:", e)
       toast.error("取消请求失败")
     }
   }, [fetchJobs])
@@ -505,7 +507,7 @@ export default function Home() {
   }, [fileJobs])
 
   return (
-    <main className="min-h-dvh bg-background">
+    <div className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
         <header className="flex items-center justify-between py-4">
           <div>
@@ -600,6 +602,6 @@ export default function Home() {
           )}
         </section>
       </div>
-    </main>
+    </div>
   )
 }

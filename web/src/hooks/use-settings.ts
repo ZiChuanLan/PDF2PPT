@@ -91,7 +91,8 @@ export function useSettings() {
           merged = mergeSettings(merged, prefData.preferences)
 
           if (mounted) setSettings(merged)
-        } catch {
+        } catch (e) {
+          console.error("Failed to load preferences:", e)
           // Fallback to defaults
         }
         if (mounted) setSettingsHydrated(true)

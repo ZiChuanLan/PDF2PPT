@@ -460,7 +460,7 @@ function TrackingPageContent() {
   const hasTrackedVisualArtifacts = trackedPages.length > 0
 
   return (
-    <main className="min-h-dvh bg-background">
+    <div className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
         <header className="editorial-page-header newsprint-texture page-enter border border-border bg-background p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1011,7 +1011,7 @@ function TrackingPageContent() {
           </Card>
         </div>
       </div>
-    </main>
+    </div>
   )
 }
 
@@ -1019,13 +1019,13 @@ export default function TrackingPage() {
   return (
     <React.Suspense
       fallback={
-        <main className="min-h-dvh bg-background">
+        <div className="min-h-dvh bg-background">
           <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
             <div className="border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
               正在加载跟踪页面...
             </div>
           </div>
-        </main>
+        </div>
       }
     >
       <TrackingPageContent />

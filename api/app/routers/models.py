@@ -192,7 +192,7 @@ def _save_download_tasks():
         with open(_DOWNLOAD_TASKS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:
-        logger.warning("Failed to persist download tasks", exc_info=True)
+        logger.exception("Failed to persist download tasks")
 
 
 def _load_download_tasks():
@@ -233,7 +233,7 @@ def _load_download_tasks():
         if restored > 0:
             logger.info("Restored %d download task(s) from disk", restored)
     except Exception:
-        logger.warning("Failed to load persisted download tasks", exc_info=True)
+        logger.exception("Failed to load persisted download tasks")
 
 
 # Restore tasks on module load (server startup)

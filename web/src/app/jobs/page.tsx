@@ -203,7 +203,7 @@ export default function JobsPage() {
   }, [])
 
   return (
-    <main className="min-h-dvh bg-background">
+    <div className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
         <header className="flex items-center justify-between py-4">
           <div>
@@ -329,6 +329,7 @@ export default function JobsPage() {
                         className="h-4 w-4 accent-foreground"
                         checked={isSelected}
                         onChange={() => handleToggleSelect(job.job_id)}
+                        aria-label={`选择任务 ${job.job_id.slice(0, 8)}`}
                       />
                     </div>
 
@@ -434,6 +435,6 @@ export default function JobsPage() {
           )}
         </section>
       </div>
-    </main>
+    </div>
   )
 }

@@ -217,17 +217,17 @@ export default function AdminPage() {
       <div className="min-h-dvh bg-background">
         <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
           <div className="text-sm text-muted-foreground">加载中...</div>
-        </div>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
   if (!user || !isAdmin(user)) {
     return null // Will redirect
   }
 
   return (
-    <main className="min-h-dvh bg-background">
+    <div className="min-h-dvh bg-background">
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:py-10">
         <header className="editorial-page-header newsprint-texture page-enter border border-border bg-background">
           <div className="px-5 py-5 md:px-6 md:py-6">
@@ -469,6 +469,7 @@ export default function AdminPage() {
                         checked={users.length > 0 && selectedIds.size === users.length}
                         onChange={toggleSelectAll}
                         className="size-3.5"
+                        aria-label="全选用户"
                       />
                     </th>
                     <th className="px-4 py-3">用户</th>
@@ -493,6 +494,7 @@ export default function AdminPage() {
                             checked={selectedIds.has(u.id)}
                             onChange={() => toggleSelect(u.id)}
                             className="size-3.5"
+                            aria-label={`选择 ${u.username}`}
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -611,6 +613,6 @@ export default function AdminPage() {
           </div>
         </div>
       )}
-    </main>
+    </div>
   )
 }

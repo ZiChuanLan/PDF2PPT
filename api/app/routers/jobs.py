@@ -837,7 +837,7 @@ async def create_job(
             try:
                 redis_service.delete_job(job_id)
             except Exception as cleanup_error:
-                logger.warning(
+                logger.exception(
                     "Failed to rollback job metadata for %s: %s",
                     job_id,
                     cleanup_error,
@@ -1094,7 +1094,7 @@ async def create_job_v2(
             try:
                 redis_service.delete_job(job_id)
             except Exception as cleanup_error:
-                logger.warning(
+                logger.exception(
                     "Failed to rollback job metadata for %s: %s",
                     job_id,
                     cleanup_error,
@@ -1357,6 +1357,7 @@ async def delete_job(
             shutil.rmtree(job_dir)
             artifacts_deleted = True
         except Exception as e:
+            logger.exception("Failed to delete job artifacts for %s: %s", job_id, e)
             raise AppException(
                 code=ErrorCode.INTERNAL_ERROR,
                 message="Failed to delete job artifacts",

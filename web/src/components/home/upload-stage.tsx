@@ -52,6 +52,8 @@ export function UploadStage({
 
         <div
           {...getRootProps()}
+          role="region"
+          aria-label="上传文件区域"
           className={cn(
             "group flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-all",
             "min-h-[240px]",

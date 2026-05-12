@@ -113,12 +113,15 @@ validate:
 
 # Local QA
 #
-# Public repo keeps runtime code only. `test` stays as a placeholder so
-# common workflows do not fail after test fixtures are removed.
-# `lint` remains the cheap sanity check.
+# `test` runs the pytest suite under api/tests/ (currently ~23 test files).
+# `lint` remains the cheap sanity check (py_compile + ESLint).
 
 test:
-	@echo "No repository tests are kept in this public branch."
+	@set -eu; \
+	if [ -x "api/.venv/bin/python" ]; then PYTHON="api/.venv/bin/python"; \
+	elif [ -x ".venv/bin/python" ]; then PYTHON=".venv/bin/python"; \
+	else PYTHON="python3"; fi; \
+	cd api && "$${PYTHON}" -m pytest tests/ -q
 
 lint: lint-api lint-web
 
