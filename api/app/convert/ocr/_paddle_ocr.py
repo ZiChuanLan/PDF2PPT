@@ -3,6 +3,7 @@
 import logging
 from typing import Any, Dict, List
 
+import numpy as np
 from PIL import Image
 
 from app.config import get_settings
@@ -100,7 +101,6 @@ class PaddleOcrClient(OcrProvider):
                 new_h = max(32, int(round(float(h) * ratio)))
                 image_small = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
                 try:
-                    import numpy as np
 
                     image_for_ocr = np.array(image_small)
                     scale_x = float(w) / float(new_w)

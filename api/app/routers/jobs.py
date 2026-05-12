@@ -65,6 +65,12 @@ from ._ocr_check import (
     run_ai_ocr_capability_check as _run_ai_ocr_capability_check,
     truncate_error as _truncate_error,
 )
+from ._job_create_utils import (
+    check_disk_space as _check_disk_space,
+    create_job_record_and_check_quotas as _create_job_record_and_check_quotas,
+    persist_job_queued as _persist_job_queued,
+    cleanup_job_on_error as _cleanup_job_on_error,
+)
 from ..convert.ocr import (
     _coerce_bbox_xyxy,
     create_remote_ocr_client,
@@ -141,6 +147,131 @@ def _sync_rq_cancel_state(*, job_id: str, status: JobStatus) -> None:
             )
     except Exception as e:
         logger.warning("Failed to sync RQ cancel state for job %s: %s", job_id, e)
+
+
+async def _create_job_core(
+    file: UploadFile,
+    kwargs: dict[str, Any],
+    current_user=None,
+) -> JobCreateResponse:
+    """Shared job creation core used by both v1 (Form params) and v2 (JSON config) endpoints.
+
+    Handles file upload, disk space check, job creation in Redis, secret storage,
+    and submission to the worker queue.
+
+    Callers are responsible for:
+    - Validating and normalizing kwargs via validate_and_normalize_job_options()
+    - Performing v2 legacy compatibility check if needed
+    - Building kwargs dict with real API key/secrets values (not None)
+    """
+    settings = get_settings()
+    redis_service = get_redis_service()
+
+    # Check disk space before accepting upload (G3b-G2: shared helper)
+    _check_disk_space(settings)
+
+    # Generate job ID
+    job_id = str(uuid.uuid4())
+    job_dir: Path | None = None
+    job_created = False
+
+    try:
+        # Stream file to disk instead of loading entirely into memory.
+        # This prevents memory pressure for large files (up to 100MB).
+        job_dir = ensure_job_dir(job_id)
+        input_path = job_dir / "input.pdf"
+        file_size = 0
+        chunk_size = 1024 * 1024  # 1MB chunks
+        with open(input_path, "wb") as f:
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > settings.max_file_mb * 1024 * 1024:
+                    f.close()
+                    input_path.unlink(missing_ok=True)
+                    raise AppException(
+                        code=ErrorCode.FILE_TOO_LARGE,
+                        message=f"File size exceeds {settings.max_file_mb}MB limit",
+                        details={"limit_mb": settings.max_file_mb},
+                    )
+                f.write(chunk)
+        file_size_mb = file_size / (1024 * 1024)
+
+        upload_kind = _write_upload_as_input_pdf(
+            filename=filename,
+            content_type=normalized_content_type,
+            content=None,  # Already written via streaming
+            output_path=input_path,
+        )
+
+        # Create job in Redis (G3b-G2: shared helper)
+        user_id, job = _create_job_record_and_check_quotas(
+            redis_service=redis_service,
+            job_id=job_id,
+            current_user=current_user,
+        )
+        job_created = True
+
+        # Persist queued state (G3b-G2: shared helper)
+        _persist_job_queued(redis_service, job_id)
+
+        # Store sensitive keys separately in Redis (not in RQ job kwargs)
+        # so they don't appear in RQ job descriptions or admin views.
+        _SECRET_KEY_NAMES = (
+            "api_key", "mineru_api_token", "ocr_baidu_api_key",
+            "ocr_baidu_secret_key", "ocr_ai_api_key",
+        )
+        secrets: dict[str, str] = {}
+        for key_name in _SECRET_KEY_NAMES:
+            val = kwargs.get(key_name)
+            if val:
+                secrets[key_name] = str(val)
+        if secrets:
+            redis_service.store_job_secrets(job_id, secrets)
+
+        # Remove sensitive keys from kwargs before passing to worker
+        for key_name in _SECRET_KEY_NAMES:
+            kwargs.pop(key_name, None)
+
+        # Add job_timeout to kwargs
+        kwargs["job_timeout"] = f"{settings.job_timeout_seconds}s"
+
+        # Queue job for processing
+        _submit_job(job_id, kwargs)
+
+        logger.info("Job %s created and queued from %s upload (size=%0.1fMB)", job_id, upload_kind, file_size_mb)
+
+        return JobCreateResponse(
+            job_id=job.job_id,
+            status=job.status,
+            created_at=job.created_at,
+            expires_at=job.expires_at,
+        )
+
+    except AppException:
+        _cleanup_job_on_error(
+            job_dir=job_dir if not job_created else None,
+            job_id=job_id,
+            redis_service=redis_service,
+            job_created=False,
+        )
+        raise
+    except Exception as e:
+        logger.exception("Failed to create job: %s", e)
+        _cleanup_job_on_error(
+            job_dir=job_dir,
+            job_id=job_id,
+            redis_service=redis_service,
+            job_created=job_created,
+        )
+        raise AppException(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to create job",
+            details={"error": str(e)},
+            status_code=500,
+        )
 
 
 @router.post("/ocr/local/check", response_model=LocalOcrCheckResponse)
@@ -589,8 +720,6 @@ async def create_job(
     for processing.
     Returns immediately with a job_id for tracking progress.
     """
-    settings = get_settings()
-    redis_service = get_redis_service()
     normalized_options = validate_and_normalize_job_options(
         parse_provider=parse_provider,
         mineru_api_token=mineru_api_token,
@@ -627,229 +756,68 @@ async def create_job(
                 ),
             )
 
-    filename = file.filename or ""
-    normalized_content_type = _normalize_upload_content_type(file.content_type)
-    upload_kind = _classify_upload_kind(
-        filename=filename,
-        content_type=normalized_content_type,
+    # Build kwargs dict with *real* secret values (not None) — _create_job_core
+    # will extract, store, and strip them before submitting to the worker.
+    kwargs = dict(
+        enable_ocr=enable_ocr,
+        retain_process_artifacts=retain_process_artifacts,
+        remove_footer_notebooklm=remove_footer_notebooklm,
+        enable_layout_assist=False,
+        layout_assist_apply_image_regions=False,
+        provider=normalized_options.provider,
+        api_key=api_key,
+        baidu_doc_parse_type=normalized_options.baidu_doc_parse_type,
+        base_url=base_url,
+        model=model,
+        page_start=page_start,
+        page_end=page_end,
+        parse_provider=normalized_options.parse_provider,
+        mineru_api_token=mineru_api_token,
+        mineru_base_url=mineru_base_url,
+        mineru_model_version=mineru_model_version,
+        mineru_enable_formula=mineru_enable_formula,
+        mineru_enable_table=mineru_enable_table,
+        mineru_language=mineru_language,
+        mineru_is_ocr=mineru_is_ocr,
+        mineru_hybrid_ocr=False,
+        ocr_provider=normalized_options.ocr_provider,
+        ocr_baidu_app_id=ocr_baidu_app_id,
+        ocr_baidu_api_key=ocr_baidu_api_key,
+        ocr_baidu_secret_key=ocr_baidu_secret_key,
+        ocr_tesseract_min_confidence=ocr_tesseract_min_confidence,
+        ocr_tesseract_language=ocr_tesseract_language,
+        ocr_ai_api_key=ocr_ai_api_key,
+        ocr_ai_provider=normalized_options.ocr_ai_provider,
+        ocr_ai_base_url=ocr_ai_base_url,
+        ocr_ai_model=ocr_ai_model,
+        ocr_ai_chain_mode=normalized_options.ocr_ai_chain_mode,
+        ocr_ai_layout_model=normalized_options.ocr_ai_layout_model,
+        ocr_ai_prompt_preset=ocr_ai_prompt_preset,
+        ocr_ai_direct_prompt_override=ocr_ai_direct_prompt_override,
+        ocr_ai_layout_block_prompt_override=ocr_ai_layout_block_prompt_override,
+        ocr_ai_image_region_prompt_override=ocr_ai_image_region_prompt_override,
+        ocr_paddle_vl_docparser_max_side_px=ocr_paddle_vl_docparser_max_side_px,
+        ocr_ai_page_concurrency=ocr_ai_page_concurrency,
+        ocr_ai_block_concurrency=ocr_ai_block_concurrency,
+        ocr_ai_requests_per_minute=ocr_ai_requests_per_minute,
+        ocr_ai_tokens_per_minute=ocr_ai_tokens_per_minute,
+        ocr_ai_max_retries=ocr_ai_max_retries,
+        ocr_render_dpi=ocr_render_dpi,
+        ocr_geometry_mode="auto",
+        text_erase_mode=normalized_options.text_erase_mode,
+        scanned_page_mode=normalized_options.scanned_page_mode,
+        ppt_generation_mode=normalized_options.ppt_generation_mode,
+        image_bg_clear_expand_min_pt=image_bg_clear_expand_min_pt,
+        image_bg_clear_expand_max_pt=image_bg_clear_expand_max_pt,
+        image_bg_clear_expand_ratio=image_bg_clear_expand_ratio,
+        scanned_image_region_min_area_ratio=scanned_image_region_min_area_ratio,
+        scanned_image_region_max_area_ratio=scanned_image_region_max_area_ratio,
+        scanned_image_region_max_aspect_ratio=scanned_image_region_max_aspect_ratio,
+        ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
+        ocr_strict_mode=ocr_strict_mode,
     )
-    if upload_kind is None:
-        raise AppException(
-            code=ErrorCode.VALIDATION_ERROR,
-            message="Only PDF, PNG, JPG, JPEG, and WEBP files are supported",
-            details={
-                "filename": file.filename,
-                "content_type": normalized_content_type,
-            },
-        )
 
-    # Check disk space before accepting upload
-    import shutil as _shutil
-    _job_root = Path(settings.job_root_dir)
-    _job_root.mkdir(parents=True, exist_ok=True)
-    _disk = _shutil.disk_usage(_job_root)
-    _min_bytes = settings.min_disk_space_mb * 1024 * 1024
-    if _disk.free < _min_bytes:
-        raise AppException(
-            code=ErrorCode.VALIDATION_ERROR,
-            message=f"磁盘空间不足，剩余 {_disk.free // (1024*1024)}MB，需要至少 {settings.min_disk_space_mb}MB",
-            details={
-                "free_mb": _disk.free // (1024 * 1024),
-                "required_mb": settings.min_disk_space_mb,
-            },
-        )
-
-    # Generate job ID
-    job_id = str(uuid.uuid4())
-    job_dir: Path | None = None
-    job_created = False
-
-    try:
-        # Stream file to disk instead of loading entirely into memory.
-        # This prevents memory pressure for large files (up to 100MB).
-        job_dir = ensure_job_dir(job_id)
-        input_path = job_dir / "input.pdf"
-        file_size = 0
-        chunk_size = 1024 * 1024  # 1MB chunks
-        with open(input_path, "wb") as f:
-            while True:
-                chunk = await file.read(chunk_size)
-                if not chunk:
-                    break
-                file_size += len(chunk)
-                if file_size > settings.max_file_mb * 1024 * 1024:
-                    f.close()
-                    input_path.unlink(missing_ok=True)
-                    raise AppException(
-                        code=ErrorCode.FILE_TOO_LARGE,
-                        message=f"File size exceeds {settings.max_file_mb}MB limit",
-                        details={"limit_mb": settings.max_file_mb},
-                    )
-                f.write(chunk)
-        file_size_mb = file_size / (1024 * 1024)
-
-        upload_kind = _write_upload_as_input_pdf(
-            filename=filename,
-            content_type=normalized_content_type,
-            content=None,  # Already written via streaming
-            output_path=input_path,
-        )
-
-        # Create job in Redis
-        user_id = current_user.id if current_user else None
-
-        # Check user quotas before creating job
-        if current_user:
-            # Check concurrent task limit
-            if current_user.concurrent_task_limit > 0:
-                active_jobs = redis_service.count_active_jobs_for_user(user_id)
-                if active_jobs >= current_user.concurrent_task_limit:
-                    raise AppException(
-                        code=ErrorCode.QUOTA_EXCEEDED,
-                        message=f"Concurrent task limit reached ({current_user.concurrent_task_limit})",
-                        details={
-                            "limit": current_user.concurrent_task_limit,
-                            "active": active_jobs,
-                        },
-                    )
-
-            # Check daily task limit
-            if current_user.daily_task_limit > 0:
-                daily_jobs = redis_service.count_daily_jobs_for_user(user_id)
-                if daily_jobs >= current_user.daily_task_limit:
-                    raise AppException(
-                        code=ErrorCode.QUOTA_EXCEEDED,
-                        message=f"Daily task limit reached ({current_user.daily_task_limit})",
-                        details={
-                            "limit": current_user.daily_task_limit,
-                            "used": daily_jobs,
-                        },
-                    )
-
-        job = redis_service.create_job(job_id, user_id=user_id)
-        job_created = True
-
-        # Persist queued state before starting worker execution so debug events
-        # remain ordered even when a local in-process worker begins immediately.
-        redis_service.update_job(
-            job_id,
-            status=JobStatus.pending,
-            stage=JobStage.queued,
-            message="Job queued for processing",
-        )
-
-        # Store sensitive keys separately in Redis (not in RQ job kwargs)
-        # so they don't appear in RQ job descriptions or admin views.
-        secrets: dict[str, str] = {}
-        if api_key:
-            secrets["api_key"] = api_key
-        if mineru_api_token:
-            secrets["mineru_api_token"] = mineru_api_token
-        if ocr_baidu_api_key:
-            secrets["ocr_baidu_api_key"] = ocr_baidu_api_key
-        if ocr_baidu_secret_key:
-            secrets["ocr_baidu_secret_key"] = ocr_baidu_secret_key
-        if ocr_ai_api_key:
-            secrets["ocr_ai_api_key"] = ocr_ai_api_key
-        if secrets:
-            redis_service.store_job_secrets(job_id, secrets)
-
-        # Queue job for processing
-        _submit_job(
-            job_id,
-            dict(
-                enable_ocr=enable_ocr,
-                retain_process_artifacts=retain_process_artifacts,
-                remove_footer_notebooklm=remove_footer_notebooklm,
-                enable_layout_assist=False,
-                layout_assist_apply_image_regions=False,
-                provider=normalized_options.provider,
-                api_key=None,
-                baidu_doc_parse_type=normalized_options.baidu_doc_parse_type,
-                base_url=base_url,
-                model=model,
-                page_start=page_start,
-                page_end=page_end,
-                parse_provider=normalized_options.parse_provider,
-                mineru_api_token=None,
-                mineru_base_url=mineru_base_url,
-                mineru_model_version=mineru_model_version,
-                mineru_enable_formula=mineru_enable_formula,
-                mineru_enable_table=mineru_enable_table,
-                mineru_language=mineru_language,
-                mineru_is_ocr=mineru_is_ocr,
-                mineru_hybrid_ocr=False,
-                ocr_provider=normalized_options.ocr_provider,
-                ocr_baidu_app_id=ocr_baidu_app_id,
-                ocr_baidu_api_key=None,
-                ocr_baidu_secret_key=None,
-                ocr_tesseract_min_confidence=ocr_tesseract_min_confidence,
-                ocr_tesseract_language=ocr_tesseract_language,
-                ocr_ai_api_key=None,
-                ocr_ai_provider=normalized_options.ocr_ai_provider,
-                ocr_ai_base_url=ocr_ai_base_url,
-                ocr_ai_model=ocr_ai_model,
-                ocr_ai_chain_mode=normalized_options.ocr_ai_chain_mode,
-                ocr_ai_layout_model=normalized_options.ocr_ai_layout_model,
-                ocr_ai_prompt_preset=ocr_ai_prompt_preset,
-                ocr_ai_direct_prompt_override=ocr_ai_direct_prompt_override,
-                ocr_ai_layout_block_prompt_override=ocr_ai_layout_block_prompt_override,
-                ocr_ai_image_region_prompt_override=ocr_ai_image_region_prompt_override,
-                ocr_paddle_vl_docparser_max_side_px=ocr_paddle_vl_docparser_max_side_px,
-                ocr_ai_page_concurrency=ocr_ai_page_concurrency,
-                ocr_ai_block_concurrency=ocr_ai_block_concurrency,
-                ocr_ai_requests_per_minute=ocr_ai_requests_per_minute,
-                ocr_ai_tokens_per_minute=ocr_ai_tokens_per_minute,
-                ocr_ai_max_retries=ocr_ai_max_retries,
-                ocr_render_dpi=ocr_render_dpi,
-                ocr_geometry_mode="auto",
-                text_erase_mode=normalized_options.text_erase_mode,
-                scanned_page_mode=normalized_options.scanned_page_mode,
-                ppt_generation_mode=normalized_options.ppt_generation_mode,
-                image_bg_clear_expand_min_pt=image_bg_clear_expand_min_pt,
-                image_bg_clear_expand_max_pt=image_bg_clear_expand_max_pt,
-                image_bg_clear_expand_ratio=image_bg_clear_expand_ratio,
-                scanned_image_region_min_area_ratio=scanned_image_region_min_area_ratio,
-                scanned_image_region_max_area_ratio=scanned_image_region_max_area_ratio,
-                scanned_image_region_max_aspect_ratio=scanned_image_region_max_aspect_ratio,
-                ocr_ai_linebreak_assist=ocr_ai_linebreak_assist,
-                ocr_strict_mode=ocr_strict_mode,
-                job_timeout=f"{settings.job_timeout_seconds}s",
-            ),
-        )
-
-        logger.info("Job %s created and queued from %s upload", job_id, upload_kind)
-
-        return JobCreateResponse(
-            job_id=job.job_id,
-            status=job.status,
-            created_at=job.created_at,
-            expires_at=job.expires_at,
-        )
-
-    except AppException:
-        if not job_created and job_dir is not None and job_dir.exists():
-            shutil.rmtree(job_dir)
-        raise
-    except Exception as e:
-        logger.exception(f"Failed to create job: {e}")
-        if job_created:
-            try:
-                redis_service.delete_job(job_id)
-            except Exception as cleanup_error:
-                logger.exception(
-                    "Failed to rollback job metadata for %s: %s",
-                    job_id,
-                    cleanup_error,
-                )
-        if job_dir is not None and job_dir.exists():
-            shutil.rmtree(job_dir)
-        raise AppException(
-            code=ErrorCode.INTERNAL_ERROR,
-            message="Failed to create job",
-            details={"error": str(e)},
-            status_code=500,
-        )
+    return await _create_job_core(file, kwargs, current_user)
 
 
 @router.post("/v2", response_model=JobCreateResponse)
@@ -869,9 +837,6 @@ async def create_job_v2(
     for backward compatibility.
     """
     import json
-
-    settings = get_settings()
-    redis_service = get_redis_service()
 
     # Parse JSON config string into JobConfig
     try:
@@ -945,168 +910,7 @@ async def create_job_v2(
                 ),
             )
 
-    # Check disk space before accepting upload
-    import shutil as _shutil
-    _job_root = Path(settings.job_root_dir)
-    _job_root.mkdir(parents=True, exist_ok=True)
-    _disk = _shutil.disk_usage(_job_root)
-    _min_bytes = settings.min_disk_space_mb * 1024 * 1024
-    if _disk.free < _min_bytes:
-        raise AppException(
-            code=ErrorCode.VALIDATION_ERROR,
-            message=f"磁盘空间不足，剩余 {_disk.free // (1024*1024)}MB，需要至少 {settings.min_disk_space_mb}MB",
-            details={
-                "free_mb": _disk.free // (1024 * 1024),
-                "required_mb": settings.min_disk_space_mb,
-            },
-        )
-
-    # Generate job ID
-    job_id = str(uuid.uuid4())
-    job_dir: Path | None = None
-    job_created = False
-
-    try:
-        # Handle file upload
-        filename = file.filename or ""
-        normalized_content_type = _normalize_upload_content_type(file.content_type)
-        upload_kind = _classify_upload_kind(
-            filename=filename,
-            content_type=normalized_content_type,
-        )
-        if upload_kind is None:
-            raise AppException(
-                code=ErrorCode.VALIDATION_ERROR,
-                message="Only PDF, PNG, JPG, JPEG, and WEBP files are supported",
-                details={
-                    "filename": file.filename,
-                    "content_type": normalized_content_type,
-                },
-            )
-
-        # Stream file to disk instead of loading entirely into memory.
-        # This prevents memory pressure for large files (up to 100MB).
-        job_dir = ensure_job_dir(job_id)
-        input_path = job_dir / "input.pdf"
-        file_size = 0
-        chunk_size = 1024 * 1024  # 1MB chunks
-        with open(input_path, "wb") as f:
-            while True:
-                chunk = await file.read(chunk_size)
-                if not chunk:
-                    break
-                file_size += len(chunk)
-                if file_size > settings.max_file_mb * 1024 * 1024:
-                    f.close()
-                    input_path.unlink(missing_ok=True)
-                    raise AppException(
-                        code=ErrorCode.FILE_TOO_LARGE,
-                        message=f"File size exceeds {settings.max_file_mb}MB limit",
-                        details={"limit_mb": settings.max_file_mb},
-                    )
-                f.write(chunk)
-        file_size_mb = file_size / (1024 * 1024)
-
-        upload_kind = _write_upload_as_input_pdf(
-            filename=filename,
-            content_type=normalized_content_type,
-            content=None,  # Already written via streaming
-            output_path=input_path,
-        )
-
-        # Create job in Redis
-        user_id = current_user.id if current_user else None
-
-        # Check user quotas before creating job
-        if current_user:
-            # Check concurrent task limit
-            if current_user.concurrent_task_limit > 0:
-                active_jobs = redis_service.count_active_jobs_for_user(user_id)
-                if active_jobs >= current_user.concurrent_task_limit:
-                    raise AppException(
-                        code=ErrorCode.QUOTA_EXCEEDED,
-                        message=f"Concurrent task limit reached ({current_user.concurrent_task_limit})",
-                        details={
-                            "limit": current_user.concurrent_task_limit,
-                            "active": active_jobs,
-                        },
-                    )
-
-            # Check daily task limit
-            if current_user.daily_task_limit > 0:
-                daily_jobs = redis_service.count_daily_jobs_for_user(user_id)
-                if daily_jobs >= current_user.daily_task_limit:
-                    raise AppException(
-                        code=ErrorCode.QUOTA_EXCEEDED,
-                        message=f"Daily task limit reached ({current_user.daily_task_limit})",
-                        details={
-                            "limit": current_user.daily_task_limit,
-                            "used": daily_jobs,
-                        },
-                    )
-
-        job = redis_service.create_job(job_id, user_id=user_id)
-        job_created = True
-
-        # Persist queued state
-        redis_service.update_job(
-            job_id,
-            status=JobStatus.pending,
-            stage=JobStage.queued,
-            message="Job queued for processing",
-        )
-
-        # Store sensitive keys separately in Redis (not in RQ job kwargs)
-        secrets: dict[str, str] = {}
-        for key_name in ("api_key", "mineru_api_token", "ocr_baidu_api_key", "ocr_baidu_secret_key", "ocr_ai_api_key"):
-            val = kwargs.get(key_name)
-            if val:
-                secrets[key_name] = str(val)
-        if secrets:
-            redis_service.store_job_secrets(job_id, secrets)
-
-        # Remove sensitive keys from kwargs before passing to worker
-        for key_name in ("api_key", "mineru_api_token", "ocr_baidu_api_key", "ocr_baidu_secret_key", "ocr_ai_api_key"):
-            kwargs.pop(key_name, None)
-
-        # Add job_timeout to kwargs
-        kwargs["job_timeout"] = f"{settings.job_timeout_seconds}s"
-
-        # Queue job for processing
-        _submit_job(job_id, kwargs)
-
-        logger.info("Job %s created and queued via v2 endpoint", job_id)
-
-        return JobCreateResponse(
-            job_id=job.job_id,
-            status=job.status,
-            created_at=job.created_at,
-            expires_at=job.expires_at,
-        )
-
-    except AppException:
-        if not job_created and job_dir is not None and job_dir.exists():
-            shutil.rmtree(job_dir)
-        raise
-    except Exception as e:
-        logger.exception(f"Failed to create job via v2 endpoint: {e}")
-        if job_created:
-            try:
-                redis_service.delete_job(job_id)
-            except Exception as cleanup_error:
-                logger.exception(
-                    "Failed to rollback job metadata for %s: %s",
-                    job_id,
-                    cleanup_error,
-                )
-        if job_dir is not None and job_dir.exists():
-            shutil.rmtree(job_dir)
-        raise AppException(
-            code=ErrorCode.INTERNAL_ERROR,
-            message="Failed to create job",
-            details={"error": str(e)},
-            status_code=500,
-        )
+    return await _create_job_core(file, kwargs, current_user)
 
 
 @router.get("/{job_id}", response_model=JobStatusResponse)

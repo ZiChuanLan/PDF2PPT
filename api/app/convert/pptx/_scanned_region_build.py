@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from ._scanned_erase import _try_make_crop_background_transparent
 from ._scanned_region_detect import (
     _analyze_shape_crop,
@@ -339,7 +341,6 @@ def _tighten_scanned_image_region_bbox_by_visual_bounds(
     """Best-effort tighten for image crops with excessive blank margins."""
 
     try:
-        import numpy as np
         from PIL import ImageFilter
     except Exception:
         return None

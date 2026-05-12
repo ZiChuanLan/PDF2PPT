@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from ._scanned_color import _pix_to_rgb_array
 from ._scanned_region_detect import _pdf_pt_to_pix_px
 from .bbox_utils import _coerce_bbox_pt
@@ -22,11 +24,6 @@ def _estimate_bbox_ink_line_count(
     This is a lightweight visual signal used by OCR text rendering to choose
     single-line vs wrapped layout when AI/heuristic split metadata is absent.
     """
-
-    try:
-        import numpy as np  # type: ignore
-    except Exception:
-        return None
 
     try:
         x0, y0, x1, y1 = _coerce_bbox_pt(bbox_pt)

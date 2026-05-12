@@ -8,6 +8,7 @@ import math
 import os
 from typing import Any, Dict, List
 
+import numpy as np
 from PIL import Image
 
 from .base import _env_float, _run_in_daemon_thread_with_timeout
@@ -466,7 +467,6 @@ class _LayoutBlockMixin:
         """Best-effort tighten of loose layout text boxes using visual content."""
 
         try:
-            import numpy as np
             from PIL import ImageFilter
         except Exception:
             return None

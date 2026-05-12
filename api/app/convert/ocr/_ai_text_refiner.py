@@ -8,6 +8,7 @@ import math
 import re
 from typing import Any, Dict, List
 
+import numpy as np
 from PIL import Image
 
 from .base import _env_float, _env_int
@@ -542,11 +543,6 @@ class AiOcrTextRefiner:
             Returns a list of (y0, y1) in absolute image pixels for each line.
             """
 
-            try:
-                import numpy as np
-            except Exception:
-                return None
-
             bbox_n = row.get("bbox_n")
             if not isinstance(bbox_n, tuple) or len(bbox_n) != 4:
                 return None
@@ -700,11 +696,6 @@ class AiOcrTextRefiner:
             fallback_x1: float,
         ) -> tuple[float, float]:
             """Best-effort horizontal tightening for a single split line bbox."""
-
-            try:
-                import numpy as np
-            except Exception:
-                return (float(fallback_x0), float(fallback_x1))
 
             bbox_n = row.get("bbox_n")
             if not isinstance(bbox_n, tuple) or len(bbox_n) != 4:

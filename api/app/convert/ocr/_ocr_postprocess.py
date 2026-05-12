@@ -4,6 +4,7 @@ import math
 import re
 from typing import Any, Callable, Dict, List, Tuple
 
+import numpy as np
 from PIL import Image
 
 from .ai_client import AiOcrTextRefiner, _clone_image_region_payload, _is_multiline_candidate_for_linebreak_assist
@@ -1808,11 +1809,6 @@ def ocr_image_to_elements(
         max_lines: int,
     ) -> list[tuple[float, float]] | None:
         """Estimate per-line vertical ranges using ink projection inside a bbox."""
-
-        try:
-            import numpy as np
-        except Exception:
-            return None
 
         x0, y0, x1, y1 = bbox_n
         W = int(width)

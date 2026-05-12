@@ -6,6 +6,8 @@ import importlib
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from ....models.error import AppException, ErrorCode
 
 from .bbox_utils import _coerce_bbox_pt, _ensure_parent_dir
@@ -58,7 +60,6 @@ def _apply_max_filter_l(image: Any, *, size: int) -> Any:
         size_id += 1
 
     try:
-        import numpy as np  # type: ignore
         from PIL import Image
 
         if getattr(image, "mode", None) == "L":

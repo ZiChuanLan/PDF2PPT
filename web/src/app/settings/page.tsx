@@ -1782,6 +1782,28 @@ export default function SettingsPage() {
             </CollapsibleSection>
 
             {isOcrEnabledForCurrentEngine ? (
+              // G3b-G1: OCR settings section (~1000 lines, lines 1784-2778).
+              //
+              // Extraction to a sub-component was considered but is tightly coupled:
+              // 1. `showAdvanced` (line 547) is shared with non-OCR sections (parse
+              //    engine, processing strategy, API config), requiring prop drilling.
+              // 2. The model suggestion portal (line 798) uses createPortal to body
+              //    but its positioning effect and refs (lines 566-571, 738-796) must
+              //    stay in the parent since the portal renders before the section.
+              // 3. ~15 OCR-specific useState + useRef live alongside 10+ shared
+              //    state/derived values, making the prop interface unwieldy (~25 props
+              //    for a single section).
+              // 4. `ocrState` (line 606) is derived from settings and memoized in the
+              //    parent — recomputing in a child would duplicate resolveOcrSettingsState()
+              //    calls, and passing as a prop requires exporting OcrSettingsState type.
+              // 5. The AI OCR model-list fetch effect (line 859) depends on 10+
+              //    settings fields and ocrState derivatives — moving it to a child
+              //    adds risk of stale dependency arrays.
+              //
+              // Verdict: SKIPPED. The section boundary is marked below. A future
+              // refactoring could extract this if showAdvanced and the suggestion
+              // portal are restructured first.
+              // ─────────────────────────────────────────────────────────────────
               <CollapsibleSection
                 title={isBaiduDocParseMode ? "文档解析配置" : "OCR 配置"}
                 description="OCR 与文档解析"

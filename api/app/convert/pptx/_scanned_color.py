@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from ._scanned_render import _pixel_to_rgb_triplet
 from ._scanned_region_detect import _pdf_pt_to_pix_px
 from .bbox_utils import _coerce_bbox_pt
@@ -41,11 +43,6 @@ _PIX_RGB_ARRAY_CACHE: dict[int, tuple[int, int, int, Any]] = {}
 
 def _pix_to_rgb_array(pix: Any) -> Any | None:
     """Return cached HxWx3 uint8 array for a PyMuPDF pixmap."""
-
-    try:
-        import numpy as np  # type: ignore
-    except Exception:
-        return None
 
     try:
         w = int(getattr(pix, "width", 0) or 0)
@@ -177,7 +174,6 @@ def _sample_bbox_text_rgb(
     rgb_arr = _pix_to_rgb_array(pix)
     if rgb_arr is not None:
         try:
-            import numpy as np  # type: ignore
 
             ys = np.arange(top, bottom, step, dtype=np.int32)
             xs = np.arange(left, right, step, dtype=np.int32)

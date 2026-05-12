@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from ..convert.pptx_generator import generate_pptx_from_ir
+from ..convert.pptx.generator import generate_pptx_from_ir
 from ..models.job import JobStage
 from .guarded import run_blocking_with_guards
 

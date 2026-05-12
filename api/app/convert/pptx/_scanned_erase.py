@@ -7,6 +7,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from ._scanned_color import _sample_bbox_background_rgb
 from ._scanned_render import _apply_max_filter_l, _pixel_to_rgb_triplet
 from ._scanned_region_detect import _pdf_pt_to_pix_px, _polygon_points_pt_to_px
@@ -258,67 +260,6 @@ def _erase_regions_in_render_image(
 
             _ensure_parent_dir(out_path)
             fill_img.save(out_path)
-            return out_path
-        except Exception:
-            return render_path
-
-    try:
-        import numpy as np  # type: ignore
-    except Exception:
-        np = None  # type: ignore
-
-    if np is None:
-        blur_radius = 2.2 if max(W, H) >= 1600 else 1.6
-        strong_blur_radius = min(34.0, max(18.0, 7.5 * float(blur_radius)))
-        try:
-            bg_img = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-            bg_strong_img = img.filter(
-                ImageFilter.GaussianBlur(radius=strong_blur_radius)
-            )
-        except Exception:
-            bg_img = img.copy()
-            bg_strong_img = img.copy()
-
-        remove_mask = Image.new("L", (W, H), 0)
-        fallback_mask = Image.new("L", (W, H), 0)
-        protect_mask_img = Image.new("L", (W, H), 0)
-        draw_remove = ImageDraw.Draw(remove_mask)
-        draw_fallback = ImageDraw.Draw(fallback_mask)
-        draw_protect = ImageDraw.Draw(protect_mask_img)
-
-        for (x0, y0, x1, y1), polygon_px in zip(rects, polygon_masks_px):
-            if polygon_px is not None:
-                draw_remove.polygon(polygon_px, fill=255)
-            else:
-                draw_remove.rectangle(
-                    [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
-                )
-        for x0, y0, x1, y1 in core_rects:
-            draw_fallback.rectangle(
-                [x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255
-            )
-        for x0, y0, x1, y1 in protect_rects:
-            draw_protect.rectangle([x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], fill=255)
-
-        try:
-            dilate_size = 5 if max(W, H) >= 1600 else 3
-            remove_mask = remove_mask.filter(ImageFilter.MaxFilter(dilate_size))
-            fallback_mask = fallback_mask.filter(ImageFilter.MaxFilter(dilate_size))
-        except Exception:
-            pass
-
-        if protect_rects:
-            try:
-                remove_mask = ImageChops.subtract(remove_mask, protect_mask_img)
-                fallback_mask = ImageChops.subtract(fallback_mask, protect_mask_img)
-            except Exception:
-                pass
-
-        out_img = Image.composite(bg_img, img, remove_mask)
-        out_img = Image.composite(bg_strong_img, out_img, fallback_mask)
-        try:
-            _ensure_parent_dir(out_path)
-            out_img.save(out_path)
             return out_path
         except Exception:
             return render_path
