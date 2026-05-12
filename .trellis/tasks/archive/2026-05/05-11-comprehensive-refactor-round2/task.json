@@ -1,0 +1,31 @@
+{
+  "id": "comprehensive-refactor-round2",
+  "name": "comprehensive-refactor-round2",
+  "title": "brainstorm: 继续优化 — 上一轮遗漏项审视",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lan",
+  "assignee": "lan",
+  "createdAt": "2026-05-11",
+  "completedAt": "2026-05-12",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "05-11-split-ocr-giants",
+    "05-11-split-pptx-generator",
+    "05-11-split-frontend-routers",
+    "05-11-fix-quality-debt"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

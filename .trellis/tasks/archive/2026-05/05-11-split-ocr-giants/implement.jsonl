@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-11-comprehensive-refactor-round2/research/untouched-modules.md", "reason": "Detailed breakdown of ai_client.py (5581 lines) and local_providers.py (4320 lines) with extraction targets, duplicate code, and dead code"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Python backend coding conventions"}
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Backend auth patterns for understanding context"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Guidelines for code extraction and reuse"}

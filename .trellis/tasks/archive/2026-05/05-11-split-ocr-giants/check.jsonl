@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/05-11-split-ocr-giants/prd.md", "reason": "PRD with requirements and acceptance criteria"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify Python conventions are followed"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Verify extraction follows reuse guidelines"}

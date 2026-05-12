@@ -175,3 +175,37 @@ P0 split 3 giant files (page.tsx 1545→610, settings/page.tsx 2961→2777, main
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Round 2 Refactor: split OCR/PPTX giants, routers, frontend, fix quality debt
+
+**Date**: 2026-05-12
+**Task**: Round 2 Refactor: split OCR/PPTX giants, routers, frontend, fix quality debt
+**Branch**: `main`
+
+### Summary
+
+4 sub-tasks: (1) Split ai_client.py 5581→281 + local_providers.py 4320→85 into 13 sub-modules; (2) Split main.py 1594→358 + scanned_page.py 3971→60 into 8 sub-modules; (3) Split preview-stage.tsx 661→298 + jobs.py 1838→1511 + models.py 1286→962 into 6 sub-modules; (4) Add <main>/<h1> to all pages, fill 7 spec files, fix 4 silent catch blocks, fix 2 weak passwords. Two rounds total: 37 new sub-modules, 17 giant files split, 102 Python + TS lint all green.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a57c5dd` | (see git log) |
+| `29ae9f4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

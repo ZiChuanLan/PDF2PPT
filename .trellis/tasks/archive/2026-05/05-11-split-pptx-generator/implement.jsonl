@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-11-comprehensive-refactor-round2/research/remaining-large-files.md", "reason": "Detailed breakdown of scanned_page.py (3971 lines) and main.py (1594 lines) with extraction targets"}
+{"file": ".trellis/tasks/05-11-comprehensive-refactor-round2/research/untouched-modules.md", "reason": "Additional context on scanned_page.py and font_utils.py structure"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Python backend coding conventions"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Guidelines for code extraction and deduplication"}
