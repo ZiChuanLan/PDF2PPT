@@ -6,12 +6,13 @@ import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useSettings } from "@/hooks/use-settings"
 
-import { BasicSettings } from "@/components/settings/basic-settings"
-import { OcrSettings } from "@/components/settings/ocr-settings"
-import { AdvancedSettings } from "@/components/settings/advanced-settings"
+import { QuickPresets } from "@/components/settings/quick-presets"
+import { ParsingMethodSection } from "@/components/settings/parsing-method-section"
+import { OcrStrategySection } from "@/components/settings/ocr-strategy-section"
+import { OutputQualitySection } from "@/components/settings/output-quality-section"
+import { GeneralAdvancedSection } from "@/components/settings/general-advanced-section"
 import { AdminSettings } from "@/components/settings/admin-settings"
 
 export default function SettingsPage() {
@@ -24,12 +25,20 @@ export default function SettingsPage() {
     clear: clearSettings,
   } = useSettings()
 
-  const [activeTab, setActiveTab] = React.useState("basic")
   const [saving, setSaving] = React.useState(false)
+  const [showAdmin, setShowAdmin] = React.useState(false)
 
   const handleSettingsChange = React.useCallback(
     (updates: Partial<typeof settings>) => {
       setSettings((prev) => ({ ...prev, ...updates }))
+    },
+    [setSettings]
+  )
+
+  const handleApplyPreset = React.useCallback(
+    (presetConfig: Partial<typeof settings>) => {
+      setSettings((prev) => ({ ...prev, ...presetConfig }))
+      toast.success("已应用预设配置")
     },
     [setSettings]
   )
@@ -76,10 +85,19 @@ export default function SettingsPage() {
           </div>
           <h1 className="mt-2 text-2xl font-bold">设置</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            配置 PDF 解析引擎、OCR 提供方和 PPT 生成参数
+            按照处理流程配置：文档解析 → 文字识别 → 输出质量
           </p>
         </div>
         <div className="flex gap-2">
+          {!isPublicMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdmin(!showAdmin)}
+            >
+              {showAdmin ? "隐藏管理员" : "管理员设置"}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleReset}>
             重置
           </Button>
@@ -89,32 +107,53 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="basic">基础设置</TabsTrigger>
-          <TabsTrigger value="ocr">OCR 设置</TabsTrigger>
-          <TabsTrigger value="advanced">高级设置</TabsTrigger>
-          {!isPublicMode && <TabsTrigger value="admin">管理员</TabsTrigger>}
-        </TabsList>
+      {showAdmin && !isPublicMode && (
+        <div className="mb-6 rounded-lg border bg-muted/50 p-6">
+          <AdminSettings />
+        </div>
+      )}
 
-        <TabsContent value="basic" className="space-y-6">
-          <BasicSettings settings={settings} onSettingsChange={handleSettingsChange} />
-        </TabsContent>
+      <div className="space-y-8">
+        {/* Quick Presets */}
+        <div className="rounded-lg border bg-card p-6">
+          <QuickPresets onApplyPreset={handleApplyPreset} />
+        </div>
 
-        <TabsContent value="ocr" className="space-y-6">
-          <OcrSettings settings={settings} onSettingsChange={handleSettingsChange} />
-        </TabsContent>
+        {/* Main Flow Sections */}
+        <div className="space-y-6">
+          {/* 1. Parsing Method */}
+          <div className="rounded-lg border bg-card p-6">
+            <ParsingMethodSection
+              settings={settings}
+              onSettingsChange={handleSettingsChange}
+            />
+          </div>
 
-        <TabsContent value="advanced" className="space-y-6">
-          <AdvancedSettings settings={settings} onSettingsChange={handleSettingsChange} />
-        </TabsContent>
+          {/* 2. OCR Strategy */}
+          <div className="rounded-lg border bg-card p-6">
+            <OcrStrategySection
+              settings={settings}
+              onSettingsChange={handleSettingsChange}
+            />
+          </div>
 
-        {!isPublicMode && (
-          <TabsContent value="admin" className="space-y-6">
-            <AdminSettings />
-          </TabsContent>
-        )}
-      </Tabs>
+          {/* 3. Output Quality */}
+          <div className="rounded-lg border bg-card p-6">
+            <OutputQualitySection
+              settings={settings}
+              onSettingsChange={handleSettingsChange}
+            />
+          </div>
+
+          {/* General Advanced Settings */}
+          <div className="rounded-lg border bg-card p-6">
+            <GeneralAdvancedSection
+              settings={settings}
+              onSettingsChange={handleSettingsChange}
+            />
+          </div>
+        </div>
+      </div>
 
       <div className="mt-8 flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={handleReset}>
