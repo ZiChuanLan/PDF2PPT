@@ -13,6 +13,8 @@ import type {
   OcrAiProvider,
   OcrAiChainMode,
   BaiduDocParseType,
+  Provider,
+  MainProvider,
 } from "@/lib/settings"
 import { BAIDU_DOC_PARSE_TYPE_LABELS } from "@/lib/settings"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
@@ -23,6 +25,11 @@ import {
 } from "@/components/settings/settings-shared"
 import { useModelDownload } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
+
+const PROVIDER_OPTIONS: Array<{ id: Provider; label: string }> = [
+  { id: "openai", label: "OpenAI" },
+  { id: "claude", label: "Claude" },
+]
 
 const LOCAL_OCR_OPTIONS: Array<{ id: OcrProvider; label: string; description: string }> = [
   { id: "machine", label: "机器提取", description: "从PDF提取原生文字（最快）" },
@@ -67,6 +74,8 @@ type OcrStrategySectionProps = {
 export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySectionProps) {
   const [showOcrAiKey, setShowOcrAiKey] = React.useState(false)
   const [showBaiduKeys, setShowBaiduKeys] = React.useState(false)
+  const [showOpenAIKey, setShowOpenAIKey] = React.useState(false)
+  const [showClaudeKey, setShowClaudeKey] = React.useState(false)
 
   const { startDownload, cancelDownload, getDownloadState } = useModelDownload()
 
@@ -201,12 +210,81 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
             ))}
           </div>
 
-          {/* API Configuration */}
+          {/* Primary AI Configuration (for OCR + fallback for layout assist) */}
           <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+            <div className="text-sm text-muted-foreground mb-2">
+              主AI配置（用于OCR识别，也可作为布局辅助的回退）
+            </div>
+
+            <div className="grid gap-2">
+              <FieldLabel htmlFor="provider">
+                AI提供商
+                <HoverHint text="OpenAI 或 Claude（主要用于OCR识别）" />
+              </FieldLabel>
+              <Select
+                id="provider"
+                value={settings.provider}
+                onChange={(e) => {
+                  const newProvider = e.target.value as Provider
+                  const updates: Partial<Settings> = { provider: newProvider }
+                  if (newProvider !== "mineru") {
+                    updates.preferredMainProvider = newProvider as MainProvider
+                  }
+                  onSettingsChange(updates)
+                }}
+                options={PROVIDER_OPTIONS}
+              />
+            </div>
+
+            {/* OpenAI API Key */}
+            {settings.provider === "openai" && (
+              <>
+                <div className="grid gap-2">
+                  <FieldLabel htmlFor="openaiApiKey" required>
+                    <KeyRoundIcon className="inline-block h-4 w-4 mr-1" />
+                    OpenAI API Key
+                  </FieldLabel>
+                  <SensitiveInput
+                    id="openaiApiKey"
+                    value={settings.openaiApiKey}
+                    onChange={(e) => onSettingsChange({ openaiApiKey: e.target.value })}
+                    placeholder="sk-..."
+                    show={showOpenAIKey}
+                    onToggleShow={() => setShowOpenAIKey(!showOpenAIKey)}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Claude API Key */}
+            {settings.provider === "claude" && (
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="claudeApiKey" required>
+                  <KeyRoundIcon className="inline-block h-4 w-4 mr-1" />
+                  Claude API Key
+                </FieldLabel>
+                <SensitiveInput
+                  id="claudeApiKey"
+                  value={settings.claudeApiKey}
+                  onChange={(e) => onSettingsChange({ claudeApiKey: e.target.value })}
+                  placeholder="sk-ant-..."
+                  show={showClaudeKey}
+                  onToggleShow={() => setShowClaudeKey(!showClaudeKey)}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Secondary AI Configuration (dedicated OCR AI) */}
+          <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+            <div className="text-sm text-muted-foreground mb-2">
+              专用OCR AI配置（可选，留空则使用上面的主AI配置）
+            </div>
+
             <div className="grid gap-2">
               <FieldLabel htmlFor="ocrAiProvider">
-                AI服务提供商
-                <HoverHint text="选择 AI OCR 服务提供商" />
+                OCR AI服务提供商
+                <HoverHint text="选择专用的 AI OCR 服务提供商" />
               </FieldLabel>
               <Select
                 id="ocrAiProvider"
@@ -219,15 +297,15 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
             </div>
 
             <div className="grid gap-2">
-              <FieldLabel htmlFor="ocrAiApiKey" required>
+              <FieldLabel htmlFor="ocrAiApiKey">
                 <KeyRoundIcon className="inline-block h-4 w-4 mr-1" />
-                AI OCR API Key
+                专用 OCR AI API Key
               </FieldLabel>
               <SensitiveInput
                 id="ocrAiApiKey"
                 value={settings.ocrAiApiKey}
                 onChange={(e) => onSettingsChange({ ocrAiApiKey: e.target.value })}
-                placeholder="输入 API Key"
+                placeholder="留空使用主AI配置"
                 show={showOcrAiKey}
                 onToggleShow={() => setShowOcrAiKey(!showOcrAiKey)}
               />
