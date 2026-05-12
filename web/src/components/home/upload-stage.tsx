@@ -14,6 +14,7 @@ import {
   type Settings,
 } from "@/lib/settings"
 import { Select } from "@/components/ui/select"
+import { PresetPicker } from "@/components/preset-picker"
 
 interface UploadStageProps {
   getRootProps: () => React.HTMLAttributes<HTMLElement>
@@ -78,6 +79,16 @@ export function UploadStage({
           ) : null}
         </div>
 
+        {/* Preset Picker */}
+        <div className="mx-auto mt-8 max-w-3xl">
+          <PresetPicker
+            currentSettings={settingsSnapshot}
+            onApplyPreset={(newSettings) => {
+              updateSettingsSnapshot(() => newSettings)
+            }}
+          />
+        </div>
+
         {/* Config selects below upload */}
         <div className="mx-auto mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs">
           <div className="flex items-center gap-1.5">
@@ -97,11 +108,11 @@ export function UploadStage({
                 }))
               }}
               className="h-7 w-28 py-1 text-xs"
-            >
-              {Object.entries(PARSE_ENGINE_MODE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </Select>
+              options={Object.entries(PARSE_ENGINE_MODE_LABELS).map(([value, label]) => ({
+                id: value,
+                label,
+              }))}
+            />
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">生成模式</span>
@@ -114,11 +125,12 @@ export function UploadStage({
                 }))
               }
               className="h-7 w-28 py-1 text-xs"
-            >
-              <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
-              <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
-              <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
-            </Select>
+              options={[
+                { id: "turbo", label: PPT_GENERATION_MODE_LABELS.turbo },
+                { id: "fast", label: PPT_GENERATION_MODE_LABELS.fast },
+                { id: "standard", label: PPT_GENERATION_MODE_LABELS.standard },
+              ]}
+            />
           </div>
           <Link
             href="/settings"

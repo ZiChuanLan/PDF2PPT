@@ -2,7 +2,16 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Select({ className, ...props }: React.ComponentProps<"select">) {
+type SelectOption = {
+  id: string
+  label: string
+}
+
+type SelectProps = Omit<React.ComponentProps<"select">, "children"> & {
+  options: SelectOption[]
+}
+
+function Select({ className, options, ...props }: SelectProps) {
   return (
     <select
       data-slot="select"
@@ -13,7 +22,13 @@ function Select({ className, ...props }: React.ComponentProps<"select">) {
         className
       )}
       {...props}
-    />
+    >
+      {options.map((opt) => (
+        <option key={opt.id} value={opt.id}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
   )
 }
 

@@ -58,11 +58,12 @@ export function QuickConfigPanel({
                 pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
               }))
             }
-          >
-            <option value="turbo">{PPT_GENERATION_MODE_LABELS.turbo}</option>
-            <option value="fast">{PPT_GENERATION_MODE_LABELS.fast}</option>
-            <option value="standard">{PPT_GENERATION_MODE_LABELS.standard}</option>
-          </Select>
+            options={[
+              { id: "turbo", label: PPT_GENERATION_MODE_LABELS.turbo },
+              { id: "fast", label: PPT_GENERATION_MODE_LABELS.fast },
+              { id: "standard", label: PPT_GENERATION_MODE_LABELS.standard },
+            ]}
+          />
         </div>
         <div className="grid gap-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -83,12 +84,13 @@ export function QuickConfigPanel({
                     : {}),
                 }))
               }}
-            >
-              <option value="local_ocr">{PARSE_ENGINE_MODE_LABELS.local_ocr}</option>
-              <option value="remote_ocr">{PARSE_ENGINE_MODE_LABELS.remote_ocr}</option>
-              <option value="baidu_doc">{PARSE_ENGINE_MODE_LABELS.baidu_doc}</option>
-              <option value="mineru_cloud">{PARSE_ENGINE_MODE_LABELS.mineru_cloud}</option>
-            </Select>
+              options={[
+                { id: "local_ocr", label: PARSE_ENGINE_MODE_LABELS.local_ocr },
+                { id: "remote_ocr", label: PARSE_ENGINE_MODE_LABELS.remote_ocr },
+                { id: "baidu_doc", label: PARSE_ENGINE_MODE_LABELS.baidu_doc },
+                { id: "mineru_cloud", label: PARSE_ENGINE_MODE_LABELS.mineru_cloud },
+              ]}
+            />
             <ModelStatusBadge
               status={modelStatus}
               isLoading={isModelStatusLoading}
@@ -177,11 +179,12 @@ export function QuickConfigPanel({
                   ocrAiChainMode: e.target.value as Settings["ocrAiChainMode"],
                 }))
               }
-            >
-              <option value="layout_block">{AIOCR_CHAIN_MODE_LABELS.layout_block}</option>
-              <option value="doc_parser">{AIOCR_CHAIN_MODE_LABELS.doc_parser}</option>
-              <option value="direct">{AIOCR_CHAIN_MODE_LABELS.direct}</option>
-            </Select>
+              options={[
+                { id: "layout_block", label: AIOCR_CHAIN_MODE_LABELS.layout_block },
+                { id: "doc_parser", label: AIOCR_CHAIN_MODE_LABELS.doc_parser },
+                { id: "direct", label: AIOCR_CHAIN_MODE_LABELS.direct },
+              ]}
+            />
           </div>
         )}
         {settingsSnapshot.parseEngineMode === "remote_ocr" && settingsSnapshot.ocrAiChainMode === "layout_block" && (
@@ -198,13 +201,11 @@ export function QuickConfigPanel({
                   ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
                 }))
               }
-            >
-              {Object.values(LAYOUT_MODELS).map((m) => (
-                <option key={m.modelId} value={m.modelId} disabled={!downloadedLayoutModels.has(m.modelId)}>
-                  {m.displayName} — {m.speedLabel}
-                </option>
-              ))}
-            </Select>
+              options={Object.values(LAYOUT_MODELS).map((m) => ({
+                id: m.modelId,
+                label: `${m.displayName} — ${m.speedLabel}`,
+              }))}
+            />
             {downloadedLayoutModels.size === 0 && (
               <span className="text-xs text-muted-foreground">
                 暂无已下载的版面模型，请前往{" "}
@@ -234,16 +235,17 @@ export function QuickConfigPanel({
                     ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
                   }))
                 }}
-              >
-                <option value="Qwen/Qwen2.5-VL-7B-Instruct">Qwen2.5-VL-7B</option>
-                <option value="Qwen/Qwen2.5-VL-32B-Instruct">Qwen2.5-VL-32B</option>
-                <option value="paddleocr/PaddleOCR-VL-1.5">PaddleOCR-VL</option>
-                <option value="deepseek-ai/DeepSeek-OCR">DeepSeek-OCR</option>
-                <option value="openai/gpt-4o-mini">GPT-4o-mini</option>
-                {(!["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()) && (
-                  <option value="__custom__">{settingsSnapshot.ocrAiModel}</option>
-                )}
-              </Select>
+                options={[
+                  { id: "Qwen/Qwen2.5-VL-7B-Instruct", label: "Qwen2.5-VL-7B" },
+                  { id: "Qwen/Qwen2.5-VL-32B-Instruct", label: "Qwen2.5-VL-32B" },
+                  { id: "paddleocr/PaddleOCR-VL-1.5", label: "PaddleOCR-VL" },
+                  { id: "deepseek-ai/DeepSeek-OCR", label: "DeepSeek-OCR" },
+                  { id: "openai/gpt-4o-mini", label: "GPT-4o-mini" },
+                  ...(!["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()
+                    ? [{ id: "__custom__", label: settingsSnapshot.ocrAiModel }]
+                    : []),
+                ]}
+              />
             ) : (
               <div className="flex items-center gap-2 text-xs text-amber-600">
                 <AlertCircleIcon className="size-3.5" />

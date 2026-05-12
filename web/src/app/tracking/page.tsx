@@ -517,13 +517,11 @@ function TrackingPageContent() {
                   onChange={(e) =>
                     setStatusFilter((e.target.value || "all") as "all" | JobStatusValue)
                   }
-                >
-                  {jobStatusFilterOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
+                  options={jobStatusFilterOptions.map((option) => ({
+                    id: option.value,
+                    label: option.label,
+                  }))}
+                />
               </div>
               <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                 当前显示 {filteredJobRecords.length} / {jobRecords.length}

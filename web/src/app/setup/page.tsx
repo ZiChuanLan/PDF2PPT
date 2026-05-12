@@ -21,6 +21,8 @@ import {
 } from "@/lib/layout-models"
 import { useModelDownload } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
+import { PasswordStrengthMeter } from "@/components/password-strength-meter"
+import { DeployModeComparison } from "@/components/deploy-mode-comparison"
 
 type DeployMode = "self" | "public"
 
@@ -35,7 +37,7 @@ type ModelStatusResponse = {
   remote: Record<string, ModelProviderStatus>
 }
 
-const STEPS = ["欢迎", "部署模式", "创建管理员", "模型检测", "版面模型", "完成"]
+const STEPS = ["部署模式", "创建管理员", "模型下载"]
 
 export default function SetupPage() {
   const router = useRouter()
@@ -114,7 +116,7 @@ export default function SetupPage() {
       // Admin created successfully — now fetch model status
       await refetch()
 
-      // Fetch model status for the prewarm step
+      // Fetch model status for the model download step
       setModelStatusLoading(true)
       try {
         const statusRes = await apiFetch("/models/status")
@@ -127,10 +129,12 @@ export default function SetupPage() {
       } finally {
         setModelStatusLoading(false)
       }
+
+      // Move to model download step
+      setStep(2)
     } catch (e) {
       const message = e instanceof Error ? e.message : "设置失败"
       setError(message)
-      setStep(2) // Go back to form
     } finally {
       setIsSubmitting(false)
     }
@@ -157,12 +161,9 @@ export default function SetupPage() {
   const handleNext = React.useCallback(() => {
     setError(null)
     if (step === 0) {
-      // Welcome → deploy mode
+      // Deploy mode → create admin
       setStep(1)
     } else if (step === 1) {
-      // Deploy mode → create admin
-      setStep(2)
-    } else if (step === 2) {
       // Validate admin form
       if (!username.trim()) {
         setError("请输入用户名")
@@ -184,15 +185,10 @@ export default function SetupPage() {
         setError("两次输入的密码不一致")
         return
       }
-      // Create admin account first, then go to model detection
-      setStep(3)
+      // Create admin account and proceed to model download
       void handleCreateAdmin()
-    } else if (step === 3) {
-      // Model detection → layout model selection
-      setStep(4)
-    } else if (step === 4) {
-      // Layout model selection → complete
-      setStep(5)
+    } else if (step === 2) {
+      // Model download → complete
       void handleComplete()
     }
   }, [step, username, password, confirmPassword, handleCreateAdmin, handleComplete])
@@ -240,7 +236,7 @@ export default function SetupPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-5 pt-5">
-          {/* Step 0: Welcome */}
+          {/* Step 0: Deploy Mode + Welcome */}
           {step === 0 && (
             <div className="space-y-4">
               <div className="space-y-2 text-sm leading-6 text-muted-foreground">
@@ -251,73 +247,27 @@ export default function SetupPage() {
                   这是一个将 PDF 文档和图片转换为 PowerPoint 演示文稿的工具。
                   首次使用需要完成一些基本设置。
                 </p>
-                <p>接下来您将：</p>
-                <ul className="list-inside list-disc space-y-1 pl-2">
-                  <li>选择部署模式（自用或多用户）</li>
-                  <li>创建管理员账号</li>
-                </ul>
               </div>
+
+              <div className="space-y-2">
+                <h3 className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                  选择部署模式
+                </h3>
+                <DeployModeComparison
+                  selectedMode={deployMode}
+                  onModeChange={setDeployMode}
+                />
+              </div>
+
               {error && <p className="text-xs text-destructive">{error}</p>}
               <Button onClick={handleNext} className="w-full">
-                开始设置
+                下一步
               </Button>
             </div>
           )}
 
-          {/* Step 1: Deploy Mode */}
+          {/* Step 1: Create Admin */}
           {step === 1 && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                选择您的部署模式。此设置后续可在管理后台修改。
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDeployMode("self")}
-                  className={`rounded-lg border-2 p-4 text-left transition-colors ${
-                    deployMode === "self"
-                      ? "border-foreground bg-muted/50"
-                      : "border-border hover:border-muted-foreground/50"
-                  }`}
-                >
-                  <h3 className="font-medium">自用模式</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    适合个人使用。登录后自动保持会话，无需每次输入密码。
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeployMode("public")}
-                  className={`rounded-lg border-2 p-4 text-left transition-colors ${
-                    deployMode === "public"
-                      ? "border-foreground bg-muted/50"
-                      : "border-border hover:border-muted-foreground/50"
-                  }`}
-                >
-                  <h3 className="font-medium">公开模式</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    适合团队或公开部署。支持多用户注册、邀请码和配额管理。
-                  </p>
-                </button>
-              </div>
-              {error && <p className="text-xs text-destructive">{error}</p>}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(0)}
-                  className="flex-1"
-                >
-                  上一步
-                </Button>
-                <Button onClick={handleNext} className="flex-1">
-                  下一步
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Create Admin */}
-          {step === 2 && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 创建管理员账号。此账号拥有系统最高权限。
@@ -337,6 +287,7 @@ export default function SetupPage() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     autoComplete="username"
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div className="space-y-2">
@@ -353,7 +304,9 @@ export default function SetupPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="new-password"
+                    disabled={isSubmitting}
                   />
+                  <PasswordStrengthMeter password={password} />
                 </div>
                 <div className="space-y-2">
                   <label
@@ -369,6 +322,7 @@ export default function SetupPage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     autoComplete="new-password"
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -376,262 +330,168 @@ export default function SetupPage() {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => setStep(1)}
+                  onClick={() => setStep(0)}
                   className="flex-1"
+                  disabled={isSubmitting}
                 >
                   上一步
+                </Button>
+                <Button onClick={handleNext} className="flex-1" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2Icon className="mr-2 size-4 animate-spin" />
+                      创建中...
+                    </>
+                  ) : (
+                    "创建管理员"
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Optional Model Download */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">下载本地模型（可选）</h3>
+                <p className="text-sm text-muted-foreground">
+                  本地模型可用于离线 OCR 识别和版面分析。如果您计划使用远程 API（如 AIOCR、百度文档解析），可以跳过此步骤。
+                </p>
+              </div>
+
+              {modelStatusLoading ? (
+                <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                  <Loader2Icon className="size-4 animate-spin" />
+                  检测模型状态...
+                </div>
+              ) : modelStatus ? (
+                <div className="space-y-3">
+                  {/* Local OCR models */}
+                  <div className="space-y-2">
+                    <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                      本地 OCR 模型
+                    </div>
+                    {[
+                      { key: "tesseract", label: "Tesseract OCR" },
+                      { key: "paddleocr", label: "PaddleOCR" },
+                    ].map(({ key, label }) => {
+                      const prov = modelStatus.local[key]
+                      const isReady = prov?.ready ?? false
+                      const isDownloadable = key === "paddleocr"
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between rounded border border-border px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`inline-block size-2 rounded-full ${
+                                isReady ? "bg-emerald-500" : "bg-red-500"
+                              }`}
+                            />
+                            <span className="text-sm">{label}</span>
+                          </div>
+                          {isReady ? (
+                            <span className="flex items-center gap-1 text-xs text-emerald-600">
+                              <CheckIcon className="size-3" />
+                              就绪
+                            </span>
+                          ) : isDownloadable ? (
+                            <DownloadProgressButton
+                              modelId={key}
+                              downloadState={getDownloadState(key)}
+                              onDownload={(id) => void handleDownloadModel(id)}
+                              onCancel={cancelDownload}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              需安装系统包
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Layout models */}
+                  <div className="space-y-2">
+                    <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                      版面分析模型
+                    </div>
+                    {Object.values(LAYOUT_MODELS).map((model: LayoutModelInfo) => {
+                      const isDownloaded = modelStatus?.local?.[model.modelId]?.ready ?? false
+                      return (
+                        <div
+                          key={model.modelId}
+                          className="flex items-center justify-between rounded border border-border px-3 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`inline-block size-2 rounded-full ${
+                                  isDownloaded ? "bg-emerald-500" : "bg-muted-foreground/40"
+                                }`}
+                              />
+                              <span className="text-sm font-medium">{model.displayName}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {model.sizeMb} MB
+                              </span>
+                              {model.recommended ? (
+                                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                                  推荐
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-0.5 pl-4 text-[11px] text-muted-foreground">
+                              {model.description} · {model.speedLabel} · {model.accuracy}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {isDownloaded ? (
+                              <span className="flex items-center gap-1 text-xs text-emerald-600">
+                                <CheckIcon className="size-3" />
+                                已下载
+                              </span>
+                            ) : (
+                              <DownloadProgressButton
+                                modelId={model.modelId}
+                                downloadState={getDownloadState(model.modelId)}
+                                onDownload={(id) => void handleDownloadModel(id)}
+                                onCancel={cancelDownload}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="rounded-lg border border-border bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">提示：</span>
+                      模型下载后可在「设置」页面切换使用。如果您使用远程 API（AIOCR、百度文档解析、MinerU），无需下载本地模型。
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  无法获取模型状态，可稍后在设置页查看。
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleComplete}
+                  className="flex-1"
+                >
+                  跳过，稍后配置
                 </Button>
                 <Button onClick={handleNext} className="flex-1">
                   完成设置
                 </Button>
               </div>
-            </div>
-          )}
-
-          {/* Step 3: Model Detection */}
-          {step === 3 && (
-            <div className="space-y-4">
-              {isSubmitting ? (
-                <div className="space-y-3 py-4 text-center">
-                  <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
-                  <p className="text-sm text-muted-foreground">正在创建管理员账号...</p>
-                </div>
-              ) : error ? (
-                <div className="space-y-3 py-4 text-center">
-                  <p className="text-sm text-destructive">{error}</p>
-                  <Button onClick={() => setStep(2)} className="mt-4">
-                    返回修改
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    管理员账号已创建。以下是模型就绪状态，本地模型可按需下载。
-                  </p>
-
-                  {modelStatusLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
-                      <Loader2Icon className="size-4 animate-spin" />
-                      检测模型状态...
-                    </div>
-                  ) : modelStatus ? (
-                    <div className="space-y-3">
-                      {/* Local models */}
-                      <div className="space-y-2">
-                        <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-                          本地模型
-                        </div>
-                        {[
-                          { key: "tesseract", label: "Tesseract OCR" },
-                          { key: "paddleocr", label: "PaddleOCR" },
-                          { key: "pp_doclayout_v3", label: "PP-DocLayoutV3（默认）" },
-                        ].map(({ key, label }) => {
-                          const prov = modelStatus.local[key]
-                          const isReady = prov?.ready ?? false
-                          const isDownloadable = key === "pp_doclayout_v3" || key === "paddleocr"
-                          return (
-                            <div
-                              key={key}
-                              className="flex items-center justify-between rounded border border-border px-3 py-2"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`inline-block size-2 rounded-full ${
-                                    isReady ? "bg-emerald-500" : "bg-red-500"
-                                  }`}
-                                />
-                                <span className="text-sm">{label}</span>
-                              </div>
-                              {isReady ? (
-                                <span className="flex items-center gap-1 text-xs text-emerald-600">
-                                  <CheckIcon className="size-3" />
-                                  就绪
-                                </span>
-                              ) : isDownloadable ? (
-                                <DownloadProgressButton
-                                  modelId={key}
-                                  downloadState={getDownloadState(key)}
-                                  onDownload={(id) => void handleDownloadModel(id)}
-                                  onCancel={cancelDownload}
-                                />
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  需安装系统包
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* Remote APIs */}
-                      <div className="space-y-2">
-                        <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-                          远程 API
-                        </div>
-                        {[
-                          { key: "aiocr", label: "AIOCR" },
-                          { key: "baidu_doc", label: "百度文档解析" },
-                          { key: "mineru", label: "MinerU" },
-                        ].map(({ key, label }) => {
-                          const prov = modelStatus.remote[key]
-                          const isReady = prov?.ready ?? false
-                          const isConfigured = prov?.configured ?? false
-                          return (
-                            <div
-                              key={key}
-                              className="flex items-center justify-between rounded border border-border px-3 py-2"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`inline-block size-2 rounded-full ${
-                                    isReady
-                                      ? "bg-emerald-500"
-                                      : isConfigured
-                                        ? "bg-amber-500"
-                                        : "bg-muted-foreground/40"
-                                  }`}
-                                />
-                                <span className="text-sm">{label}</span>
-                              </div>
-                              <span
-                                className={`text-xs ${
-                                  isReady
-                                    ? "text-emerald-600"
-                                    : isConfigured
-                                      ? "text-amber-600"
-                                      : "text-muted-foreground"
-                                }`}
-                              >
-                                {isReady ? "就绪" : isConfigured ? "需要配置" : "未配置"}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      <p className="text-xs text-muted-foreground">
-                        远程 API 的密钥可在「设置」页面配置。本地模型下载后即可离线使用。
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">无法获取模型状态，可稍后在设置页查看。</p>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setStep(4)}
-                      className="flex-1"
-                    >
-                      跳过模型下载
-                    </Button>
-                    <Button onClick={() => setStep(4)} className="flex-1">
-                      选择版面模型
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 4: Layout Model Selection */}
-          {step === 4 && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                选择版面分析模型。下载后可用于本地版面切块识别，未下载的模型不影响其他功能。
-              </p>
-
-              <div className="space-y-2">
-                {Object.values(LAYOUT_MODELS).map((model: LayoutModelInfo) => {
-                  const isDownloaded = modelStatus?.local?.[model.modelId]?.ready ?? false
-                  return (
-                    <div
-                      key={model.modelId}
-                      className="flex items-center justify-between rounded border border-border px-3 py-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-block size-2 rounded-full ${
-                              isDownloaded ? "bg-emerald-500" : "bg-muted-foreground/40"
-                            }`}
-                          />
-                          <span className="text-sm font-medium">{model.displayName}</span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {model.sizeMb} MB
-                          </span>
-                          {model.recommended ? (
-                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                              推荐
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-0.5 pl-4 text-[11px] text-muted-foreground">
-                          {model.description} · {model.speedLabel} · {model.accuracy}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {isDownloaded ? (
-                          <span className="flex items-center gap-1 text-xs text-emerald-600">
-                            <CheckIcon className="size-3" />
-                            已下载
-                          </span>
-                        ) : (
-                          <DownloadProgressButton
-                            modelId={model.modelId}
-                            downloadState={getDownloadState(model.modelId)}
-                            onDownload={(id) => void handleDownloadModel(id)}
-                            onCancel={cancelDownload}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                模型下载后可在「设置」页面切换。未下载的模型在使用时会提示下载。
-              </p>
-
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(5)}
-                  className="flex-1"
-                >
-                  跳过
-                </Button>
-                <Button onClick={() => setStep(5)} className="flex-1">
-                  完成设置
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 5: Completion */}
-          {step === 5 && (
-            <div className="space-y-4 py-6 text-center">
-              {isSubmitting ? (
-                <>
-                  <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    正在完成设置...
-                  </p>
-                </>
-              ) : error ? (
-                <>
-                  <p className="text-sm text-destructive">{error}</p>
-                  <Button onClick={() => setStep(2)} className="mt-4">
-                    返回修改
-                  </Button>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  正在进入系统...
-                </p>
-              )}
             </div>
           )}
         </CardContent>

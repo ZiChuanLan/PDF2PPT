@@ -212,6 +212,190 @@ export function safeParseSettings(value: string | null): Partial<Settings> | nul
   }
 }
 
+// ============================================================================
+// Job Presets
+// ============================================================================
+
+export type JobPreset = {
+  id: string
+  name: string
+  description: string
+  icon?: string
+  settings: Partial<Settings>
+  isBuiltIn: boolean
+  createdAt?: number
+  updatedAt?: number
+}
+
+export type PresetStorage = {
+  custom: JobPreset[]
+  defaultPresetId: string | null
+}
+
+export const PRESETS_STORAGE_KEY = "pdf-to-ppt.presets.v1"
+
+export const BUILT_IN_PRESETS: JobPreset[] = [
+  {
+    id: "fast",
+    name: "快速处理",
+    description: "本地处理，速度最快，无需 API 密钥",
+    icon: "⚡",
+    isBuiltIn: true,
+    settings: {
+      parseEngineMode: "local_ocr",
+      ocrProvider: "machine",
+      pptGenerationMode: "turbo",
+    },
+  },
+  {
+    id: "standard",
+    name: "标准质量",
+    description: "AIOCR 识别，质量与速度平衡",
+    icon: "⚖️",
+    isBuiltIn: true,
+    settings: {
+      parseEngineMode: "remote_ocr",
+      ocrProvider: "aiocr",
+      ocrAiChainMode: "layout_block",
+      pptGenerationMode: "fast",
+    },
+  },
+  {
+    id: "best",
+    name: "最佳质量",
+    description: "最高精度，启用版面辅助，适合复杂文档",
+    icon: "✨",
+    isBuiltIn: true,
+    settings: {
+      parseEngineMode: "remote_ocr",
+      ocrProvider: "aiocr",
+      ocrAiChainMode: "layout_block",
+      enableLayoutAssist: true,
+      pptGenerationMode: "standard",
+    },
+  },
+]
+
+export function loadPresetStorage(): PresetStorage {
+  if (typeof window === "undefined") {
+    return { custom: [], defaultPresetId: null }
+  }
+
+  const stored = localStorage.getItem(PRESETS_STORAGE_KEY)
+  if (!stored) {
+    return { custom: [], defaultPresetId: null }
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as unknown
+    if (!parsed || typeof parsed !== "object") {
+      return { custom: [], defaultPresetId: null }
+    }
+
+    const storage = parsed as Partial<PresetStorage>
+    return {
+      custom: Array.isArray(storage.custom) ? storage.custom : [],
+      defaultPresetId:
+        typeof storage.defaultPresetId === "string" ? storage.defaultPresetId : null,
+    }
+  } catch {
+    return { custom: [], defaultPresetId: null }
+  }
+}
+
+export function savePresetStorage(storage: PresetStorage): void {
+  if (typeof window === "undefined") return
+  localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(storage))
+}
+
+export function getAllPresets(): JobPreset[] {
+  const storage = loadPresetStorage()
+  return [...BUILT_IN_PRESETS, ...storage.custom]
+}
+
+export function getPresetById(id: string): JobPreset | null {
+  const allPresets = getAllPresets()
+  return allPresets.find((p) => p.id === id) ?? null
+}
+
+export function getDefaultPreset(): JobPreset | null {
+  const storage = loadPresetStorage()
+  if (storage.defaultPresetId) {
+    return getPresetById(storage.defaultPresetId)
+  }
+  return null
+}
+
+export function setDefaultPreset(presetId: string | null): void {
+  const storage = loadPresetStorage()
+  storage.defaultPresetId = presetId
+  savePresetStorage(storage)
+}
+
+export function createCustomPreset(
+  name: string,
+  description: string,
+  settings: Partial<Settings>,
+  icon?: string
+): JobPreset {
+  const storage = loadPresetStorage()
+  const now = Date.now()
+  const preset: JobPreset = {
+    id: `custom-${now}`,
+    name,
+    description,
+    icon,
+    settings,
+    isBuiltIn: false,
+    createdAt: now,
+    updatedAt: now,
+  }
+  storage.custom.push(preset)
+  savePresetStorage(storage)
+  return preset
+}
+
+export function updateCustomPreset(
+  id: string,
+  updates: Partial<Pick<JobPreset, "name" | "description" | "icon" | "settings">>
+): boolean {
+  const storage = loadPresetStorage()
+  const index = storage.custom.findIndex((p) => p.id === id)
+  if (index === -1) return false
+
+  storage.custom[index] = {
+    ...storage.custom[index],
+    ...updates,
+    updatedAt: Date.now(),
+  }
+  savePresetStorage(storage)
+  return true
+}
+
+export function deleteCustomPreset(id: string): boolean {
+  const storage = loadPresetStorage()
+  const index = storage.custom.findIndex((p) => p.id === id)
+  if (index === -1) return false
+
+  storage.custom.splice(index, 1)
+  if (storage.defaultPresetId === id) {
+    storage.defaultPresetId = null
+  }
+  savePresetStorage(storage)
+  return true
+}
+
+export function applyPresetToSettings(preset: JobPreset, currentSettings: Settings): Settings {
+  return {
+    ...currentSettings,
+    ...preset.settings,
+  }
+}
+
+// ============================================================================
+// Settings Storage
+// ============================================================================
+
 export function loadStoredSettings(): Settings {
   if (typeof window === "undefined") return defaultSettings
 

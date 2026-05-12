@@ -16,15 +16,20 @@ export function FieldLabel({
   htmlFor,
   children,
   hint,
+  required,
+  className,
 }: {
-  htmlFor: string
+  htmlFor?: string
   children: React.ReactNode
   hint?: string
+  required?: boolean
+  className?: string
 }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className={cn("flex items-center gap-1.5", className)}>
       <label className="text-muted-foreground text-xs" htmlFor={htmlFor}>
         {children}
+        {required && <span className="text-destructive ml-0.5">*</span>}
       </label>
       {hint ? <HoverHint text={hint} /> : null}
     </div>
@@ -124,19 +129,23 @@ export function SensitiveInput({
   id,
   value,
   onChange,
+  onBlur,
   placeholder,
   disabled,
   autoComplete = "off",
+  show,
+  onToggleShow,
 }: {
   id?: string
   value: string
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void
   placeholder?: string
   disabled?: boolean
   autoComplete?: string
+  show: boolean
+  onToggleShow: () => void
 }) {
-  const [show, setShow] = React.useState(false)
-
   return (
     <div className="relative">
       <Input
@@ -145,6 +154,7 @@ export function SensitiveInput({
         autoComplete={autoComplete}
         value={value}
         onChange={onChange}
+        onBlur={onBlur}
         placeholder={placeholder}
         disabled={disabled}
         className="pr-10"
@@ -154,7 +164,7 @@ export function SensitiveInput({
         variant="ghost"
         size="icon-xs"
         className="absolute right-1 top-1/2 -translate-y-1/2"
-        onClick={() => setShow(!show)}
+        onClick={onToggleShow}
       >
         {show ? (
           <EyeOffIcon className="size-3.5" />
