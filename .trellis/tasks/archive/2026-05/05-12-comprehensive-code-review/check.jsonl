@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend guidelines for compliance checking"}
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Auth pattern verification"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend guidelines for compliance checking"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component pattern verification"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality standards and forbidden patterns"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety verification"}

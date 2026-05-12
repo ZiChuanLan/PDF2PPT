@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component structure and patterns for new settings components and preset UI"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript patterns for JobPreset types and settings validation"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code quality standards for refactoring settings page"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook patterns if custom hooks needed for preset management"}

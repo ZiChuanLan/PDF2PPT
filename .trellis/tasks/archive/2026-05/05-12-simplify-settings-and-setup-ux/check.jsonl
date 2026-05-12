@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify component structure matches project patterns"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify TypeScript types are properly defined and used"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify code quality and accessibility standards"}
+{"file": ".trellis/tasks/05-12-simplify-settings-and-setup-ux/prd.md", "reason": "Verify implementation matches requirements and acceptance criteria"}

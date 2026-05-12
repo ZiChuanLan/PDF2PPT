@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guidelines and architecture summary"}
+{"file": ".trellis/spec/backend/auth-pattern.md", "reason": "Authentication and authorization patterns to verify compliance"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guidelines and tech stack"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns and accessibility rules"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Custom hooks and data fetching patterns"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Forbidden patterns and required patterns"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type conventions and validation patterns"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management patterns"}

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-05-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~279 | Active |
+| `journal-1.md` | ~312 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-05-12 | Settings & Setup UX Simplification | `6bcda58` | `main` |
 | 8 | 2026-05-12 | Comprehensive Code Review + Security Fixes (P0/P1) | `b264d21` | `main` |
 | 7 | 2026-05-12 | Round 3 Refactor: adapters, fonts, worker, a11y, error handling, dead code | `031e9de`, `0832107`, `caae8a4` | `main` |
 | 6 | 2026-05-12 | Round 2 Refactor: split OCR/PPTX giants, routers, frontend, fix quality debt | `a57c5dd`, `29ae9f4` | `main` |
