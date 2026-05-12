@@ -64,6 +64,92 @@ export function OutputQualitySection({
         <p className="text-sm text-muted-foreground">配置PPT生成和优化选项</p>
       </div>
 
+      {/* Content Generation AI */}
+      {!isMineruMode && (
+        <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+          <div className="text-sm text-muted-foreground mb-2">
+            内容生成AI（用于布局辅助和PPT生成）
+          </div>
+
+          <div className="grid gap-2">
+            <FieldLabel htmlFor="provider">
+              内容生成AI 提供方
+              <HoverHint text="OpenAI 或 Claude（用于布局辅助和PPT生成）" />
+            </FieldLabel>
+            <Select
+              id="provider"
+              value={settings.provider}
+              onChange={(e) => {
+                const newProvider = e.target.value as Provider
+                const updates: Partial<Settings> = { provider: newProvider }
+                if (newProvider !== "mineru") {
+                  updates.preferredMainProvider = newProvider as MainProvider
+                }
+                onSettingsChange(updates)
+              }}
+              options={PROVIDER_OPTIONS}
+            />
+          </div>
+
+          {/* OpenAI API Key */}
+          {(settings.provider === "openai" ||
+            settings.parseEngineMode === "remote_ocr") && (
+            <div className="grid gap-2">
+              <FieldLabel htmlFor="openaiApiKey" required>
+                <KeyRoundIcon className="inline-block h-4 w-4 mr-1" />
+                OpenAI API Key
+              </FieldLabel>
+              <SensitiveInput
+                id="openaiApiKey"
+                value={settings.openaiApiKey}
+                onChange={(e) => onSettingsChange({ openaiApiKey: e.target.value })}
+                onBlur={(e) => validateApiKey(e.target.value, "openai")}
+                placeholder="sk-..."
+                show={showOpenAIKey}
+                onToggleShow={() => setShowOpenAIKey(!showOpenAIKey)}
+              />
+            </div>
+          )}
+
+          {/* Claude API Key */}
+          {settings.provider === "claude" && (
+            <div className="grid gap-2">
+              <FieldLabel htmlFor="claudeApiKey" required>
+                <KeyRoundIcon className="inline-block h-4 w-4 mr-1" />
+                Claude API Key
+              </FieldLabel>
+              <SensitiveInput
+                id="claudeApiKey"
+                value={settings.claudeApiKey}
+                onChange={(e) => onSettingsChange({ claudeApiKey: e.target.value })}
+                onBlur={(e) => validateApiKey(e.target.value, "claude")}
+                placeholder="sk-ant-..."
+                show={showClaudeKey}
+                onToggleShow={() => setShowClaudeKey(!showClaudeKey)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PPT Generation Mode */}
+      <div className="grid gap-2">
+        <FieldLabel htmlFor="pptGenerationMode">
+          PPT 生成模式
+          <HoverHint text="精准模式保留最多细节，快速模式平衡质量与速度，极速模式最快" />
+        </FieldLabel>
+        <Select
+          id="pptGenerationMode"
+          value={settings.pptGenerationMode}
+          onChange={(e) =>
+            onSettingsChange({
+              pptGenerationMode: e.target.value as Settings["pptGenerationMode"],
+            })
+          }
+          options={PPT_MODE_OPTIONS}
+        />
+      </div>
+
       {/* Layout Assist */}
       <div className="space-y-3 rounded-lg border p-4">
         <div className="flex items-center space-x-2">
