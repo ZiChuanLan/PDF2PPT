@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from ....models.error import AppException, ErrorCode
+from app.models.error import AppException, ErrorCode
 
 from .bbox_utils import _coerce_bbox_pt, _ensure_parent_dir
 

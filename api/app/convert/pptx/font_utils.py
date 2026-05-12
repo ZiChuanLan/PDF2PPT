@@ -25,11 +25,11 @@ from ._font_fit_ocr import (  # noqa: F401
 from ._font_measure import (  # noqa: F401
     _MEASURE_FONT_CACHE,  # noqa: F401
     _char_width_factor,  # noqa: F401
-    _measure_text_lines,  # noqa: F401
     _measure_text_width_pt,  # noqa: F401
     _try_load_measure_font,  # noqa: F401
 )
 from ._font_wrap import (  # noqa: F401
+    _measure_text_lines,  # noqa: F401
     _token_width_pt,  # noqa: F401
     _tokenize_for_wrap,  # noqa: F401
     _wrap_paragraph_to_lines,  # noqa: F401
