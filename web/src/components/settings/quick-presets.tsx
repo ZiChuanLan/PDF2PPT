@@ -50,10 +50,41 @@ const PRESETS: PresetConfig[] = [
 
 type QuickPresetsProps = {
   onApplyPreset: (config: Partial<Settings>) => void
+  /** Render as compact horizontal button group (no card, no collapse) */
+  compact?: boolean
 }
 
-export function QuickPresets({ onApplyPreset }: QuickPresetsProps) {
+export function QuickPresets({ onApplyPreset, compact = false }: QuickPresetsProps) {
   const [isCollapsed, setIsCollapsed] = React.useState(false)
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-xs font-medium text-muted-foreground">
+          快速配置:
+        </span>
+        <div className="flex gap-1.5">
+          {PRESETS.map((preset) => (
+            <Button
+              key={preset.id}
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2.5 text-xs"
+              onClick={() => onApplyPreset(preset.config)}
+            >
+              {React.isValidElement(preset.icon)
+                ? React.cloneElement(
+                    preset.icon as React.ReactElement<{ className?: string }>,
+                    { className: "h-3.5 w-3.5" }
+                  )
+                : preset.icon}
+              {preset.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   if (isCollapsed) {
     return (

@@ -2,10 +2,11 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowLeftIcon } from "lucide-react"
+import { ArrowLeftIcon, FileTextIcon, ScanIcon, SlidersHorizontalIcon, WrenchIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useSettings } from "@/hooks/use-settings"
 
 import { QuickPresets } from "@/components/settings/quick-presets"
@@ -26,7 +27,7 @@ export default function SettingsPage() {
   } = useSettings()
 
   const [saving, setSaving] = React.useState(false)
-  const [showAdmin, setShowAdmin] = React.useState(false)
+  const [activeTab, setActiveTab] = React.useState("parse")
 
   const handleSettingsChange = React.useCallback(
     (updates: Partial<typeof settings>) => {
@@ -72,6 +73,7 @@ export default function SettingsPage() {
 
   return (
     <main className="container mx-auto max-w-5xl px-4 py-8">
+      {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
@@ -85,19 +87,10 @@ export default function SettingsPage() {
           </div>
           <h1 className="mt-2 text-2xl font-bold">设置</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            按照处理流程配置：文档解析 → 文字识别 → 输出质量
+            按照处理流程配置：解析 → 识别 → 输出 → 高级
           </p>
         </div>
         <div className="flex gap-2">
-          {!isPublicMode && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAdmin(!showAdmin)}
-            >
-              {showAdmin ? "隐藏管理员" : "管理员设置"}
-            </Button>
-          )}
           <Button variant="outline" size="sm" onClick={handleReset}>
             重置
           </Button>
@@ -107,54 +100,90 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {showAdmin && !isPublicMode && (
-        <div className="mb-6 rounded-lg border bg-muted/50 p-6">
-          <AdminSettings />
-        </div>
-      )}
+      {/* QuickPresets — compact row above tabs */}
+      <div className="mb-6">
+        <QuickPresets onApplyPreset={handleApplyPreset} compact />
+      </div>
 
-      <div className="space-y-8">
-        {/* Quick Presets */}
-        <div className="rounded-lg border bg-card p-6">
-          <QuickPresets onApplyPreset={handleApplyPreset} />
-        </div>
+      {/* Tab Layout */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-0 w-full justify-start rounded-b-none">
+          <TabsTrigger value="parse" className="gap-1.5">
+            <FileTextIcon className="h-4 w-4" />
+            解析
+          </TabsTrigger>
+          <TabsTrigger value="ocr" className="gap-1.5">
+            <ScanIcon className="h-4 w-4" />
+            识别
+          </TabsTrigger>
+          <TabsTrigger value="output" className="gap-1.5">
+            <SlidersHorizontalIcon className="h-4 w-4" />
+            输出
+          </TabsTrigger>
+          <TabsTrigger value="advanced" className="gap-1.5">
+            <WrenchIcon className="h-4 w-4" />
+            高级
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Main Flow Sections */}
-        <div className="space-y-6">
-          {/* 1. Parsing Method */}
-          <div className="rounded-lg border bg-card p-6">
+        {/* Content panels — all kept mounted (hidden) to preserve fold state across tab switches */}
+        <div className="rounded-b-lg border border-t-0 bg-card p-6">
+          <div
+            role="tabpanel"
+            id="tabpanel-parse"
+            className={activeTab !== "parse" ? "hidden" : ""}
+          >
             <ParsingMethodSection
               settings={settings}
               onSettingsChange={handleSettingsChange}
             />
           </div>
 
-          {/* 2. OCR Strategy */}
-          <div className="rounded-lg border bg-card p-6">
-            <OcrStrategySection
-              settings={settings}
-              onSettingsChange={handleSettingsChange}
-            />
+          <div
+            role="tabpanel"
+            id="tabpanel-ocr"
+            className={activeTab !== "ocr" ? "hidden" : ""}
+          >
+            {settings.parseEngineMode === "mineru_cloud" ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                MinerU 已内置 OCR 处理，无需额外配置
+              </div>
+            ) : (
+              <OcrStrategySection
+                settings={settings}
+                onSettingsChange={handleSettingsChange}
+              />
+            )}
           </div>
 
-          {/* 3. Output Quality */}
-          <div className="rounded-lg border bg-card p-6">
+          <div
+            role="tabpanel"
+            id="tabpanel-output"
+            className={activeTab !== "output" ? "hidden" : ""}
+          >
             <OutputQualitySection
               settings={settings}
               onSettingsChange={handleSettingsChange}
             />
           </div>
 
-          {/* General Advanced Settings */}
-          <div className="rounded-lg border bg-card p-6">
-            <GeneralAdvancedSection
-              settings={settings}
-              onSettingsChange={handleSettingsChange}
-            />
+          <div
+            role="tabpanel"
+            id="tabpanel-advanced"
+            className={activeTab !== "advanced" ? "hidden" : ""}
+          >
+            <div className="space-y-6">
+              <GeneralAdvancedSection
+                settings={settings}
+                onSettingsChange={handleSettingsChange}
+              />
+              {!isPublicMode && <AdminSettings />}
+            </div>
           </div>
         </div>
-      </div>
+      </Tabs>
 
+      {/* Bottom actions */}
       <div className="mt-8 flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={handleReset}>
           重置所有设置
