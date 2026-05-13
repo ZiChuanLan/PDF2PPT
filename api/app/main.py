@@ -142,6 +142,7 @@ async def request_id_middleware(request: Request, call_next):
                 "/api/v1/auth/login-password",
                 "/api/v1/auth/register",
                 "/api/v1/auth/auto-login",
+                "/api/v1/models",
             }
             csrf_exempt_prefixes = {"/api/v1/setup/"}
 
