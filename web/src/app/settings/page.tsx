@@ -6,7 +6,8 @@ import { ArrowLeftIcon, FileTextIcon, ScanIcon, SlidersHorizontalIcon, WrenchIco
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
 import { useSettings } from "@/hooks/use-settings"
 
 import { QuickPresets } from "@/components/settings/quick-presets"
@@ -107,27 +108,35 @@ export default function SettingsPage() {
 
       {/* Tab Layout */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-0 w-full justify-start rounded-b-none">
-          <TabsTrigger value="parse" className="gap-1.5">
-            <FileTextIcon className="h-4 w-4" />
-            解析
-          </TabsTrigger>
-          <TabsTrigger value="ocr" className="gap-1.5">
-            <ScanIcon className="h-4 w-4" />
-            识别
-          </TabsTrigger>
-          <TabsTrigger value="output" className="gap-1.5">
-            <SlidersHorizontalIcon className="h-4 w-4" />
-            输出
-          </TabsTrigger>
-          <TabsTrigger value="advanced" className="gap-1.5">
-            <WrenchIcon className="h-4 w-4" />
-            高级
-          </TabsTrigger>
-        </TabsList>
+        <nav className="flex border-b border-border" role="tablist">
+          {([
+            ["parse", "解析", FileTextIcon],
+            ["ocr", "识别", ScanIcon],
+            ["output", "输出", SlidersHorizontalIcon],
+            ["advanced", "高级", WrenchIcon],
+          ] as const).map(([val, label, Icon]) => (
+            <button
+              key={val}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === val}
+              aria-controls={`tabpanel-${val}`}
+              onClick={() => setActiveTab(val)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors",
+                activeTab === val
+                  ? "border-b-2 border-destructive text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </nav>
 
         {/* Content panels — all kept mounted (hidden) to preserve fold state across tab switches */}
-        <div className="rounded-b-lg border border-t-0 bg-card p-6">
+        <div className="border border-t-0 p-6">
           <div
             role="tabpanel"
             id="tabpanel-parse"
