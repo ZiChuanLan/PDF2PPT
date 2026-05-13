@@ -135,7 +135,7 @@ async def request_id_middleware(request: Request, call_next):
         # - /api/v1/auth/register (registration, no session yet)
         # - /api/v1/auth/auto-login (auto-login for self-use mode)
         # - /api/v1/setup/* (setup wizard, no session yet)
-        if request.method.upper() in {"POST", "PUT", "DELETE", "PATCH"}:
+        if settings.enable_csrf and request.method.upper() in {"POST", "PUT", "DELETE", "PATCH"}:
             csrf_exempt_paths = {
                 "/api/v1/auth/login",
                 "/api/v1/auth/callback",

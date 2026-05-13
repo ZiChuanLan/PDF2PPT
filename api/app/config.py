@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     # Enable the AI layout assist stage (disabled by default).
     enable_layout_assist: bool = False
 
+    # Enable CSRF token validation for state-changing requests.
+    # Disabled by default — session auth is sufficient for self-hosted setups.
+    enable_csrf: bool = False
+
     # -------------------------------------------------------------------
     # Font discovery
     # -------------------------------------------------------------------
