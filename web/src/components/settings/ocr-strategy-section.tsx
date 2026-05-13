@@ -92,7 +92,7 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
     setFetchingModels(true)
     setAvailableModels([])
     try {
-      const res = await apiFetch("/api/v1/models", {
+      const res = await apiFetch("/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
