@@ -829,3 +829,23 @@ export function applyParseEngineMode(
     ocrProvider: getPreferredLocalOcrProvider(settings),
   }
 }
+
+/**
+ * Map a parse engine mode to the recommended OCR provider.
+ *
+ * Centralizes the mapping that was previously duplicated across
+ * upload-stage, quick-config-panel, and settings.
+ */
+export function resolveParseEngineOcrProvider(mode: ParseEngineMode): OcrProvider {
+  switch (mode) {
+    case "remote_ocr":
+      return "aiocr"
+    case "baidu_doc":
+      return "baidu"
+    case "mineru_cloud":
+      return "auto"
+    case "local_ocr":
+    default:
+      return "machine"
+  }
+}

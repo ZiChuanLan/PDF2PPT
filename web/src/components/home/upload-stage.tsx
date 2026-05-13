@@ -13,6 +13,7 @@ import {
   type ParseEngineMode,
   type Settings,
 } from "@/lib/settings"
+import { resolveParseEngineOcrProvider } from "@/lib/run-config"
 import { Select } from "@/components/ui/select"
 import { PresetPicker } from "@/components/preset-picker"
 
@@ -100,11 +101,7 @@ export function UploadStage({
                 updateSettingsSnapshot((prev) => ({
                   ...prev,
                   parseEngineMode: mode,
-                  ocrProvider:
-                    mode === "remote_ocr" ? "aiocr"
-                    : mode === "baidu_doc" ? "baidu"
-                    : mode === "mineru_cloud" ? "auto"
-                    : "machine",
+                  ocrProvider: resolveParseEngineOcrProvider(mode),
                 }))
               }}
               className="h-7 w-28 py-1 text-xs"

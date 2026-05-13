@@ -96,6 +96,36 @@ Never mix uncontrolled and controlled input patterns:
 const [value, setValue] = React.useState("")
 ```
 
+### 7. All-Mounted Hidden Tab Panels
+
+**Never** mount all tab panels simultaneously with CSS hiding. This causes all hooks
+(API fetches, polling, model downloads) to run on page load regardless of which tab is active:
+
+```tsx
+// ❌ FORBIDDEN — all 4 panels mount on load, all hooks fire, all API calls happen
+<div role="tabpanel" className={activeTab !== "parse" ? "hidden" : ""}>
+  <ExpensiveComponent />
+</div>
+<div role="tabpanel" className={activeTab !== "ocr" ? "hidden" : ""}>
+  <ExpensiveComponent />
+</div>
+
+// ✅ REQUIRED: Conditional rendering — only active tab mounts
+{activeTab === "parse" && (
+  <div role="tabpanel"><ExpensiveComponent /></div>
+)}
+{activeTab === "ocr" && (
+  <div role="tabpanel"><ExpensiveComponent /></div>
+)}
+```
+
+**Why**: CSS `hidden` does not unmount components. Hooks with side effects (API calls,
+polling intervals, WebSocket connections) run regardless. Conditional rendering
+(`{condition && <Component/>}`) unmounts inactive tabs, preventing unnecessary
+network requests and background work.
+
+**Trade-off accepted**: Fold/collapse state within tabs is lost on tab switch.
+
 ---
 
 ## Required Patterns

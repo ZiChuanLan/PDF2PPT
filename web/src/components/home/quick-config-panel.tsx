@@ -20,6 +20,7 @@ import {
   type Settings,
 } from "@/lib/settings"
 import type { ModelStatusResponse } from "@/hooks/use-model-status"
+import { resolveParseEngineOcrProvider } from "@/lib/run-config"
 
 interface QuickConfigPanelProps {
   settingsSnapshot: Settings
@@ -75,13 +76,11 @@ export function QuickConfigPanel({
               value={settingsSnapshot.parseEngineMode}
               onChange={(e) => {
                 const mode = e.target.value as ParseEngineMode
+                const ocrProvider = resolveParseEngineOcrProvider(mode)
                 updateSettingsSnapshot((prev) => ({
                   ...prev,
                   parseEngineMode: mode,
-                  ...(mode === "remote_ocr" ? { ocrProvider: "aiocr" as const }
-                    : mode === "baidu_doc" ? { ocrProvider: "baidu" as const }
-                    : mode === "mineru_cloud" ? { ocrProvider: "auto" as const }
-                    : {}),
+                  ocrProvider,
                 }))
               }}
               options={[

@@ -26,7 +26,7 @@ import {
 } from "@/components/settings/settings-shared"
 import { useModelDownload } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
-import { apiFetch } from "@/lib/api"
+import { fetchModels } from "@/lib/api"
 import { toast } from "sonner"
 
 const LOCAL_OCR_OPTIONS: Array<{ id: OcrProvider; label: string; description: string }> = [
@@ -85,26 +85,17 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
     setFetchingModels(true)
     setAvailableModels([])
     try {
-      const res = await apiFetch("/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: settings.ocrAiProvider,
-          api_key: settings.ocrAiApiKey,
-          base_url: settings.ocrAiBaseUrl || undefined,
-          capability: "vision",
-        }),
+      const models = await fetchModels({
+        provider: settings.ocrAiProvider,
+        apiKey: settings.ocrAiApiKey,
+        baseUrl: settings.ocrAiBaseUrl || undefined,
+        capability: "vision",
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error((body as { message?: string })?.message || `HTTP ${res.status}`)
-      }
-      const data = (await res.json()) as { models: string[] }
-      setAvailableModels(data.models || [])
-      if (data.models.length === 0) {
+      setAvailableModels(models)
+      if (models.length === 0) {
         toast.info("该 API 未返回可用模型")
       } else {
-        toast.success(`获取到 ${data.models.length} 个模型`)
+        toast.success(`获取到 ${models.length} 个模型`)
       }
     } catch (e) {
       console.error("Failed to fetch models:", e)

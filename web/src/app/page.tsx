@@ -6,9 +6,7 @@ import { toast } from "sonner"
 
 import { useDropzone } from "react-dropzone"
 
-import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
-import { downloadJobOutput } from "@/lib/download-utils"
+import { apiFetch, normalizeFetchError } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
 import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
@@ -19,31 +17,25 @@ import {
   type Settings,
 } from "@/lib/settings"
 import {
-  buildJobConfig,
-  validateRunConfig,
-} from "@/lib/run-config"
-import {
   getJobStageFlowIndex,
   normalizeJobListResponse,
   normalizeJobStatusResponse,
-  TERMINAL_JOB_STATUSES,
   type JobListItem,
   type JobListResponse,
-  type JobStatusValue,
 } from "@/lib/job-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useUploadSession } from "@/components/upload-session-provider"
 import { useModelStatus, useEffectiveModelStatus } from "@/hooks/use-model-status"
 import { useSSEJobTracking } from "@/hooks/use-sse-job-tracking"
-import type { FileJobState } from "@/lib/job-types"
+import { useJobTerminalToast } from "@/hooks/use-job-terminal-toast"
+import { useJobSubmission } from "@/hooks/use-job-submission"
 import { UploadStage } from "@/components/home/upload-stage"
 import { PreviewStage } from "@/components/home/preview-stage"
 import { ConvertingStage } from "@/components/home/converting-stage"
 import {
-  formatBytes,
-  toIntOrUndefined,
   clampPositiveInt,
+  toIntOrUndefined,
   isImageUploadFile,
   SUPPORTED_UPLOAD_ACCEPT,
 } from "@/lib/home-utils"
@@ -58,14 +50,11 @@ type JobStatusFetchError = Error & {
   errorCode?: string
 }
 
-const HOME_ACTIVE_JOB_STORAGE_KEY = "ppt-opencode:home:active-job-id"
-
 export default function Home() {
-  const { user, isLoading: isAuthLoading } = useAuth()
+  const { user } = useAuth()
   const [settingsSnapshot, setSettingsSnapshot] = React.useState<Settings>(defaultSettings)
   const {
     files: uploadFiles,
-    file,
     fileCount,
     pageStartInput,
     setPageStartInput,
@@ -76,9 +65,7 @@ export default function Home() {
     clearUpload,
   } = useUploadSession()
 
-  const [fileJobs, setFileJobs] = React.useState<FileJobState[]>([])
   const [queueSize, setQueueSize] = React.useState(0)
-  const [isJobIdHydrated, setIsJobIdHydrated] = React.useState(true)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [previewPageInput, setPreviewPageInput] = React.useState("1")
   const [previewPageCount, setPreviewPageCount] = React.useState(0)
@@ -100,14 +87,8 @@ export default function Home() {
   const [showHomeLog, setShowHomeLog] = React.useState(false)
 
   const [jobs, setJobs] = React.useState<JobListItem[]>([])
-  const lastTerminalToastRef = React.useRef<{
-    jobId: string | null
-    status: JobStatusValue | null
-  }>({
-    jobId: null,
-    status: null,
-  })
 
+  // Settings snapshot management
   const refreshSettingsSnapshot = React.useCallback(() => {
     setSettingsSnapshot(loadStoredSettings())
   }, [])
@@ -125,16 +106,14 @@ export default function Home() {
     []
   )
 
+  // Job fetching + polling
   const fetchJobs = React.useCallback(async (silent = true) => {
     try {
       const response = await apiFetch(`/jobs?limit=${HOME_JOB_LIMIT}`)
-      if (!response.ok) {
-        throw new Error("加载任务列表失败")
-      }
+      if (!response.ok) throw new Error("加载任务列表失败")
       const body = (await response.json().catch(() => null)) as JobListResponse | null
       const normalized = normalizeJobListResponse(body)
-      const rows = normalized.jobs
-      setJobs(rows)
+      setJobs(normalized.jobs)
       setQueueSize(normalized.queueSize)
     } catch (e) {
       console.error("Failed to fetch jobs:", e)
@@ -152,9 +131,7 @@ export default function Home() {
         body?.message || `查询任务状态失败（HTTP ${response.status}）`
       ) as JobStatusFetchError
       err.statusCode = response.status
-      if (typeof body?.code === "string") {
-        err.errorCode = body.code
-      }
+      if (typeof body?.code === "string") err.errorCode = body.code
       throw err
     }
     if (!body || typeof body !== "object") {
@@ -163,10 +140,9 @@ export default function Home() {
     return normalizeJobStatusResponse(body)
   }, [])
 
+  // Dropzone
   const onDrop = React.useCallback((accepted: File[]) => {
     if (accepted.length === 0) return
-
-    // Frontend file size check (100MB default, matches backend)
     const MAX_FILE_SIZE_MB = 100
     const oversized = accepted.filter((f) => f.size > MAX_FILE_SIZE_MB * 1024 * 1024)
     if (oversized.length > 0) {
@@ -174,7 +150,6 @@ export default function Home() {
       toast.error(`文件过大（超过 ${MAX_FILE_SIZE_MB}MB）: ${names}`)
       return
     }
-
     addFiles(accepted)
     setActionError(null)
     setPreviewPageInput("1")
@@ -189,12 +164,13 @@ export default function Home() {
     onDrop,
   })
 
+  // File preview
   const currentPreviewFile = uploadFiles[previewFileIndex]?.file ?? null
   const isImageInput = isImageUploadFile(currentPreviewFile)
 
+  // Model status
   const { data: backendModelStatus, isLoading: isModelStatusLoading, refetch: refetchModelStatus } = useModelStatus()
   const modelStatus = useEffectiveModelStatus(backendModelStatus, settingsSnapshot)
-  const [preflightWarning, setPreflightWarning] = React.useState<string | null>(null)
   const [preflightAcknowledged, setPreflightAcknowledged] = React.useState(false)
 
   const downloadedLayoutModels = React.useMemo(() => {
@@ -206,168 +182,37 @@ export default function Home() {
     )
   }, [modelStatus])
 
-  const handleConvertAll = React.useCallback(async () => {
-    if (fileCount === 0) return
-    if (!user) {
-      setActionError("请先登录后再创建任务")
-      return
-    }
-
-    setActionError(null)
-    setPreflightWarning(null)
-
-    const validation = validateRunConfig(settingsSnapshot)
-    if (!validation.ok) {
-      setActionError(validation.message || "配置校验失败")
-      return
-    }
-
-    // Pre-flight check: warn if required models aren't ready
-    if (modelStatus && !preflightAcknowledged) {
-      const mode = settingsSnapshot.parseEngineMode
-      const requiredProviders: Array<{ key: string; kind: "local" | "remote"; label: string }> = []
-      if (mode === "local_ocr") {
-        const ocrKey = settingsSnapshot.ocrProvider === "tesseract" ? "tesseract" : "paddleocr"
-        const ocrLabel = settingsSnapshot.ocrProvider === "tesseract" ? "Tesseract" : "PaddleOCR"
-        requiredProviders.push({ key: ocrKey, kind: "local", label: ocrLabel })
-      } else if (mode === "remote_ocr") {
-        requiredProviders.push({ key: "aiocr", kind: "remote", label: "AIOCR" })
-      } else if (mode === "baidu_doc") {
-        requiredProviders.push({ key: "baidu_doc", kind: "remote", label: "百度文档解析" })
-      } else if (mode === "mineru_cloud") {
-        requiredProviders.push({ key: "mineru", kind: "remote", label: "MinerU" })
-      }
-      const notReady = requiredProviders.filter((p) => {
-        const bucket = p.kind === "local" ? modelStatus.local : modelStatus.remote
-        const status = bucket[p.key]
-        return !status || !status.ready
-      })
-      if (notReady.length > 0) {
-        const names = notReady.map((p) => p.label).join("、")
-        setPreflightWarning(`${names} 未就绪，任务可能在运行时失败。是否继续？`)
-        return
-      }
-    }
-    setPreflightAcknowledged(false)
-
-    const effectiveUsePageRange = usePageRange && !isImageInput
-    const pageStart = effectiveUsePageRange ? toIntOrUndefined(pageStartInput) : undefined
-    const pageEnd = effectiveUsePageRange ? toIntOrUndefined(pageEndInput) : undefined
-    if (effectiveUsePageRange && ((pageStart && !pageEnd) || (!pageStart && pageEnd))) {
-      setActionError("页码范围请同时填写起始页和结束页")
-      return
-    }
-    if (effectiveUsePageRange && pageStart && pageEnd && pageStart > pageEnd) {
-      setActionError("页码范围错误：起始页不能大于结束页")
-      return
-    }
-
-    const initialJobs: FileJobState[] = uploadFiles.map((entry) => ({
-      file: entry.file,
-      jobId: null,
-      status: null,
-      error: null,
-      pollError: null,
-      isSubmitting: true,
-    }))
-    setFileJobs(initialJobs)
-
-    const jobConfig = buildJobConfig(settingsSnapshot, pageStart, pageEnd, {
-      retainProcessArtifacts,
-    })
-
-    let successCount = 0
-    let failCount = 0
-
-    const submitOne = async (entry: FileJobState, index: number) => {
-      try {
-        const formData = new FormData()
-        formData.append("file", entry.file)
-        formData.append("config", JSON.stringify(jobConfig))
-        const response = await apiFetch("/jobs/v2", {
-          method: "POST",
-          body: formData,
-        })
-        if (!response.ok) {
-          throw new Error(await readResponseErrorMessage(response, "创建任务失败"))
-        }
-        const body = (await response.json().catch(() => null)) as { job_id?: string } | null
-        const nextJobId = typeof body?.job_id === "string" ? body.job_id : ""
-        if (!nextJobId) {
-          throw new Error("创建任务失败：未返回任务号")
-        }
-        setFileJobs((prev) =>
-          prev.map((j, i) =>
-            i === index ? { ...j, jobId: nextJobId, isSubmitting: false } : j
-          )
-        )
-        successCount++
-      } catch (e) {
-        const msg = normalizeFetchError(e, "创建任务失败")
-        setFileJobs((prev) =>
-          prev.map((j, i) =>
-            i === index ? { ...j, error: msg, isSubmitting: false } : j
-          )
-        )
-        failCount++
-      }
-    }
-
-    await Promise.all(uploadFiles.map((_, i) => submitOne(initialJobs[i], i)))
-
-    if (successCount > 0) {
-      toast.success(`已提交 ${successCount} 个任务${failCount > 0 ? `，${failCount} 个失败` : ""}`)
-    } else if (failCount > 0) {
-      toast.error(`全部 ${failCount} 个任务提交失败`)
-    }
-
-    void fetchJobs(true)
-  }, [
+  // Job submission hook (extracted from inline handleConvertAll + related callbacks)
+  const {
+    fileJobs,
+    setFileJobs,
+    submitAllJobs,
+    handleCancelJob,
+    handleDownload,
+    handleDownloadAll,
+    hasActiveJobs,
+    allCompleted,
+    completedCount,
+    failedCount,
+    preflightWarning,
+  } = useJobSubmission({
+    uploadFiles: uploadFiles.map((entry) => ({ file: entry.file })),
     fileCount,
     user,
     settingsSnapshot,
+    modelStatus,
+    preflightAcknowledged,
+    setPreflightAcknowledged,
     usePageRange,
     isImageInput,
     pageStartInput,
     pageEndInput,
     retainProcessArtifacts,
-    uploadFiles,
     fetchJobs,
-    modelStatus,
-    preflightAcknowledged,
-  ])
+  })
 
-  const handleCancelJob = React.useCallback(async (targetJobId: string) => {
-    try {
-      await apiFetch(`/jobs/${targetJobId}/cancel`, { method: "POST" })
-      toast("已发送取消请求")
-      void fetchJobs(true)
-    } catch (e) {
-      console.error("Failed to cancel job:", e)
-      toast.error("取消请求失败")
-    }
-  }, [fetchJobs])
-
-  const handleDownload = React.useCallback(async (targetJobId: string) => {
-    try {
-      await downloadJobOutput(targetJobId)
-    } catch (e) {
-      toast.error(normalizeFetchError(e, "下载失败"))
-    }
-  }, [])
-
-  const handleDownloadAll = React.useCallback(async () => {
-    const completedJobs = fileJobs.filter((j) => j.status?.status === "completed" && j.jobId)
-    if (completedJobs.length === 0) return
-    const results = await Promise.allSettled(
-      completedJobs.map((job) => handleDownload(job.jobId!))
-    )
-    results.forEach((result, i) => {
-      if (result.status === "rejected") {
-        toast.error(`${completedJobs[i].file.name}: ${normalizeFetchError(result.reason, "下载失败")}`)
-      }
-    })
-  }, [fileJobs, handleDownload])
+  // Terminal toast notifications (extracted from inline useEffect)
+  useJobTerminalToast(fileJobs)
 
   const handleResetAll = React.useCallback(() => {
     clearUpload()
@@ -380,38 +225,9 @@ export default function Home() {
     setUsePageRange(false)
     setPageStartInput("")
     setPageEndInput("")
-  }, [clearUpload, setPageEndInput, setPageStartInput])
+  }, [clearUpload, setFileJobs, setPageStartInput, setPageEndInput])
 
-  const hasActiveJobs = fileJobs.some(
-    (j) => j.isSubmitting || (j.jobId && j.status && !TERMINAL_JOB_STATUSES.has(j.status.status))
-  )
-  const allCompleted = fileJobs.length > 0 && fileJobs.every(
-    (j) => j.status?.status === "completed" || j.error
-  )
-  const completedCount = fileJobs.filter((j) => j.status?.status === "completed").length
-  const failedCount = fileJobs.filter((j) => j.error || j.status?.status === "failed").length
-
-  // SSE: subscribe to active job events
-  useSSEJobTracking(fileJobs, setFileJobs, fetchJobStatus);
-
-  // Toast on terminal states
-  React.useEffect(() => {
-    const newlyCompleted = fileJobs.filter(
-      (j) => j.status?.status === "completed" && j.jobId
-    )
-    if (newlyCompleted.length > 0 && newlyCompleted.length === completedCount && completedCount > 0) {
-      const key = newlyCompleted.map((j) => j.jobId).join(",")
-      if (lastTerminalToastRef.current.jobId !== key) {
-        lastTerminalToastRef.current = { jobId: key, status: "completed" }
-        if (newlyCompleted.length === fileJobs.length) {
-          toast.success("全部转换完成！")
-        } else {
-          toast.success(`${newlyCompleted.length} 个文件转换完成`)
-        }
-      }
-    }
-  }, [fileJobs, completedCount])
-
+  // Job polling + initial setup
   React.useEffect(() => {
     refreshSettingsSnapshot()
     void fetchJobs(false)
@@ -432,12 +248,17 @@ export default function Home() {
     }
   }, [fetchJobs, refreshSettingsSnapshot])
 
+  // SSE: subscribe to active job events
+  useSSEJobTracking(fileJobs, setFileJobs, fetchJobStatus)
+
+  // Derived UI state
   const overallProgress = fileJobs.length > 0
     ? Math.round(fileJobs.reduce((sum, j) => sum + (j.status?.progress || 0), 0) / fileJobs.length)
     : 0
   const inFlightJobs = jobs.filter((row) => row.status === "pending" || row.status === "processing").length
   const canStart = fileCount > 0 && !hasActiveJobs && Boolean(user)
 
+  // File preview URL
   const [filePreviewUrl, setFilePreviewUrl] = React.useState("")
   React.useEffect(() => {
     if (!currentPreviewFile) {
@@ -571,7 +392,7 @@ export default function Home() {
               retainProcessArtifacts={retainProcessArtifacts}
               setRetainProcessArtifacts={setRetainProcessArtifacts}
               handleResetAll={handleResetAll}
-              handleConvertAll={handleConvertAll}
+              handleConvertAll={submitAllJobs}
               canStart={canStart}
               actionError={actionError}
               preflightWarning={preflightWarning}

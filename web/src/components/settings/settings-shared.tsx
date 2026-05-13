@@ -65,14 +65,16 @@ export function AdvancedReveal({
   )
 }
 
-export function PromptTextarea(props: React.ComponentProps<"textarea">) {
+export const PromptTextarea = React.memo(function PromptTextarea(
+  props: React.ComponentProps<"textarea">
+) {
   return (
     <textarea
       {...props}
       className="min-h-[148px] w-full resize-y border border-input bg-transparent px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:bg-[#f0f0f0] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
     />
   )
-}
+})
 
 export function CollapsibleSection({
   title,
@@ -125,7 +127,7 @@ export function CollapsibleSection({
   )
 }
 
-export function SensitiveInput({
+export const SensitiveInput = React.memo(function SensitiveInput({
   id,
   value,
   onChange,
@@ -174,9 +176,9 @@ export function SensitiveInput({
       </Button>
     </div>
   )
-}
+})
 
-export function NumberInputField({
+export const NumberInputField = React.memo(function NumberInputField({
   id,
   label,
   hint,
@@ -191,6 +193,41 @@ export function NumberInputField({
   onChange: (v: number) => void
   step?: string
 }) {
+  const [textValue, setTextValue] = React.useState(String(value))
+  const [isInvalid, setIsInvalid] = React.useState(false)
+
+  // Sync external value → internal text
+  React.useEffect(() => {
+    setTextValue(String(value))
+    setIsInvalid(false)
+  }, [value])
+
+  const handleChange = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = e.target.value
+      setTextValue(raw)
+      const v = Number(raw)
+      if (raw.trim() === "") {
+        setIsInvalid(false)
+        onChange(0)
+      } else if (Number.isFinite(v)) {
+        setIsInvalid(false)
+        onChange(v)
+      } else {
+        setIsInvalid(true)
+      }
+    },
+    [onChange]
+  )
+
+  const handleBlur = React.useCallback(() => {
+    // On blur, reset to current value if invalid
+    if (isInvalid) {
+      setTextValue(String(value))
+      setIsInvalid(false)
+    }
+  }, [isInvalid, value])
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
@@ -201,18 +238,20 @@ export function NumberInputField({
       </div>
       <Input
         id={id}
-        type="number"
-        value={value}
+        type="text"
+        inputMode="numeric"
+        value={textValue}
         step={step ?? "1"}
-        onChange={(e) => {
-          const v = Number(e.target.value)
-          if (Number.isFinite(v)) onChange(v)
-        }}
-        className="h-8 text-xs"
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className={cn("h-8 text-xs", isInvalid && "border-destructive")}
       />
+      {isInvalid && (
+        <span className="text-[11px] text-destructive">请输入有效数字</span>
+      )}
     </div>
   )
-}
+})
 
 // Backward-compatible alias
 export const FieldBlock = NumberInputField

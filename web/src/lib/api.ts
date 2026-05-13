@@ -341,6 +341,39 @@ export async function readResponseErrorMessage(
   return `${fallback}（${statusSuffix}）`
 }
 
+/** Parameters for fetching available models from a provider. */
+export type FetchModelsParams = {
+  provider: string
+  apiKey: string
+  baseUrl?: string
+  capability?: string
+}
+
+/**
+ * Fetch available models from an AI provider.
+ *
+ * Shared by OCR strategy and output quality sections to avoid duplicate
+ * POST /models logic.
+ */
+export async function fetchModels(params: FetchModelsParams): Promise<string[]> {
+  const res = await apiFetch("/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: params.provider,
+      api_key: params.apiKey,
+      base_url: params.baseUrl || undefined,
+      capability: params.capability || "vision",
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error((body as { message?: string })?.message || `HTTP ${res.status}`)
+  }
+  const data = (await res.json()) as { models: string[] }
+  return data.models || []
+}
+
 export function normalizeFetchError(error: unknown, fallback: string): string {
   if (error instanceof DOMException && error.name === "AbortError") {
     return "请求已取消"

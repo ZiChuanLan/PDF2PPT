@@ -60,10 +60,10 @@ function getProvidersForEngine(mode?: ParseEngineMode): ProviderDisplay[] {
 }
 
 // Downloadable local models.
-const DOWNLOADABLE_MODELS: Record<string, string> = {
-  ...Object.fromEntries(Object.keys(LAYOUT_MODELS).map((id) => [id, id])),
-  paddleocr: "paddleocr",
-}
+const DOWNLOADABLE_MODELS = new Set([
+  ...Object.keys(LAYOUT_MODELS),
+  "paddleocr",
+])
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -155,7 +155,7 @@ function ProviderRow({
   downloadState: DownloadStatusItem | null
   onStatusChange?: () => void
 }) {
-  const isDownloadable = display.kind === "local" && DOWNLOADABLE_MODELS[display.key]
+  const isDownloadable = display.kind === "local" && DOWNLOADABLE_MODELS.has(display.key)
   const needsConfig = display.kind === "remote" && provStatus && !provStatus.configured
   const layoutModelInfo = LAYOUT_MODELS[display.key]
   const isDownloading = downloadState?.status === "downloading"

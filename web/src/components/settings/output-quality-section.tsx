@@ -16,7 +16,7 @@ import {
   CollapsibleSection,
 } from "@/components/settings/settings-shared"
 import { toast } from "sonner"
-import { apiFetch } from "@/lib/api"
+import { fetchModels } from "@/lib/api"
 
 const PROVIDER_OPTIONS: Array<{ id: Provider; label: string }> = [
   { id: "openai", label: "OpenAI" },
@@ -69,26 +69,17 @@ export function OutputQualitySection({
     setFetchingOpenaiModels(true)
     setAvailableOpenaiModels([])
     try {
-      const res = await apiFetch("/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: "openai",
-          api_key: apiKey,
-          base_url: settings.openaiBaseUrl || undefined,
-          capability: "vision",
-        }),
+      const models = await fetchModels({
+        provider: "openai",
+        apiKey,
+        baseUrl: settings.openaiBaseUrl || undefined,
+        capability: "vision",
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error((body as { message?: string })?.message || `HTTP ${res.status}`)
-      }
-      const data = (await res.json()) as { models: string[] }
-      setAvailableOpenaiModels(data.models || [])
-      if (data.models.length === 0) {
+      setAvailableOpenaiModels(models)
+      if (models.length === 0) {
         toast.info("该 API 未返回可用模型")
       } else {
-        toast.success(`获取到 ${data.models.length} 个模型`)
+        toast.success(`获取到 ${models.length} 个模型`)
       }
     } catch (e) {
       console.error("Failed to fetch models:", e)

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { useSettings } from "@/hooks/use-settings"
+import { clearStoredApiOrigin } from "@/lib/api"
 
 import { QuickPresets } from "@/components/settings/quick-presets"
 import { ParsingMethodSection } from "@/components/settings/parsing-method-section"
@@ -17,22 +18,44 @@ import { OutputQualitySection } from "@/components/settings/output-quality-secti
 import { GeneralAdvancedSection } from "@/components/settings/general-advanced-section"
 import { AdminSettings } from "@/components/settings/admin-settings"
 
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return "刚刚"
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时前`
+  return `${Math.floor(seconds / 86400)} 天前`
+}
+
 export default function SettingsPage() {
   const {
     settings,
     setSettings,
     settingsHydrated,
     isPublicMode,
+    lastSavedAt,
     save: saveSettings,
     clear: clearSettings,
   } = useSettings()
 
   const [saving, setSaving] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState("parse")
+  const [isDirty, setIsDirty] = React.useState(false)
+
+  // beforeunload warning when there are unsaved changes
+  React.useEffect(() => {
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ""
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [isDirty])
 
   const handleSettingsChange = React.useCallback(
     (updates: Partial<typeof settings>) => {
       setSettings((prev) => ({ ...prev, ...updates }))
+      setIsDirty(true)
     },
     [setSettings]
   )
@@ -40,6 +63,7 @@ export default function SettingsPage() {
   const handleApplyPreset = React.useCallback(
     (presetConfig: Partial<typeof settings>) => {
       setSettings((prev) => ({ ...prev, ...presetConfig }))
+      setIsDirty(true)
       toast.success("已应用预设配置")
     },
     [setSettings]
@@ -49,6 +73,7 @@ export default function SettingsPage() {
     setSaving(true)
     try {
       await saveSettings()
+      setIsDirty(false)
       toast.success("设置已保存")
     } catch (error) {
       toast.error("保存失败：" + String(error))
@@ -60,6 +85,8 @@ export default function SettingsPage() {
   const handleReset = React.useCallback(() => {
     if (confirm("确定要重置所有设置吗？此操作不可撤销。")) {
       clearSettings()
+      clearStoredApiOrigin()
+      setIsDirty(false)
       toast.success("设置已重置")
     }
   }, [clearSettings])
@@ -92,11 +119,22 @@ export default function SettingsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {lastSavedAt != null && !isDirty && (
+            <span className="self-center text-xs text-muted-foreground">
+              已保存 {formatTimeAgo(lastSavedAt)}
+            </span>
+          )}
+          {isDirty && (
+            <span className="self-center inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-600">
+              <span className="inline-block size-1.5 rounded-full bg-amber-500" />
+              未保存
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={handleReset}>
             重置
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? "保存中..." : "保存设置"}
+            {saving ? "保存中..." : isDirty ? "保存设置 *" : "保存设置"}
           </Button>
         </div>
       </div>
@@ -135,60 +173,52 @@ export default function SettingsPage() {
           ))}
         </nav>
 
-        {/* Content panels — all kept mounted (hidden) to preserve fold state across tab switches */}
+        {/* Content panels — conditionally rendered to avoid mount-side-effects on inactive tabs */}
         <div className="border border-t-0 p-6">
-          <div
-            role="tabpanel"
-            id="tabpanel-parse"
-            className={activeTab !== "parse" ? "hidden" : ""}
-          >
-            <ParsingMethodSection
-              settings={settings}
-              onSettingsChange={handleSettingsChange}
-            />
-          </div>
-
-          <div
-            role="tabpanel"
-            id="tabpanel-ocr"
-            className={activeTab !== "ocr" ? "hidden" : ""}
-          >
-            {settings.parseEngineMode === "mineru_cloud" ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">
-                MinerU 已内置 OCR 处理，无需额外配置
-              </div>
-            ) : (
-              <OcrStrategySection
+          {activeTab === "parse" && (
+            <div role="tabpanel" id="tabpanel-parse">
+              <ParsingMethodSection
                 settings={settings}
                 onSettingsChange={handleSettingsChange}
               />
-            )}
-          </div>
-
-          <div
-            role="tabpanel"
-            id="tabpanel-output"
-            className={activeTab !== "output" ? "hidden" : ""}
-          >
-            <OutputQualitySection
-              settings={settings}
-              onSettingsChange={handleSettingsChange}
-            />
-          </div>
-
-          <div
-            role="tabpanel"
-            id="tabpanel-advanced"
-            className={activeTab !== "advanced" ? "hidden" : ""}
-          >
-            <div className="space-y-6">
-              <GeneralAdvancedSection
-                settings={settings}
-                onSettingsChange={handleSettingsChange}
-              />
-              {!isPublicMode && <AdminSettings />}
             </div>
-          </div>
+          )}
+
+          {activeTab === "ocr" && (
+            <div role="tabpanel" id="tabpanel-ocr">
+              {settings.parseEngineMode === "mineru_cloud" ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  MinerU 已内置 OCR 处理，无需额外配置
+                </div>
+              ) : (
+                <OcrStrategySection
+                  settings={settings}
+                  onSettingsChange={handleSettingsChange}
+                />
+              )}
+            </div>
+          )}
+
+          {activeTab === "output" && (
+            <div role="tabpanel" id="tabpanel-output">
+              <OutputQualitySection
+                settings={settings}
+                onSettingsChange={handleSettingsChange}
+              />
+            </div>
+          )}
+
+          {activeTab === "advanced" && (
+            <div role="tabpanel" id="tabpanel-advanced">
+              <div className="space-y-6">
+                <GeneralAdvancedSection
+                  settings={settings}
+                  onSettingsChange={handleSettingsChange}
+                />
+                {!isPublicMode && <AdminSettings />}
+              </div>
+            </div>
+          )}
         </div>
       </Tabs>
 
@@ -198,7 +228,7 @@ export default function SettingsPage() {
           重置所有设置
         </Button>
         <Button size="sm" onClick={handleSave} disabled={saving}>
-          {saving ? "保存中..." : "保存设置"}
+          {saving ? "保存中..." : isDirty ? "保存设置 *" : "保存设置"}
         </Button>
       </div>
     </main>

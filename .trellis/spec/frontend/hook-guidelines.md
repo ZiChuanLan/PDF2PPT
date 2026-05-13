@@ -79,12 +79,77 @@ export function useExample(options: UseExampleOptions = {}): UseExampleReturn {
 
 ---
 
+## Singleton Pattern for Shared Hooks
+
+When a hook is consumed by **multiple components simultaneously**, use a **module-level singleton**
+to share a single polling timer / download state / WebSocket connection across all consumers.
+
+### When to Use
+
+- Hook is called from 2+ components that may mount at the same time
+- The hook manages a global resource (polling interval, EventSource, download tracker)
+- Without singletons: duplicate intervals, duplicate API calls, wasted resources
+
+### Pattern
+
+```tsx
+// hooks/use-example-singleton.ts
+import * as React from "react"
+
+// Module-level shared state — only ONE instance across the app
+type SharedState = { data: Map<string, unknown>; pollTimer: ReturnType<typeof setInterval> | null }
+const shared: SharedState = { data: new Map(), pollTimer: null }
+const listeners = new Set<() => void>()
+
+function notifyAll() { listeners.forEach((fn) => fn()) }
+
+export function useExampleSingleton() {
+  const [, forceUpdate] = React.useReducer((x) => x + 1, 0)
+
+  // Subscribe component to global state changes
+  React.useEffect(() => {
+    const listener = () => forceUpdate()
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
+  }, [])
+
+  // Only ONE poller starts, regardless of how many components call this hook
+  React.useEffect(() => {
+    if (shared.pollTimer) return  // Already polling — skip
+    shared.pollTimer = setInterval(async () => {
+      // ... fetch data, update shared.data, call notifyAll()
+    }, 2000)
+    return () => {
+      if (shared.pollTimer) { clearInterval(shared.pollTimer); shared.pollTimer = null }
+    }
+  }, [])
+
+  return { data: shared.data /* ... */ }
+}
+```
+
+### Key Rules
+
+1. **Module-level refs** (`const shared = ...`) survive component mount/unmount cycles
+2. **Listener pattern** (`Set<() => void>`) lets all components re-render when global state changes
+3. **Guard clause** (`if (shared.pollTimer) return`) prevents duplicate polling start
+4. **Cleanup is deferred** — only clear when the LAST consumer unmounts (or use a ref count)
+
+### Concrete Example: `useModelDownload`
+
+See `web/src/hooks/use-model-download.ts` for the canonical implementation. It uses:
+- `globalDownloads: Map<string, DownloadState>` — shared download state
+- `globalPollTimer: ReturnType<typeof setInterval> | null` — single polling interval
+- `listeners: Set<() => void>` — subscriber notification
+
+---
+
 ## Data Fetching
 
 ### Primary Patterns
 
 1. **apiFetch wrapper**: All HTTP requests go through `apiFetch()` from `@/lib/api`. Never use raw `fetch()`.
-2. **Polling with `setInterval`**: For periodic data refresh (job lists, model status)
+2. **Polling with `setInterval`**: For periodic data refresh (job lists, model status) — use **singleton pattern** if consumed by multiple components
 3. **SSE streaming**: For real-time job progress (`useSSEJobTracking`)
 
 ### Example: Polling Pattern

@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import Image, { type ImageLoader } from "next/image"
 import { useRouter } from "next/navigation"
 import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
@@ -42,6 +41,10 @@ import {
 } from "@/components/ui/card"
 import Link from "next/link"
 
+import { JobDetailCard } from "@/components/tracking/job-detail-card"
+import { ArtifactFramesView } from "@/components/tracking/artifact-frames-view"
+import { CompareSlider } from "@/components/tracking/compare-slider"
+
 type JobArtifactImage = {
   page_index: number
   path: string
@@ -71,8 +74,6 @@ const jobStatusFilterOptions: Array<{ value: "all" | JobStatusValue; label: stri
   { value: "cancelled", label: "已取消" },
 ]
 
-const passthroughImageLoader: ImageLoader = ({ src }) => src
-
 function formatDateTime(iso: string) {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
@@ -91,31 +92,6 @@ function getStatusBadgeClass(status: JobStatusValue) {
   if (status === "failed") return "status-badge status-badge-error"
   if (status === "cancelled") return "status-badge status-badge-neutral"
   return "status-badge status-badge-warning"
-}
-
-function TrackingArtifactImage({
-  src,
-  alt,
-  className,
-  priority = false,
-}: {
-  src: string
-  alt: string
-  className?: string
-  priority?: boolean
-}) {
-  return (
-    <Image
-      loader={passthroughImageLoader}
-      unoptimized
-      src={src}
-      alt={alt}
-      fill
-      priority={priority}
-      sizes="(min-width: 1280px) 720px, (min-width: 1024px) 50vw, 100vw"
-      className={className}
-    />
-  )
 }
 
 function TrackingPageContent() {
@@ -403,28 +379,7 @@ function TrackingPageContent() {
     []
   )
 
-  const updateCompareSplitRatio = React.useCallback((clientX: number, rect: DOMRect) => {
-    if (rect.width <= 0) return
-    const ratio = (clientX - rect.left) / rect.width
-    setCompareSplitRatio(Math.max(0, Math.min(1, ratio)))
-  }, [])
-
-  const handleComparePointerMove = React.useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      updateCompareSplitRatio(event.clientX, event.currentTarget.getBoundingClientRect())
-    },
-    [updateCompareSplitRatio]
-  )
-
-  const handleCompareTouchMove = React.useCallback(
-    (event: React.TouchEvent<HTMLDivElement>) => {
-      const touch = event.touches[0]
-      if (!touch) return
-      updateCompareSplitRatio(touch.clientX, event.currentTarget.getBoundingClientRect())
-    },
-    [updateCompareSplitRatio]
-  )
-
+  // --- Derived values ---
   const trackedPages = trackedArtifacts?.available_pages || []
   const sourcePdfAbsoluteUrl = trackedArtifacts?.source_pdf_url
     ? `${apiOrigin}${trackedArtifacts.source_pdf_url}`
@@ -432,6 +387,9 @@ function TrackingPageContent() {
   const activeTrackedPage = resolveActiveArtifactPage(trackedPages, trackedArtifactsPage)
   const activeTrackedPageIndex = getArtifactPageIndex(trackedPages, activeTrackedPage)
   const activeTrackedPageLabel = formatArtifactPageLabel(activeTrackedPage)
+  const hasTrackedVisualArtifacts = trackedPages.length > 0
+
+  // Derived for compare view
   const trackedOriginal = findArtifactByPage(trackedArtifacts?.original_images, activeTrackedPage)
   const trackedClean = findArtifactByPage(trackedArtifacts?.cleaned_images, activeTrackedPage)
   const trackedFinalPreview = findArtifactByPage(
@@ -451,13 +409,10 @@ function TrackingPageContent() {
     activeTrackedPage
   )
   const trackedBeforeOverlay = trackedLayoutBefore || trackedOcrOverlay
-  const trackedAfterOverlay = trackedFinalPreview || trackedLayoutAfter || trackedClean || null
   const trackedCompareBefore = trackedOriginal || trackedLayoutBefore || null
   const trackedCompareAfter =
     trackedFinalPreview || trackedClean || trackedLayoutAfter || trackedOriginal || null
   const trackedCompareBase = trackedCompareBefore || trackedCompareAfter
-  const compareSplitPercent = Math.round(compareSplitRatio * 100)
-  const hasTrackedVisualArtifacts = trackedPages.length > 0
 
   return (
     <div className="min-h-dvh bg-background">
@@ -497,6 +452,7 @@ function TrackingPageContent() {
         </header>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[23rem_minmax(0,1fr)]">
+          {/* Job list panel */}
           <Card className="editorial-panel page-enter page-enter-delay-1 py-0">
             <CardHeader className="border-b border-border pt-5 md:pt-6">
               <div className="flex items-center justify-between gap-2">
@@ -634,6 +590,7 @@ function TrackingPageContent() {
             </CardContent>
           </Card>
 
+          {/* Result preview panel */}
           <Card className="editorial-panel page-enter page-enter-delay-2 py-0">
             <CardHeader className="border-b border-border pt-5 md:pt-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -665,36 +622,7 @@ function TrackingPageContent() {
                   </Button>
                 </div>
               ) : null}
-              {trackedJobDetail ? (
-                <div className="mt-3 grid gap-1 border border-border bg-muted/40 px-3 py-2">
-                  <div className="text-xs text-muted-foreground">
-                    {JOB_STAGE_LABELS[trackedJobDetail.stage] || trackedJobDetail.stage} ·{" "}
-                    {trackedJobDetail.progress}%
-                  </div>
-                  {(trackedJobDetail.status === "failed" &&
-                    typeof trackedJobDetail.error?.message === "string" &&
-                    trackedJobDetail.error.message.trim()) ||
-                  (trackedJobDetail.message && trackedJobDetail.message.trim()) ? (
-                    <div className="text-xs text-muted-foreground">
-                      {(trackedJobDetail.status === "failed" &&
-                        typeof trackedJobDetail.error?.message === "string" &&
-                        trackedJobDetail.error.message.trim()) ||
-                        trackedJobDetail.message}
-                    </div>
-                  ) : null}
-                  {trackedJobDetail.queue_state === "queued" &&
-                  typeof trackedJobDetail.queue_position === "number" ? (
-                    <div className="font-mono text-[11px] text-muted-foreground">
-                      排队位置：第 {trackedJobDetail.queue_position} 位
-                    </div>
-                  ) : trackedJobDetail.queue_state ? (
-                    <div className="font-mono text-[11px] text-muted-foreground">
-                      队列状态：
-                      {QUEUE_STATE_LABELS[trackedJobDetail.queue_state] || trackedJobDetail.queue_state}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+              <JobDetailCard detail={trackedJobDetail} />
             </CardHeader>
             <CardContent className="grid gap-4 py-5">
               {trackedJobId ? (
@@ -743,6 +671,7 @@ function TrackingPageContent() {
 
               {trackedArtifacts?.job_id ? (
                 <>
+                  {/* Page navigation — shared between frames and compare views */}
                   {trackedPages.length || sourcePdfAbsoluteUrl ? (
                     <div className="flex flex-wrap items-center gap-2">
                       {trackedPages.length ? (
@@ -831,178 +760,36 @@ function TrackingPageContent() {
                     </div>
                   ) : null}
 
-                  {hasTrackedVisualArtifacts && trackingMenu === "frames" ? (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="grid gap-2">
-                        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                          原始 PDF（悬停显示识别框）
-                        </div>
-                        <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
-                          {trackedOriginal ? (
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedOriginal.url}`}
-                              alt={`原始第 ${activeTrackedPageLabel} 页`}
-                              className="object-contain"
-                              priority
-                            />
-                          ) : (
-                            <div className="grid h-52 place-items-center text-xs text-white/80">
-                              暂无原始页图
-                            </div>
-                          )}
-                          {trackedBeforeOverlay ? (
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedBeforeOverlay.url}`}
-                              alt={`第 ${activeTrackedPageLabel} 页识别框`}
-                              className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                            />
-                          ) : null}
-                        </div>
-                      </div>
+                  {/* Frames view */}
+                  {trackingMenu === "frames" && (
+                    <ArtifactFramesView
+                      apiOrigin={apiOrigin}
+                      activeTrackedPageLabel={activeTrackedPageLabel}
+                      findArtifactByPage={findArtifactByPage}
+                      trackedArtifacts={trackedArtifacts}
+                      activeTrackedPage={activeTrackedPage}
+                    />
+                  )}
 
-                      <div className="grid gap-2">
-                        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                          转换完成图（悬停显示后处理框）
-                        </div>
-                        <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
-                          {trackedAfterOverlay ? (
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedAfterOverlay.url}`}
-                              alt={`第 ${activeTrackedPageLabel} 页转换对比`}
-                              className="object-contain"
-                              priority
-                            />
-                          ) : trackedOriginal ? (
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedOriginal.url}`}
-                              alt={`第 ${activeTrackedPageLabel} 页原图`}
-                              className="object-contain"
-                              priority
-                            />
-                          ) : (
-                            <div className="grid h-52 place-items-center text-xs text-white/80">
-                              暂无转换对比图
-                            </div>
-                          )}
-                          {trackedLayoutAfter ? (
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedLayoutAfter.url}`}
-                              alt={`第 ${activeTrackedPageLabel} 页后处理框`}
-                              className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {hasTrackedVisualArtifacts && trackingMenu === "compare" ? (
-                    <div className="grid gap-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                          悬停对比（左：转换前 · 右：转换后）
-                        </div>
-                        <Badge variant="outline">分割线 {compareSplitPercent}%</Badge>
-                      </div>
-                      <div
-                        className="panel-contrast-strong tracking-stage group relative min-h-[24rem] overflow-hidden border sm:min-h-[30rem]"
-                        onMouseMove={handleComparePointerMove}
-                        onTouchStart={handleCompareTouchMove}
-                        onTouchMove={handleCompareTouchMove}
-                      >
-                        {trackedCompareBase ? (
-                          <TrackingArtifactImage
-                            src={`${apiOrigin}${trackedCompareBase.url}`}
-                            alt={`第 ${activeTrackedPageLabel} 页对比底图`}
-                            className="object-contain"
-                            priority
-                          />
-                        ) : (
-                          <div className="grid h-64 place-items-center text-sm text-white/80">
-                            暂无可用于对比的图片
-                          </div>
-                        )}
-
-                        {trackedCompareAfter ? (
-                          <div
-                            className="pointer-events-none absolute inset-0 transition-[clip-path] duration-150 ease-out"
-                            style={{ clipPath: `inset(0 0 0 ${compareSplitPercent}%)` }}
-                          >
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedCompareAfter.url}`}
-                              alt={`第 ${activeTrackedPageLabel} 页转换后`}
-                              className="object-contain"
-                            />
-                          </div>
-                        ) : null}
-
-                        {trackedBeforeOverlay ? (
-                          <div
-                            className="pointer-events-none absolute inset-0"
-                            style={{ clipPath: `inset(0 ${100 - compareSplitPercent}% 0 0)` }}
-                          >
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedBeforeOverlay.url}`}
-                              alt={`第 ${activeTrackedPageLabel} 页转换前高亮`}
-                              className="object-contain opacity-45"
-                            />
-                          </div>
-                        ) : null}
-
-                        {trackedLayoutAfter && trackedCompareAfter?.path !== trackedLayoutAfter.path ? (
-                          <div
-                            className="pointer-events-none absolute inset-0"
-                            style={{ clipPath: `inset(0 0 0 ${compareSplitPercent}%)` }}
-                          >
-                            <TrackingArtifactImage
-                              src={`${apiOrigin}${trackedLayoutAfter.url}`}
-                              alt={`第 ${activeTrackedPageLabel} 页转换后高亮`}
-                              className="object-contain opacity-60"
-                            />
-                          </div>
-                        ) : null}
-
-                        <div
-                          className="compare-divider pointer-events-none absolute inset-y-0 z-20 w-0.5"
-                          style={{ left: `${compareSplitPercent}%` }}
-                        />
-                        <div className="pointer-events-none absolute left-2 top-2 z-20 border bg-black/50 px-2 py-1 font-mono text-[11px] text-white">
-                          转换前
-                        </div>
-                        <div className="pointer-events-none absolute right-2 top-2 z-20 border bg-black/50 px-2 py-1 font-mono text-[11px] text-white">
-                          转换后
-                        </div>
-                      </div>
-                      <div className="grid gap-2 border border-border bg-muted/20 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                        <label
-                          htmlFor="compare-split"
-                          className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground"
-                        >
-                          分割线位置
-                        </label>
-                        <Badge variant="outline">{compareSplitPercent}%</Badge>
-                        <input
-                          id="compare-split"
-                          type="range"
-                          min={0}
-                          max={100}
-                          step={1}
-                          value={compareSplitPercent}
-                          onChange={(e) => {
-                            const next = Number(e.target.value)
-                            if (Number.isFinite(next)) {
-                              setCompareSplitRatio(Math.max(0, Math.min(1, next / 100)))
-                            }
-                          }}
-                          className="col-span-full h-2 w-full accent-foreground"
-                          aria-label="调整前后对比滑杆位置"
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        桌面端可移动鼠标调整分割线，移动端可拖动图片或使用滑杆精确控制对比位置。
-                      </div>
-                    </div>
-                  ) : null}
+                  {/* Compare slider view */}
+                  {trackingMenu === "compare" && (
+                    <CompareSlider
+                      apiOrigin={apiOrigin}
+                      trackedCompareBase={trackedCompareBase}
+                      trackedCompareAfter={trackedCompareAfter}
+                      trackedBeforeOverlay={trackedBeforeOverlay}
+                      trackedLayoutAfter={trackedLayoutAfter}
+                      showLayoutAfterOverlay={
+                        !!(
+                          trackedLayoutAfter &&
+                          trackedCompareAfter?.path !== trackedLayoutAfter.path
+                        )
+                      }
+                      activeTrackedPageLabel={activeTrackedPageLabel}
+                      compareSplitRatio={compareSplitRatio}
+                      setCompareSplitRatio={setCompareSplitRatio}
+                    />
+                  )}
                 </>
               ) : null}
             </CardContent>

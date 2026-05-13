@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { apiFetch } from "@/lib/api"
+import { toast } from "sonner"
 import {
   SETTINGS_STORAGE_KEY,
   defaultSettings,
@@ -48,6 +49,7 @@ export function useSettings() {
   const [settingsHydrated, setSettingsHydrated] = React.useState(false)
   const [deployMode, setDeployMode] = React.useState<DeployMode>("self")
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null)
+  const saveErrorShownRef = React.useRef(false)
 
   // Load deploy mode
   React.useEffect(() => {
@@ -127,11 +129,18 @@ export function useSettings() {
           body: JSON.stringify({ preferences: prefs }),
         })
           .then((res) => {
-            if (res.ok) setLastSavedAt(Date.now())
+            if (res.ok) {
+              setLastSavedAt(Date.now())
+              saveErrorShownRef.current = false
+            }
           })
           .catch((e) => {
             console.error("Failed to save settings:", e)
-            // Silently fail - will retry on next change
+            // Show toast only once per save cycle to avoid spamming
+            if (!saveErrorShownRef.current) {
+              saveErrorShownRef.current = true
+              toast.error("自动保存设置失败，请检查网络连接或手动保存")
+            }
           })
       }
     }, 500)

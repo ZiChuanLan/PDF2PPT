@@ -20,94 +20,135 @@ export interface DownloadStatusResponse {
   downloads: Record<string, DownloadStatusItem>
 }
 
+// ---------------------------------------------------------------------------
+// Singleton: global shared download state & single poller
+//
+// Multiple components (ocr-strategy-section, model-status-badge) call
+// useModelDownload(). The singleton ensures only one polling timer runs
+// and all callers observe the same download state.
+// ---------------------------------------------------------------------------
+
+type Listener = () => void
+
+let globalDownloads: Record<string, DownloadStatusItem> = {}
+const listeners = new Set<Listener>()
+let globalPollTimer: ReturnType<typeof setInterval> | null = null
+let subscriberCount = 0
+
+function notifyListeners() {
+  for (const listener of listeners) {
+    listener()
+  }
+}
+
+function hasActiveDownloads(): boolean {
+  return Object.values(globalDownloads).some(
+    (d) => d.status === "downloading"
+  )
+}
+
+async function fetchGlobalStatus() {
+  try {
+    const res = await apiFetch("/models/download/status")
+    if (!res.ok) return
+    const body = (await res.json()) as DownloadStatusResponse
+
+    // Check for newly completed/failed/cancelled downloads
+    for (const [modelId, item] of Object.entries(body.downloads)) {
+      const prev = globalDownloads[modelId]
+      if (prev?.status === "downloading" && item.status !== "downloading") {
+        if (item.status === "completed") {
+          toast.success(`${getModelLabel(modelId)} 下载完成`)
+        } else if (item.status === "failed") {
+          toast.error(`${getModelLabel(modelId)} 下载失败: ${item.message || "未知错误"}`)
+        } else if (item.status === "cancelled") {
+          toast(`${getModelLabel(modelId)} 下载已取消`)
+        }
+      }
+    }
+
+    globalDownloads = body.downloads
+    notifyListeners()
+  } catch (e) {
+    console.error("Failed to fetch model download status:", e)
+    // Polling will retry
+  }
+}
+
+function startGlobalPolling() {
+  if (globalPollTimer) return // Already polling
+  // Fetch immediately
+  void fetchGlobalStatus()
+  globalPollTimer = setInterval(() => {
+    void fetchGlobalStatus()
+  }, MODEL_DOWNLOAD_POLL_INTERVAL_MS)
+}
+
+function stopGlobalPollingIfIdle() {
+  if (!hasActiveDownloads() && globalPollTimer) {
+    clearInterval(globalPollTimer)
+    globalPollTimer = null
+  }
+}
+
 /**
  * Hook to manage model downloads with progress tracking and cancellation.
  *
- * Polls GET /api/v1/models/download/status every second while there are
- * active downloads. Provides startDownload() and cancelDownload() actions.
+ * Uses a module-level singleton: only one polling timer runs globally
+ * regardless of how many components call this hook. All callers share
+ * the same download state via a listener subscription pattern.
  */
 export function useModelDownload(options?: {
   onDownloadComplete?: (modelId: string) => void
   onDownloadFailed?: (modelId: string, message: string) => void
   onDownloadCancelled?: (modelId: string) => void
 }) {
-  const [downloads, setDownloads] = React.useState<Record<string, DownloadStatusItem>>({})
-  const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
+  const [downloads, setDownloads] = React.useState<Record<string, DownloadStatusItem>>(globalDownloads)
   const mountedRef = React.useRef(true)
   const callbacksRef = React.useRef(options)
   callbacksRef.current = options
 
-  // Cleanup on unmount
+  // Subscribe to global state changes
   React.useEffect(() => {
     mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
+    subscriberCount++
 
-  const fetchStatus = React.useCallback(async () => {
-    try {
-      const res = await apiFetch("/models/download/status")
-      if (!res.ok) return
-      const body = (await res.json()) as DownloadStatusResponse
-      if (!mountedRef.current) return
-
-      setDownloads((prev) => {
-        // Check for newly completed/failed/cancelled downloads
-        for (const [modelId, item] of Object.entries(body.downloads)) {
-          const prevItem = prev[modelId]
-          if (prevItem?.status === "downloading" && item.status !== "downloading") {
-            if (item.status === "completed") {
-              toast.success(`${getModelLabel(modelId)} 下载完成`)
-              callbacksRef.current?.onDownloadComplete?.(modelId)
-            } else if (item.status === "failed") {
-              toast.error(`${getModelLabel(modelId)} 下载失败: ${item.message || "未知错误"}`)
-              callbacksRef.current?.onDownloadFailed?.(modelId, item.message || "下载失败")
-            } else if (item.status === "cancelled") {
-              toast(`${getModelLabel(modelId)} 下载已取消`)
-              callbacksRef.current?.onDownloadCancelled?.(modelId)
-            }
-          }
-        }
-        return body.downloads
-      })
-    } catch (e) {
-      console.error("Failed to fetch model download status:", e)
-      // Polling will retry
-    }
-  }, [])
-
-  // Start/stop polling based on active downloads
-  React.useEffect(() => {
-    const hasActiveDownloads = Object.values(downloads).some(
-      (d) => d.status === "downloading"
-    )
-
-    if (hasActiveDownloads && !pollTimerRef.current) {
-      // Start polling
-      pollTimerRef.current = setInterval(() => {
-        void fetchStatus()
-      }, MODEL_DOWNLOAD_POLL_INTERVAL_MS)
-      // Immediate fetch
-      void fetchStatus()
-    } else if (!hasActiveDownloads && pollTimerRef.current) {
-      // Stop polling
-      clearInterval(pollTimerRef.current)
-      pollTimerRef.current = null
-    }
-
-    return () => {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current)
-        pollTimerRef.current = null
+    const listener = () => {
+      if (mountedRef.current) {
+        setDownloads({ ...globalDownloads })
       }
     }
-  }, [downloads, fetchStatus])
+    listeners.add(listener)
+
+    // Initial sync
+    if (mountedRef.current) {
+      setDownloads({ ...globalDownloads })
+    }
+
+    return () => {
+      mountedRef.current = false
+      listeners.delete(listener)
+      subscriberCount--
+      // If no more subscribers and no active downloads, stop polling
+      if (subscriberCount <= 0 && !hasActiveDownloads()) {
+        stopGlobalPollingIfIdle()
+      }
+    }
+  }, [])
+
+  // Polling lifecycle: check on every downloads change
+  React.useEffect(() => {
+    if (hasActiveDownloads()) {
+      startGlobalPolling()
+    } else {
+      stopGlobalPollingIfIdle()
+    }
+  }, [downloads])
 
   // Fetch status on mount to pick up any active downloads from other pages
   React.useEffect(() => {
-    void fetchStatus()
-  }, [fetchStatus])
+    void fetchGlobalStatus()
+  }, [])
 
   /**
    * Start downloading a model. Returns immediately — poll downloads state
@@ -126,13 +167,13 @@ export function useModelDownload(options?: {
       }
 
       // Immediately fetch status to start tracking
-      await fetchStatus()
+      await fetchGlobalStatus()
       return true
     } catch (e) {
       toast.error(normalizeFetchError(e, "下载请求失败"))
       return false
     }
-  }, [fetchStatus])
+  }, [])
 
   /**
    * Cancel an active download.
