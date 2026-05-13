@@ -33,7 +33,7 @@ export function GeneralAdvancedSection({
       </div>
 
       {/* Visual Assist Modes */}
-      {settings.enableLayoutAssist && (
+      {settings.enableLayoutAssist ? (
         <CollapsibleSection title="视觉辅助模式" defaultOpen={false}>
           <div className="space-y-4">
             <div className="grid gap-2">
@@ -93,6 +93,10 @@ export function GeneralAdvancedSection({
             </div>
           </div>
         </CollapsibleSection>
+      ) : (
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          请先在「输出质量」选项卡中启用布局辅助功能
+        </div>
       )}
     </div>
   )

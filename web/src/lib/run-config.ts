@@ -329,8 +329,8 @@ export function resolveRunConfig(settings: Settings): RunConfig {
   const ocrAiMaxRetries = Math.min(8, Math.max(0, Number(settings.ocrAiMaxRetries) || 0))
 
   const layoutAssistChain = parseEngineMode
-  const layoutAssistMode: LayoutAssistMode = "off"
-  const layoutAssistEnabled = false
+  const layoutAssistEnabled = Boolean(settings.enableLayoutAssist)
+  const layoutAssistMode: LayoutAssistMode = layoutAssistEnabled ? "on" : "off"
   const shouldAttachOcrAiParams = explicitAiOcrSelected && Boolean(effectiveOcrAiKey)
 
   return {
@@ -530,6 +530,8 @@ export type JobConfig = {
   enable_ocr?: boolean
   retain_process_artifacts?: boolean
   remove_footer_notebooklm?: boolean
+  enable_layout_assist?: boolean
+  layout_assist_apply_image_regions?: boolean
   ocr?: {
     provider?: string
     ai?: {
@@ -622,6 +624,8 @@ export function buildJobConfig(
     enable_ocr: run.parseProvider === "local" ? Boolean(settings.enableOcr) : false,
     retain_process_artifacts: Boolean(options?.retainProcessArtifacts),
     remove_footer_notebooklm: Boolean(settings.removeFooterNotebooklm),
+    enable_layout_assist: Boolean(settings.enableLayoutAssist),
+    layout_assist_apply_image_regions: Boolean(settings.layoutAssistApplyImageRegions),
   }
 
   // LLM config (for layout assist / main provider)

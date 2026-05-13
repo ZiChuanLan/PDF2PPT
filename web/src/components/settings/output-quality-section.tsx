@@ -250,7 +250,8 @@ export function OutputQualitySection({
         />
       </div>
 
-      {/* Layout Assist */}
+      {/* Layout Assist — not available in MinerU mode */}
+      {!isMineruMode && (
       <div className="space-y-3 rounded-lg border p-4">
         <div className="flex items-center space-x-2">
           <Checkbox
@@ -284,6 +285,7 @@ export function OutputQualitySection({
           </div>
         )}
       </div>
+      )}
 
       {/* Advanced Output Settings */}
       <CollapsibleSection title="输出高级选项" defaultOpen={false}>

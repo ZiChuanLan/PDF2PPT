@@ -181,18 +181,6 @@ export function ParsingMethodSection({
                 </FieldLabel>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="mineruHybridOcr"
-                  checked={settings.mineruHybridOcr}
-                  onCheckedChange={(checked) =>
-                    onSettingsChange({ mineruHybridOcr: checked as boolean })
-                  }
-                />
-                <FieldLabel htmlFor="mineruHybridOcr" className="mb-0">
-                  MinerU 混合 OCR
-                </FieldLabel>
-              </div>
             </div>
           </CollapsibleSection>
         </>

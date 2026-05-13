@@ -382,8 +382,9 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
           {/* Advanced Options — folded */}
           <CollapsibleSection title="高级选项" defaultOpen={false}>
             <div className="space-y-4">
-              {/* VLM Prompt Overrides — prompt preset only for direct mode */}
-              {settings.ocrAiChainMode === "direct" && (
+              {/* VLM Prompt Overrides — prompt preset for direct and layout_block */}
+              {(settings.ocrAiChainMode === "direct" ||
+                settings.ocrAiChainMode === "layout_block") && (
                 <div className="grid gap-2">
                   <FieldLabel htmlFor="ocrAiPromptPreset">
                     提示词预设
@@ -409,6 +410,7 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                 </div>
               )}
 
+              {settings.ocrAiChainMode === "direct" && (
               <div className="grid gap-2">
                 <FieldLabel htmlFor="ocrAiDirectPromptOverride">直出模式提示词覆盖</FieldLabel>
                 <PromptTextarea
@@ -418,7 +420,9 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                   placeholder="留空使用默认提示词"
                 />
               </div>
+              )}
 
+              {settings.ocrAiChainMode === "layout_block" && (
               <div className="grid gap-2">
                 <FieldLabel htmlFor="ocrAiLayoutBlockPromptOverride">
                   版面切块模式提示词覆盖
@@ -432,7 +436,9 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                   placeholder="留空使用默认提示词"
                 />
               </div>
+              )}
 
+              {settings.ocrAiChainMode === "layout_block" && (
               <div className="grid gap-2">
                 <FieldLabel htmlFor="ocrAiImageRegionPromptOverride">
                   图片区域提示词覆盖
@@ -446,6 +452,7 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                   placeholder="留空使用默认提示词"
                 />
               </div>
+              )}
 
               {/* Layout Model (only for layout_block mode) */}
               {settings.ocrAiChainMode === "layout_block" && (
@@ -503,6 +510,25 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                 />
               </div>
 
+              {/* Block concurrency — only for layout_block */}
+              {settings.ocrAiChainMode === "layout_block" && (
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="ocrAiBlockConcurrency">
+                  块并发度
+                  <HoverHint text="布局分块模式下同时处理的块数量" />
+                </FieldLabel>
+                <Input
+                  id="ocrAiBlockConcurrency"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={settings.ocrAiBlockConcurrency}
+                  onChange={(e) => onSettingsChange({ ocrAiBlockConcurrency: e.target.value })}
+                  placeholder="留空自动计算"
+                />
+              </div>
+              )}
+
               <div className="grid gap-2">
                 <FieldLabel htmlFor="ocrAiMaxRetries">
                   最大重试次数
@@ -551,6 +577,24 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                   placeholder="留空不限制"
                 />
               </div>
+
+              {/* PaddleOCR-VL max side px — only for doc_parser */}
+              {settings.ocrAiChainMode === "doc_parser" && (
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="ocrPaddleVlDocparserMaxSidePx">
+                  PaddleOCR-VL 最大边长
+                  <HoverHint text="文档解析模式下图片最大边长像素" />
+                </FieldLabel>
+                <Input
+                  id="ocrPaddleVlDocparserMaxSidePx"
+                  type="number"
+                  min="1"
+                  value={settings.ocrPaddleVlDocparserMaxSidePx}
+                  onChange={(e) => onSettingsChange({ ocrPaddleVlDocparserMaxSidePx: e.target.value })}
+                  placeholder="2200"
+                />
+              </div>
+              )}
             </div>
           </CollapsibleSection>
         </div>
