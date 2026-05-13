@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { SettingsIcon, Loader2Icon, Trash2Icon } from "lucide-react"
+import { RefreshCwIcon, SettingsIcon, Loader2Icon, Trash2Icon } from "lucide-react"
 import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
@@ -431,6 +431,8 @@ export interface ModelStatusBadgeProps {
   status: ModelStatusResponse | null
   /** Whether status is currently loading. */
   isLoading?: boolean
+  /** Error message from last failed status fetch (shown when status is null and not loading). */
+  error?: string | null
   /** Current parse engine mode — filters displayed providers. */
   parseEngineMode?: ParseEngineMode
   /** Called after a successful download to refresh status. */
@@ -451,6 +453,7 @@ export interface ModelStatusBadgeProps {
 export function ModelStatusBadge({
   status,
   isLoading = false,
+  error,
   parseEngineMode,
   onStatusChange,
   className,
@@ -495,25 +498,52 @@ export function ModelStatusBadge({
 
   const overallColor = getOverallDotColor(status, providers)
   const overall = getOverallStatus(status, providers)
+  const showError = !isLoading && status === null && !!error
 
   return (
-    <span className={cn("relative inline-flex items-center", className)}>
+    <span className={cn("relative inline-flex items-center gap-1", className)}>
       {/* Trigger — colored dot + label */}
       <button
         ref={triggerRef}
         type="button"
-        className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        disabled={showError}
+        className={cn(
+          "flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] transition-colors",
+          showError
+            ? "text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        )}
         onClick={handleToggle}
       >
         {isLoading ? (
           <Loader2Icon className="size-3 animate-spin" />
         ) : (
-          <StatusDot colorClass={overallColor} />
+          <StatusDot colorClass={showError ? "bg-red-500" : overallColor} />
         )}
         <span className="font-mono uppercase tracking-widest">
-          {overall === "ready" ? "模型就绪" : overall === "partial" ? "部分就绪" : overall === "none" ? "未就绪" : "检查中"}
+          {showError
+            ? "状态获取失败"
+            : overall === "ready"
+              ? "模型就绪"
+              : overall === "partial"
+                ? "部分就绪"
+                : overall === "none"
+                  ? "未就绪"
+                  : "检查中"}
         </span>
       </button>
+
+      {/* Retry button when status fetch failed */}
+      {showError && (
+        <button
+          type="button"
+          className="inline-flex items-center justify-center rounded p-1 text-red-600 transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
+          onClick={onStatusChange}
+          aria-label="重试获取状态"
+        >
+          <RefreshCwIcon className="size-3" />
+        </button>
+      )}
 
       {/* Expanded details — rendered via portal to bypass overflow:hidden ancestors */}
       {expanded && triggerRect && (

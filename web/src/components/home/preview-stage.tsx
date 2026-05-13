@@ -37,6 +37,7 @@ interface PreviewStageProps {
   settingsSnapshot: Settings
   updateSettingsSnapshot: (updater: (prev: Settings) => Settings) => void
   modelStatus: ModelStatusResponse | null
+  modelStatusError: string | null
   isModelStatusLoading: boolean
   refetchModelStatus: () => void
   usePageRange: boolean
@@ -74,6 +75,7 @@ export function PreviewStage({
   settingsSnapshot,
   updateSettingsSnapshot,
   modelStatus,
+  modelStatusError,
   isModelStatusLoading,
   refetchModelStatus,
   usePageRange,
@@ -272,6 +274,7 @@ export function PreviewStage({
             settingsSnapshot={settingsSnapshot}
             updateSettingsSnapshot={updateSettingsSnapshot}
             modelStatus={modelStatus}
+            modelStatusError={modelStatusError}
             isModelStatusLoading={isModelStatusLoading}
             refetchModelStatus={refetchModelStatus}
             retainProcessArtifacts={retainProcessArtifacts}

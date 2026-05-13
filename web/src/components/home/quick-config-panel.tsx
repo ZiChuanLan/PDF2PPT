@@ -6,6 +6,7 @@ import {
   AlertCircleIcon,
   ArrowRightIcon,
   CheckIcon,
+  DownloadIcon,
 } from "lucide-react"
 
 import { HoverHint } from "@/components/ui/hover-hint"
@@ -20,12 +21,14 @@ import {
   type Settings,
 } from "@/lib/settings"
 import type { ModelStatusResponse } from "@/hooks/use-model-status"
+import { useModelDownload } from "@/hooks/use-model-download"
 import { resolveParseEngineOcrProvider } from "@/lib/run-config"
 
 interface QuickConfigPanelProps {
   settingsSnapshot: Settings
   updateSettingsSnapshot: (updater: (prev: Settings) => Settings) => void
   modelStatus: ModelStatusResponse | null
+  modelStatusError: string | null
   isModelStatusLoading: boolean
   refetchModelStatus: () => void
   retainProcessArtifacts: boolean
@@ -37,12 +40,16 @@ export function QuickConfigPanel({
   settingsSnapshot,
   updateSettingsSnapshot,
   modelStatus,
+  modelStatusError,
   isModelStatusLoading,
   refetchModelStatus,
   retainProcessArtifacts,
   setRetainProcessArtifacts,
   downloadedLayoutModels,
 }: QuickConfigPanelProps) {
+  const { startDownload, downloads, isDownloading } = useModelDownload({
+    onDownloadComplete: () => void refetchModelStatus(),
+  })
   return (
     <div className="home-inline-panel px-4 py-3">
       <div className="grid gap-3">
@@ -93,6 +100,7 @@ export function QuickConfigPanel({
             <ModelStatusBadge
               status={modelStatus}
               isLoading={isModelStatusLoading}
+              error={modelStatusError}
               parseEngineMode={settingsSnapshot.parseEngineMode}
               onStatusChange={() => void refetchModelStatus()}
             />
@@ -205,13 +213,34 @@ export function QuickConfigPanel({
                 label: `${m.displayName} — ${m.speedLabel}`,
               }))}
             />
-            {downloadedLayoutModels.size === 0 && (
-              <span className="text-xs text-muted-foreground">
-                暂无已下载的版面模型，请前往{" "}
-                <Link href="/settings" className="underline">设置</Link>
-                {" "}下载
-              </span>
-            )}
+            {downloadedLayoutModels.size === 0 && (() => {
+              const currentModel = settingsSnapshot.ocrAiLayoutModel
+              const modelInfo = LAYOUT_MODELS[currentModel]
+              const displayName = modelInfo?.displayName ?? currentModel
+              const busy = isDownloading(currentModel)
+              const dlState = downloads[currentModel]
+
+              return (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>暂无已下载的版面模型</span>
+                  {busy ? (
+                    <span className="text-[10px] text-amber-600">
+                      下载中... {dlState?.progress != null ? `${Math.round(dlState.progress * 100)}%` : ""}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] text-foreground hover:bg-muted transition-colors"
+                      onClick={() => void startDownload(currentModel)}
+                    >
+                      <DownloadIcon className="size-2.5" />
+                      下载 {displayName}
+                    </button>
+                  )}
+                  <Link href="/settings" className="underline">设置</Link>
+                </div>
+              )
+            })()}
           </div>
         )}
         {settingsSnapshot.parseEngineMode === "remote_ocr" && (

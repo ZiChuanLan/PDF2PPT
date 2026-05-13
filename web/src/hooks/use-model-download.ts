@@ -70,6 +70,9 @@ async function fetchGlobalStatus() {
     globalDownloads = body.downloads
     notifyListeners()
   } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return // Silently ignore abort errors during navigation
+    }
     console.error("Failed to fetch model download status:", e)
     // Polling will retry
   }
@@ -170,6 +173,9 @@ export function useModelDownload(options?: {
       await fetchGlobalStatus()
       return true
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return false // Silently ignore abort errors during navigation
+      }
       toast.error(normalizeFetchError(e, "下载请求失败"))
       return false
     }
@@ -191,6 +197,9 @@ export function useModelDownload(options?: {
       }
       return true
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return false // Silently ignore abort errors during navigation
+      }
       toast.error(normalizeFetchError(e, "取消下载失败"))
       return false
     }

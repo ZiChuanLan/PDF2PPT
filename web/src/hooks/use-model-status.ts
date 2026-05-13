@@ -29,24 +29,53 @@ export function useModelStatus() {
   const [data, setData] = React.useState<ModelStatusResponse | null>(null)
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [lastError, setLastError] = React.useState<string | null>(null)
   const mountedRef = React.useRef(true)
+  const retryCountRef = React.useRef(0)
 
   const refetch = React.useCallback(async () => {
     setIsLoading(true)
     setError(null)
+
+    const MAX_RETRIES = 3
+    const RETRY_DELAYS = [2000, 4000, 8000]
+
+    const attemptFetch = async (attempt: number): Promise<void> => {
+      try {
+        const res = await apiFetch("/models/status")
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          throw new Error(body?.message || "模型状态查询失败")
+        }
+        const body = (await res.json()) as ModelStatusResponse
+        if (mountedRef.current) {
+          setData(body)
+          retryCountRef.current = 0
+        }
+      } catch (e) {
+        // Network errors (TypeError, AbortError) are retryable; HTTP errors (from !res.ok) are not
+        const isNetworkError =
+          e instanceof TypeError ||
+          (typeof DOMException !== "undefined" && e instanceof DOMException && e.name === "AbortError")
+
+        if (isNetworkError && attempt < MAX_RETRIES) {
+          retryCountRef.current = attempt + 1
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS[attempt]))
+          return attemptFetch(attempt + 1)
+        }
+
+        // Non-retryable or retries exhausted — rethrow to outer catch
+        throw e
+      }
+    }
+
     try {
-      const res = await apiFetch("/models/status")
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error(body?.message || "模型状态查询失败")
-      }
-      const body = (await res.json()) as ModelStatusResponse
-      if (mountedRef.current) {
-        setData(body)
-      }
+      await attemptFetch(0)
     } catch (e) {
       if (mountedRef.current) {
-        setError(normalizeFetchError(e, "模型状态查询失败"))
+        const msg = normalizeFetchError(e, "模型状态查询失败")
+        setError(msg)
+        setLastError(msg)
       }
     } finally {
       if (mountedRef.current) {
@@ -63,7 +92,7 @@ export function useModelStatus() {
     }
   }, [refetch])
 
-  return { data, isLoading, error, refetch }
+  return { data, isLoading, error, lastError, refetch }
 }
 
 /**
