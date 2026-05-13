@@ -836,9 +836,8 @@ export function createJobFormData(
   if (run.mainBaseUrl) form.append("base_url", run.mainBaseUrl)
   if (run.mainModel) form.append("model", run.mainModel)
 
-  // Product-side layout assist has been retired for speed-focused runs.
-  form.append("enable_layout_assist", "false")
-  form.append("layout_assist_apply_image_regions", "false")
+  form.append("enable_layout_assist", settings.enableLayoutAssist ? "true" : "false")
+  form.append("layout_assist_apply_image_regions", settings.layoutAssistApplyImageRegions ? "true" : "false")
   form.append("retain_process_artifacts", String(Boolean(options?.retainProcessArtifacts)))
   form.append("enable_ocr", String(run.parseProvider === "local" ? Boolean(settings.enableOcr) : false))
   form.append("remove_footer_notebooklm", String(Boolean(settings.removeFooterNotebooklm)))

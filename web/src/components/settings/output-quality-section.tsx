@@ -68,13 +68,13 @@ export function OutputQualitySection({
       {!isMineruMode && (
         <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
           <div className="text-sm text-muted-foreground mb-2">
-            内容生成AI（用于布局辅助和PPT生成）
+            内容生成AI（用于布局辅助）
           </div>
 
           <div className="grid gap-2">
             <FieldLabel htmlFor="provider">
               内容生成AI 提供方
-              <HoverHint text="OpenAI 或 Claude（用于布局辅助和PPT生成）" />
+              <HoverHint text="OpenAI 或 Claude（用于布局辅助）" />
             </FieldLabel>
             <Select
               id="provider"

@@ -492,6 +492,8 @@ async def list_jobs(
 async def create_job(
     file: UploadFile = File(..., description="PDF or image file to convert"),
     enable_ocr: bool = Form(False, description="Enable OCR for scanned PDFs or images"),
+    enable_layout_assist: bool = Form(False, description="Enable AI layout assist for improved element placement"),
+    layout_assist_apply_image_regions: bool = Form(False, description="Enable AI image region detection during layout assist"),
     retain_process_artifacts: bool = Form(
         False,
         description=(
@@ -762,8 +764,8 @@ async def create_job(
         enable_ocr=enable_ocr,
         retain_process_artifacts=retain_process_artifacts,
         remove_footer_notebooklm=remove_footer_notebooklm,
-        enable_layout_assist=False,
-        layout_assist_apply_image_regions=False,
+        enable_layout_assist=enable_layout_assist,
+        layout_assist_apply_image_regions=layout_assist_apply_image_regions,
         provider=normalized_options.provider,
         api_key=api_key,
         baidu_doc_parse_type=normalized_options.baidu_doc_parse_type,

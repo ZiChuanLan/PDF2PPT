@@ -175,11 +175,11 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
     options.ocr_baidu_secret_key = _secrets.get("ocr_baidu_secret_key") or options.ocr_baidu_secret_key
     options.ocr_ai_api_key = _secrets.get("ocr_ai_api_key") or options.ocr_ai_api_key
 
-    # Product-side AI layout assist has been retired for speed-focused runs.
-    # It can be re-enabled via ENABLE_LAYOUT_ASSIST=true env var.
+    # Layout assist requires both server-side enablement (ENABLE_LAYOUT_ASSIST env var)
+    # and user opt-in via settings (enableLayoutAssist checkbox).
     settings = get_settings()
-    enable_layout_assist = settings.enable_layout_assist
-    layout_assist_apply_image_regions = False
+    enable_layout_assist = settings.enable_layout_assist and options.enable_layout_assist
+    layout_assist_apply_image_regions = settings.enable_layout_assist and options.layout_assist_apply_image_regions
     redis_service = get_redis_service()
     set_job_id(job_id)
     set_job_stage(None)
