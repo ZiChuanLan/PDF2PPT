@@ -11,11 +11,6 @@ from pydantic_settings import BaseSettings
 _DEFAULT_CORS_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _DEFAULT_CORS_ORIGINS_STR = ",".join(_DEFAULT_CORS_ORIGINS)
 
-# WARNING: Hardcoded default passwords are forbidden.
-# The admin_default_password field is only used as a fallback when the env var is unset.
-# In production, always set ADMIN_DEFAULT_PASSWORD to a strong random value.
-# The startup guard in main.py checks for a weak default and emits a loud warning.
-_ADMIN_PLACEHOLDER_PASSWORD = ""
 
 
 class Settings(BaseSettings):
@@ -86,8 +81,6 @@ class Settings(BaseSettings):
     admin_usernames: str = ""
     # Deploy mode: "self" (self-use, localStorage) or "public" (multi-user, DB settings)
     deploy_mode: str = "self"
-    # Default admin password for self-use mode auto-login
-    admin_default_password: str = _ADMIN_PLACEHOLDER_PASSWORD
     # Rate limiting (requests per window per client IP)
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60

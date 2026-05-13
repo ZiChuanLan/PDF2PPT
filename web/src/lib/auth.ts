@@ -23,14 +23,6 @@ export type User = {
   concurrent_task_limit: number
 }
 
-export type QuotaInfo = {
-  daily_task_limit: number
-  max_file_size_mb: number
-  concurrent_task_limit: number
-  tasks_today: number
-  active_tasks: number
-}
-
 export type AdminUser = User
 
 export type AdminStats = {

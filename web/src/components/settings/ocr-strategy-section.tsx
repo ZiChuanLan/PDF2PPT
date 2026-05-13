@@ -77,13 +77,6 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
 
   const { startDownload, cancelDownload, getDownloadState } = useModelDownload()
 
-  const parseMode = settings.parseEngineMode
-
-  // Don't show this section for MinerU (it handles OCR internally)
-  if (parseMode === "mineru_cloud") {
-    return null
-  }
-
   const handleFetchModels = React.useCallback(async () => {
     if (!settings.ocrAiApiKey) {
       toast.error("请先填写 AIOCR API Key")
@@ -99,6 +92,7 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
           provider: settings.ocrAiProvider,
           api_key: settings.ocrAiApiKey,
           base_url: settings.ocrAiBaseUrl || undefined,
+          capability: "vision",
         }),
       })
       if (!res.ok) {
@@ -119,6 +113,13 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
       setFetchingModels(false)
     }
   }, [settings.ocrAiProvider, settings.ocrAiApiKey, settings.ocrAiBaseUrl])
+
+  const parseMode = settings.parseEngineMode
+
+  // Don't show this section for MinerU (it handles OCR internally)
+  if (parseMode === "mineru_cloud") {
+    return null
+  }
 
   return (
     <div className="space-y-4">

@@ -76,6 +76,7 @@ export function OutputQualitySection({
           provider: "openai",
           api_key: apiKey,
           base_url: settings.openaiBaseUrl || undefined,
+          capability: "vision",
         }),
       })
       if (!res.ok) {
