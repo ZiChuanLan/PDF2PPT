@@ -105,8 +105,8 @@ export function OutputQualitySection({
         <p className="text-sm text-muted-foreground">配置PPT生成和优化选项</p>
       </div>
 
-      {/* Content Generation AI */}
-      {!isMineruMode && (
+      {/* Content Generation AI — only when layout assist is enabled */}
+      {!isMineruMode && settings.enableLayoutAssist && (
         <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
           <div className="text-sm text-muted-foreground mb-2">
             内容生成AI（用于布局辅助）

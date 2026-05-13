@@ -382,30 +382,32 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
           {/* Advanced Options — folded */}
           <CollapsibleSection title="高级选项" defaultOpen={false}>
             <div className="space-y-4">
-              {/* VLM Prompt Overrides */}
-              <div className="grid gap-2">
-                <FieldLabel htmlFor="ocrAiPromptPreset">
-                  提示词预设
-                  <HoverHint text="选择适合模型的提示词模板" />
-                </FieldLabel>
-                <Select
-                  id="ocrAiPromptPreset"
-                  value={settings.ocrAiPromptPreset}
-                  onChange={(e) =>
-                    onSettingsChange({
-                      ocrAiPromptPreset: e.target.value as OcrAiPromptPreset,
-                    })
-                  }
-                  options={[
-                    { id: "auto", label: "自动（按模型推断）" },
-                    { id: "qwen_vl", label: "Qwen-VL" },
-                    { id: "deepseek_ocr", label: "DeepSeek-OCR" },
-                    { id: "openai_vision", label: "OpenAI / GPT 视觉" },
-                    { id: "glm_v", label: "GLM-V" },
-                    { id: "generic_vision", label: "通用视觉模型" },
-                  ]}
-                />
-              </div>
+              {/* VLM Prompt Overrides — prompt preset only for direct mode */}
+              {settings.ocrAiChainMode === "direct" && (
+                <div className="grid gap-2">
+                  <FieldLabel htmlFor="ocrAiPromptPreset">
+                    提示词预设
+                    <HoverHint text="选择适合模型的提示词模板" />
+                  </FieldLabel>
+                  <Select
+                    id="ocrAiPromptPreset"
+                    value={settings.ocrAiPromptPreset}
+                    onChange={(e) =>
+                      onSettingsChange({
+                        ocrAiPromptPreset: e.target.value as OcrAiPromptPreset,
+                      })
+                    }
+                    options={[
+                      { id: "auto", label: "自动（按模型推断）" },
+                      { id: "qwen_vl", label: "Qwen-VL" },
+                      { id: "deepseek_ocr", label: "DeepSeek-OCR" },
+                      { id: "openai_vision", label: "OpenAI / GPT 视觉" },
+                      { id: "glm_v", label: "GLM-V" },
+                      { id: "generic_vision", label: "通用视觉模型" },
+                    ]}
+                  />
+                </div>
+              )}
 
               <div className="grid gap-2">
                 <FieldLabel htmlFor="ocrAiDirectPromptOverride">直出模式提示词覆盖</FieldLabel>
@@ -460,10 +462,14 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                         ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
                       })
                     }
-                    options={LAYOUT_MODEL_OPTIONS.map((opt) => ({
-                      id: opt.id,
-                      label: `${opt.label} (${opt.sizeMb}MB)`,
-                    }))}
+                    options={LAYOUT_MODEL_OPTIONS.map((opt) => {
+                      const state = getDownloadState(opt.id)
+                      const dlLabel = state?.status === "completed" ? "已下载" : "未下载"
+                      return {
+                        id: opt.id,
+                        label: `${opt.label} (${opt.sizeMb}MB) — ${dlLabel}`,
+                      }
+                    })}
                   />
                   <div className="mt-2">
                     <DownloadProgressButton
