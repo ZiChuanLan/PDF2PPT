@@ -178,8 +178,8 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
     # Layout assist requires both server-side enablement (ENABLE_LAYOUT_ASSIST env var)
     # and user opt-in via settings (enableLayoutAssist checkbox).
     settings = get_settings()
-    enable_layout_assist = settings.enable_layout_assist and options.enable_layout_assist
-    layout_assist_apply_image_regions = settings.enable_layout_assist and options.layout_assist_apply_image_regions
+    enable_layout_assist = options.enable_layout_assist
+    layout_assist_apply_image_regions = options.layout_assist_apply_image_regions
     redis_service = get_redis_service()
     set_job_id(job_id)
     set_job_stage(None)
