@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { KeyRoundIcon } from "lucide-react"
+import { KeyRoundIcon, RefreshCwIcon, SearchIcon } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
@@ -26,6 +26,8 @@ import {
 } from "@/components/settings/settings-shared"
 import { useModelDownload } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
+import { apiFetch } from "@/lib/api"
+import { toast } from "sonner"
 
 const LOCAL_OCR_OPTIONS: Array<{ id: OcrProvider; label: string; description: string }> = [
   { id: "machine", label: "机器提取", description: "从PDF提取原生文字（最快）" },
@@ -70,6 +72,8 @@ type OcrStrategySectionProps = {
 export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySectionProps) {
   const [showOcrAiKey, setShowOcrAiKey] = React.useState(false)
   const [showBaiduKeys, setShowBaiduKeys] = React.useState(false)
+  const [fetchingModels, setFetchingModels] = React.useState(false)
+  const [availableModels, setAvailableModels] = React.useState<string[]>([])
 
   const { startDownload, cancelDownload, getDownloadState } = useModelDownload()
 
@@ -79,6 +83,42 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
   if (parseMode === "mineru_cloud") {
     return null
   }
+
+  const handleFetchModels = React.useCallback(async () => {
+    if (!settings.ocrAiApiKey) {
+      toast.error("请先填写 AIOCR API Key")
+      return
+    }
+    setFetchingModels(true)
+    setAvailableModels([])
+    try {
+      const res = await apiFetch("/api/v1/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: settings.ocrAiProvider,
+          api_key: settings.ocrAiApiKey,
+          base_url: settings.ocrAiBaseUrl || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error((body as { message?: string })?.message || `HTTP ${res.status}`)
+      }
+      const data = (await res.json()) as { models: string[] }
+      setAvailableModels(data.models || [])
+      if (data.models.length === 0) {
+        toast.info("该 API 未返回可用模型")
+      } else {
+        toast.success(`获取到 ${data.models.length} 个模型`)
+      }
+    } catch (e) {
+      console.error("Failed to fetch models:", e)
+      toast.error(String(e))
+    } finally {
+      setFetchingModels(false)
+    }
+  }, [settings.ocrAiProvider, settings.ocrAiApiKey, settings.ocrAiBaseUrl])
 
   return (
     <div className="space-y-4">
@@ -298,16 +338,43 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
             </div>
 
             <div className="grid gap-2">
-              <FieldLabel htmlFor="ocrAiModel">
-                模型名称
-                <HoverHint text="留空使用默认模型" />
-              </FieldLabel>
-              <Input
-                id="ocrAiModel"
-                value={settings.ocrAiModel}
-                onChange={(e) => onSettingsChange({ ocrAiModel: e.target.value })}
-                placeholder="留空使用默认"
-              />
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="ocrAiModel" className="mb-0">
+                  模型名称
+                  <HoverHint text="留空使用默认模型" />
+                </FieldLabel>
+                <button
+                  type="button"
+                  onClick={handleFetchModels}
+                  disabled={fetchingModels}
+                  className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  {fetchingModels ? (
+                    <RefreshCwIcon className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <SearchIcon className="h-3 w-3" />
+                  )}
+                  获取模型列表
+                </button>
+              </div>
+              {availableModels.length > 0 ? (
+                <Select
+                  id="ocrAiModel"
+                  value={settings.ocrAiModel}
+                  onChange={(e) => onSettingsChange({ ocrAiModel: e.target.value })}
+                  options={[
+                    { id: "", label: "留空使用默认" },
+                    ...availableModels.map((m) => ({ id: m, label: m })),
+                  ]}
+                />
+              ) : (
+                <Input
+                  id="ocrAiModel"
+                  value={settings.ocrAiModel}
+                  onChange={(e) => onSettingsChange({ ocrAiModel: e.target.value })}
+                  placeholder="留空使用默认"
+                />
+              )}
             </div>
           </div>
 

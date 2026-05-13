@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { KeyRoundIcon } from "lucide-react"
+import { KeyRoundIcon, RefreshCwIcon, SearchIcon } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
@@ -16,6 +16,7 @@ import {
   CollapsibleSection,
 } from "@/components/settings/settings-shared"
 import { toast } from "sonner"
+import { apiFetch } from "@/lib/api"
 
 const PROVIDER_OPTIONS: Array<{ id: Provider; label: string }> = [
   { id: "openai", label: "OpenAI" },
@@ -38,6 +39,8 @@ export function OutputQualitySection({
 }: OutputQualitySectionProps) {
   const [showOpenAIKey, setShowOpenAIKey] = React.useState(false)
   const [showClaudeKey, setShowClaudeKey] = React.useState(false)
+  const [fetchingOpenaiModels, setFetchingOpenaiModels] = React.useState(false)
+  const [availableOpenaiModels, setAvailableOpenaiModels] = React.useState<string[]>([])
 
   const validateApiKey = (key: string, provider: string): boolean => {
     if (!key.trim()) return true
@@ -56,6 +59,43 @@ export function OutputQualitySection({
 
   // MinerU handles PPT generation internally
   const isMineruMode = settings.parseEngineMode === "mineru_cloud"
+
+  const handleFetchOpenaiModels = React.useCallback(async () => {
+    const apiKey = settings.openaiApiKey
+    if (!apiKey) {
+      toast.error("请先填写 OpenAI API Key")
+      return
+    }
+    setFetchingOpenaiModels(true)
+    setAvailableOpenaiModels([])
+    try {
+      const res = await apiFetch("/api/v1/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "openai",
+          api_key: apiKey,
+          base_url: settings.openaiBaseUrl || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error((body as { message?: string })?.message || `HTTP ${res.status}`)
+      }
+      const data = (await res.json()) as { models: string[] }
+      setAvailableOpenaiModels(data.models || [])
+      if (data.models.length === 0) {
+        toast.info("该 API 未返回可用模型")
+      } else {
+        toast.success(`获取到 ${data.models.length} 个模型`)
+      }
+    } catch (e) {
+      console.error("Failed to fetch models:", e)
+      toast.error(String(e))
+    } finally {
+      setFetchingOpenaiModels(false)
+    }
+  }, [settings.openaiApiKey, settings.openaiBaseUrl])
 
   return (
     <div className="space-y-4">
@@ -125,16 +165,43 @@ export function OutputQualitySection({
               </div>
 
               <div className="grid gap-2">
-                <FieldLabel htmlFor="openaiModel">
-                  模型名称
-                  <HoverHint text="留空使用默认模型" />
-                </FieldLabel>
-                <Input
-                  id="openaiModel"
-                  value={settings.openaiModel}
-                  onChange={(e) => onSettingsChange({ openaiModel: e.target.value })}
-                  placeholder="留空使用默认"
-                />
+                <div className="flex items-center justify-between">
+                  <FieldLabel htmlFor="openaiModel" className="mb-0">
+                    模型名称
+                    <HoverHint text="留空使用默认模型" />
+                  </FieldLabel>
+                  <button
+                    type="button"
+                    onClick={handleFetchOpenaiModels}
+                    disabled={fetchingOpenaiModels}
+                    className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    {fetchingOpenaiModels ? (
+                      <RefreshCwIcon className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <SearchIcon className="h-3 w-3" />
+                    )}
+                    获取模型列表
+                  </button>
+                </div>
+                {availableOpenaiModels.length > 0 ? (
+                  <Select
+                    id="openaiModel"
+                    value={settings.openaiModel}
+                    onChange={(e) => onSettingsChange({ openaiModel: e.target.value })}
+                    options={[
+                      { id: "", label: "留空使用默认" },
+                      ...availableOpenaiModels.map((m) => ({ id: m, label: m })),
+                    ]}
+                  />
+                ) : (
+                  <Input
+                    id="openaiModel"
+                    value={settings.openaiModel}
+                    onChange={(e) => onSettingsChange({ openaiModel: e.target.value })}
+                    placeholder="留空使用默认"
+                  />
+                )}
               </div>
 
               <p className="text-xs text-muted-foreground">
