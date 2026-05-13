@@ -94,21 +94,53 @@ export function OutputQualitySection({
           {/* OpenAI API Key */}
           {(settings.provider === "openai" ||
             settings.parseEngineMode === "remote_ocr") && (
-            <div className="grid gap-2">
-              <FieldLabel htmlFor="openaiApiKey" required>
-                <KeyRoundIcon className="inline-block h-4 w-4 mr-1" />
-                OpenAI API Key
-              </FieldLabel>
-              <SensitiveInput
-                id="openaiApiKey"
-                value={settings.openaiApiKey}
-                onChange={(e) => onSettingsChange({ openaiApiKey: e.target.value })}
-                onBlur={(e) => validateApiKey(e.target.value, "openai")}
-                placeholder="sk-..."
-                show={showOpenAIKey}
-                onToggleShow={() => setShowOpenAIKey(!showOpenAIKey)}
-              />
-            </div>
+            <>
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="openaiApiKey" required>
+                  <KeyRoundIcon className="inline-block h-4 w-4 mr-1" />
+                  OpenAI API Key
+                </FieldLabel>
+                <SensitiveInput
+                  id="openaiApiKey"
+                  value={settings.openaiApiKey}
+                  onChange={(e) => onSettingsChange({ openaiApiKey: e.target.value })}
+                  onBlur={(e) => validateApiKey(e.target.value, "openai")}
+                  placeholder="sk-..."
+                  show={showOpenAIKey}
+                  onToggleShow={() => setShowOpenAIKey(!showOpenAIKey)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="openaiBaseUrl">
+                  Base URL
+                  <HoverHint text="自定义 API 端点（可选）" />
+                </FieldLabel>
+                <Input
+                  id="openaiBaseUrl"
+                  value={settings.openaiBaseUrl}
+                  onChange={(e) => onSettingsChange({ openaiBaseUrl: e.target.value })}
+                  placeholder="https://api.openai.com/v1"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="openaiModel">
+                  模型名称
+                  <HoverHint text="留空使用默认模型" />
+                </FieldLabel>
+                <Input
+                  id="openaiModel"
+                  value={settings.openaiModel}
+                  onChange={(e) => onSettingsChange({ openaiModel: e.target.value })}
+                  placeholder="留空使用默认"
+                />
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                填写自定义 Base URL 即可接入任何 OpenAI 兼容服务（硅基流动、DeepSeek 等）
+              </p>
+            </>
           )}
 
           {/* Claude API Key */}

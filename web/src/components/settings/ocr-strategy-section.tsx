@@ -6,12 +6,14 @@ import { KeyRoundIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { HoverHint } from "@/components/ui/hover-hint"
+import { Checkbox } from "@/components/ui/checkbox"
 
 import type {
   Settings,
   OcrProvider,
   OcrAiProvider,
   OcrAiChainMode,
+  OcrAiPromptPreset,
   BaiduDocParseType,
 } from "@/lib/settings"
 import { BAIDU_DOC_PARSE_TYPE_LABELS } from "@/lib/settings"
@@ -20,6 +22,7 @@ import {
   FieldLabel,
   SensitiveInput,
   CollapsibleSection,
+  PromptTextarea,
 } from "@/components/settings/settings-shared"
 import { useModelDownload } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
@@ -130,6 +133,54 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
               />
             </div>
           )}
+
+          {/* Local OCR Params — visible, not collapsed */}
+          <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+            <div className="text-sm text-muted-foreground">本地识别参数</div>
+
+            <div className="grid gap-2">
+              <FieldLabel htmlFor="ocrRenderDpi">
+                OCR 渲染 DPI
+                <HoverHint text="72-400，更高 DPI 提升识别精度但增加处理时间" />
+              </FieldLabel>
+              <Input
+                id="ocrRenderDpi"
+                type="number"
+                min="72"
+                max="400"
+                value={settings.ocrRenderDpi}
+                onChange={(e) => onSettingsChange({ ocrRenderDpi: e.target.value })}
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="ocrStrictMode"
+                checked={settings.ocrStrictMode}
+                onCheckedChange={(checked) =>
+                  onSettingsChange({ ocrStrictMode: checked as boolean })
+                }
+              />
+              <FieldLabel htmlFor="ocrStrictMode" className="mb-0">
+                OCR 严格模式
+                <HoverHint text="开启后 OCR 失败会报错，关闭后会静默降级" />
+              </FieldLabel>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="enableOcr"
+                checked={settings.enableOcr}
+                onCheckedChange={(checked) =>
+                  onSettingsChange({ enableOcr: checked as boolean })
+                }
+              />
+              <FieldLabel htmlFor="enableOcr" className="mb-0">
+                启用 OCR
+                <HoverHint text="关闭后将跳过 OCR 处理" />
+              </FieldLabel>
+            </div>
+          </div>
 
           {/* Tesseract Advanced */}
           {(settings.ocrProvider === "tesseract" || settings.ocrProvider === "auto") && (
@@ -263,6 +314,69 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
           {/* Advanced Options — folded */}
           <CollapsibleSection title="高级选项" defaultOpen={false}>
             <div className="space-y-4">
+              {/* VLM Prompt Overrides */}
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="ocrAiPromptPreset">
+                  提示词预设
+                  <HoverHint text="选择适合模型的提示词模板" />
+                </FieldLabel>
+                <Select
+                  id="ocrAiPromptPreset"
+                  value={settings.ocrAiPromptPreset}
+                  onChange={(e) =>
+                    onSettingsChange({
+                      ocrAiPromptPreset: e.target.value as OcrAiPromptPreset,
+                    })
+                  }
+                  options={[
+                    { id: "auto", label: "自动（按模型推断）" },
+                    { id: "qwen_vl", label: "Qwen-VL" },
+                    { id: "deepseek_ocr", label: "DeepSeek-OCR" },
+                    { id: "openai_vision", label: "OpenAI / GPT 视觉" },
+                    { id: "glm_v", label: "GLM-V" },
+                    { id: "generic_vision", label: "通用视觉模型" },
+                  ]}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="ocrAiDirectPromptOverride">直出模式提示词覆盖</FieldLabel>
+                <PromptTextarea
+                  id="ocrAiDirectPromptOverride"
+                  value={settings.ocrAiDirectPromptOverride}
+                  onChange={(e) => onSettingsChange({ ocrAiDirectPromptOverride: e.target.value })}
+                  placeholder="留空使用默认提示词"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="ocrAiLayoutBlockPromptOverride">
+                  版面切块模式提示词覆盖
+                </FieldLabel>
+                <PromptTextarea
+                  id="ocrAiLayoutBlockPromptOverride"
+                  value={settings.ocrAiLayoutBlockPromptOverride}
+                  onChange={(e) =>
+                    onSettingsChange({ ocrAiLayoutBlockPromptOverride: e.target.value })
+                  }
+                  placeholder="留空使用默认提示词"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <FieldLabel htmlFor="ocrAiImageRegionPromptOverride">
+                  图片区域提示词覆盖
+                </FieldLabel>
+                <PromptTextarea
+                  id="ocrAiImageRegionPromptOverride"
+                  value={settings.ocrAiImageRegionPromptOverride}
+                  onChange={(e) =>
+                    onSettingsChange({ ocrAiImageRegionPromptOverride: e.target.value })
+                  }
+                  placeholder="留空使用默认提示词"
+                />
+              </div>
+
               {/* Layout Model (only for layout_block mode) */}
               {settings.ocrAiChainMode === "layout_block" && (
                 <div className="grid gap-2">

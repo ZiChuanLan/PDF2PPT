@@ -5,11 +5,9 @@ import { KeyRoundIcon } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
-import { HoverHint } from "@/components/ui/hover-hint"
 import { Checkbox } from "@/components/ui/checkbox"
 
 import type { Settings, ParseEngineMode, MineruModelVersion } from "@/lib/settings"
-import { PARSE_ENGINE_MODE_LABELS } from "@/lib/run-config"
 import {
   FieldLabel,
   SensitiveInput,
@@ -90,56 +88,6 @@ export function ParsingMethodSection({
           </label>
         ))}
       </div>
-
-      {/* Advanced options based on selected mode */}
-      {settings.parseEngineMode === "local_ocr" && (
-        <CollapsibleSection title="本地解析高级选项" defaultOpen={false}>
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <FieldLabel htmlFor="ocrRenderDpi">
-                OCR 渲染 DPI
-                <HoverHint text="72-400，更高 DPI 提升识别精度但增加处理时间" />
-              </FieldLabel>
-              <Input
-                id="ocrRenderDpi"
-                type="number"
-                min="72"
-                max="400"
-                value={settings.ocrRenderDpi}
-                onChange={(e) => onSettingsChange({ ocrRenderDpi: e.target.value })}
-              />
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="ocrStrictMode"
-                checked={settings.ocrStrictMode}
-                onCheckedChange={(checked) =>
-                  onSettingsChange({ ocrStrictMode: checked as boolean })
-                }
-              />
-              <FieldLabel htmlFor="ocrStrictMode" className="mb-0">
-                OCR 严格模式
-                <HoverHint text="开启后 OCR 失败会报错，关闭后会静默降级" />
-              </FieldLabel>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="enableOcr"
-                checked={settings.enableOcr}
-                onCheckedChange={(checked) =>
-                  onSettingsChange({ enableOcr: checked as boolean })
-                }
-              />
-              <FieldLabel htmlFor="enableOcr" className="mb-0">
-                启用 OCR
-                <HoverHint text="关闭后将跳过 OCR 处理" />
-              </FieldLabel>
-            </div>
-          </div>
-        </CollapsibleSection>
-      )}
 
       {settings.parseEngineMode === "mineru_cloud" && (
         <>
