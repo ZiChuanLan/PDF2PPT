@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { DownloadIcon, XIcon } from "lucide-react"
+import { DownloadIcon, CheckIcon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import type { DownloadStatusItem } from "@/hooks/use-model-download"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 
@@ -118,6 +119,15 @@ export function DownloadProgressButton({
           </div>
         ) : null}
       </div>
+    )
+  }
+  
+  if (downloadState?.status === "completed") {
+    return (
+      <span className={cn("inline-flex items-center gap-1 text-xs text-muted-foreground", className)}>
+        <CheckIcon className="size-3" />
+        已下载
+      </span>
     )
   }
 
