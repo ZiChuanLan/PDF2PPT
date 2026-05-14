@@ -183,6 +183,34 @@ React.useEffect(() => {
 }, [])
 ```
 
+### Single Source of Truth for Job Stages
+
+Job stage displays must derive from shared stage contracts in `web/src/lib/job-status.ts`.
+Do not invent divergent stage codes in page-local arrays when the backend already exposes
+the real stage name.
+
+```tsx
+// ❌ FORBIDDEN
+const steps = [
+  { code: "parsing", label: "解析" },
+  { code: "ocr", label: "OCR" },
+  { code: "generating", label: "生成" },
+]
+
+// ✅ REQUIRED
+const steps = [
+  { code: "parsing", label: "解析" },
+  { code: "ocr", label: "OCR" },
+  { code: "pptx_generating", label: "生成" },
+]
+```
+
+**Why**: local aliases like `"generating"` drift away from backend `JobStage` values,
+make flow debugging harder, and encourage duplicate mapping logic.
+
+If the UI needs a compact or grouped display, keep the grouping layer separate, but anchor
+the codes to the shared `JOB_STAGE_FLOW` / `JOB_STAGE_LABELS` contract.
+
 ---
 
 ## Testing Requirements
@@ -208,3 +236,4 @@ Before merging any frontend change, verify:
 - [ ] Input fields are always controlled (initialized with string values)
 - [ ] Async operations check `mounted` flag before updating state
 - [ ] Error messages are user-friendly (Chinese for UI-facing, English for logs)
+- [ ] Job stage UIs reuse shared stage contracts instead of local divergent codes

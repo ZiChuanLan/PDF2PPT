@@ -15,6 +15,7 @@ This directory contains guidelines for backend development. The backend is a Fas
 | Guide | Description | Status |
 |-------|-------------|--------|
 | [Auth Pattern](./auth-pattern.md) | OAuth + JWT + user isolation | Active |
+| [Job Config Contracts](./job-config-contracts.md) | Structured job config → worker kwargs boundary rules and tests | Active |
 
 ---
 
