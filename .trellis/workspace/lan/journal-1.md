@@ -310,3 +310,37 @@ Simplified settings page (2809→4 tabs), setup wizard (6→3 steps), and added 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Frontend Optimization + PaddleOCR Fix
+
+**Date**: 2026-05-13
+**Task**: Frontend Optimization + PaddleOCR Fix
+**Branch**: `main`
+
+### Summary
+
+Completed 14-item frontend optimization: Settings conditional tab rendering, Home/Tracking component splitting, duplicate logic extraction (resolveParseEngineOcrProvider, fetchModels), singleton model download polling, download retry, React.memo form components, number validation, dirty state tracking, DOWNLOADABLE_MODELS Set refactor. Fixed PaddleOCR model status: exponential backoff retry, AbortError toast suppression, inline layout model download on home page.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `452c5d7` | (see git log) |
+| `1cfe5db` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

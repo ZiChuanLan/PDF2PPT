@@ -17,12 +17,14 @@ import {
   AIOCR_CHAIN_MODE_LABELS,
   PARSE_ENGINE_MODE_LABELS,
   PPT_GENERATION_MODE_LABELS,
+  type OcrAiLayoutModel,
   type ParseEngineMode,
   type Settings,
 } from "@/lib/settings"
 import type { ModelStatusResponse } from "@/hooks/use-model-status"
 import { useModelDownload } from "@/hooks/use-model-download"
 import { resolveParseEngineOcrProvider } from "@/lib/run-config"
+import { fetchModels } from "@/lib/api"
 
 interface QuickConfigPanelProps {
   settingsSnapshot: Settings
@@ -50,6 +52,56 @@ export function QuickConfigPanel({
   const { startDownload, downloads, isDownloading } = useModelDownload({
     onDownloadComplete: () => void refetchModelStatus(),
   })
+
+  // Fetch real OCR model list from backend (like Settings page does)
+  const [availableOcrModels, setAvailableOcrModels] = React.useState<string[]>([])
+  const [fetchingOcrModels, setFetchingOcrModels] = React.useState(false)
+
+  React.useEffect(() => {
+    if (settingsSnapshot.parseEngineMode !== "remote_ocr") {
+      setAvailableOcrModels([])
+      return
+    }
+    const key = settingsSnapshot.ocrAiApiKey.trim()
+    const url = settingsSnapshot.ocrAiBaseUrl.trim()
+    if (!key || !url) {
+      setAvailableOcrModels([])
+      return
+    }
+    let cancelled = false
+    setFetchingOcrModels(true)
+    void fetchModels({
+      provider: settingsSnapshot.ocrAiProvider,
+      apiKey: key,
+      baseUrl: url || undefined,
+      capability: "vision",
+    })
+      .then((models) => {
+        if (!cancelled) setAvailableOcrModels(models)
+      })
+      .catch(() => { /* silently keep empty list — user can retry by tab switch */ })
+      .finally(() => {
+        if (!cancelled) setFetchingOcrModels(false)
+      })
+    return () => { cancelled = true }
+  }, [
+    settingsSnapshot.parseEngineMode,
+    settingsSnapshot.ocrAiProvider,
+    settingsSnapshot.ocrAiApiKey,
+    settingsSnapshot.ocrAiBaseUrl,
+  ])
+
+  // Reset layout model selection if current model is no longer downloaded
+  React.useEffect(() => {
+    if (downloadedLayoutModels.size > 0 && settingsSnapshot.ocrAiLayoutModel) {
+      if (!downloadedLayoutModels.has(settingsSnapshot.ocrAiLayoutModel)) {
+        const first = [...downloadedLayoutModels][0]
+        if (first) {
+          updateSettingsSnapshot((prev) => ({ ...prev, ocrAiLayoutModel: first as OcrAiLayoutModel }))
+        }
+      }
+    }
+  }, [downloadedLayoutModels, settingsSnapshot.ocrAiLayoutModel, updateSettingsSnapshot])
   return (
     <div className="home-inline-panel px-4 py-3">
       <div className="grid gap-3">
@@ -208,10 +260,12 @@ export function QuickConfigPanel({
                   ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
                 }))
               }
-              options={Object.values(LAYOUT_MODELS).map((m) => ({
-                id: m.modelId,
-                label: `${m.displayName} — ${m.speedLabel}`,
-              }))}
+              options={Object.values(LAYOUT_MODELS)
+                .filter((m) => downloadedLayoutModels.has(m.modelId))
+                .map((m) => ({
+                  id: m.modelId,
+                  label: `${m.displayName} — ${m.speedLabel}`,
+                }))}
             />
             {downloadedLayoutModels.size === 0 && (() => {
               const currentModel = settingsSnapshot.ocrAiLayoutModel
@@ -250,30 +304,36 @@ export function QuickConfigPanel({
               <HoverHint text="选择用于文字识别的 AI 模型。" />
             </div>
             {settingsSnapshot.ocrAiApiKey.trim() && settingsSnapshot.ocrAiBaseUrl.trim() ? (
-              <Select
-                value={
-                  ["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel)
-                    ? settingsSnapshot.ocrAiModel
-                    : "__custom__"
-                }
-                onChange={(e) => {
-                  const val = e.target.value
-                  updateSettingsSnapshot((prev) => ({
-                    ...prev,
-                    ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
-                  }))
-                }}
-                options={[
-                  { id: "Qwen/Qwen2.5-VL-7B-Instruct", label: "Qwen2.5-VL-7B" },
-                  { id: "Qwen/Qwen2.5-VL-32B-Instruct", label: "Qwen2.5-VL-32B" },
-                  { id: "paddleocr/PaddleOCR-VL-1.5", label: "PaddleOCR-VL" },
-                  { id: "deepseek-ai/DeepSeek-OCR", label: "DeepSeek-OCR" },
-                  { id: "openai/gpt-4o-mini", label: "GPT-4o-mini" },
-                  ...(!["Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2.5-VL-32B-Instruct", "paddleocr/PaddleOCR-VL-1.5", "deepseek-ai/DeepSeek-OCR", "openai/gpt-4o-mini"].includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()
-                    ? [{ id: "__custom__", label: settingsSnapshot.ocrAiModel }]
-                    : []),
-                ]}
-              />
+              availableOcrModels.length > 0 ? (
+                <Select
+                  value={
+                    availableOcrModels.includes(settingsSnapshot.ocrAiModel)
+                      ? settingsSnapshot.ocrAiModel
+                      : "__custom__"
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value
+                    updateSettingsSnapshot((prev) => ({
+                      ...prev,
+                      ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
+                    }))
+                  }}
+                  options={[
+                    ...availableOcrModels.map((id) => ({ id, label: id })),
+                    ...(!availableOcrModels.includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()
+                      ? [{ id: "__custom__", label: settingsSnapshot.ocrAiModel }]
+                      : []),
+                  ]}
+                />
+              ) : fetchingOcrModels ? (
+                <div className="text-xs text-muted-foreground">正在查询可用模型…</div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                  <AlertCircleIcon className="size-3.5" />
+                  <span>未获取到可用模型，请检查 API Key 和 Base URL</span>
+                  <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
+                </div>
+              )
             ) : (
               <div className="flex items-center gap-2 text-xs text-amber-600">
                 <AlertCircleIcon className="size-3.5" />
