@@ -87,6 +87,13 @@ _CONFIDENCE_BYPASS_LOW_THRESHOLD = 0.5    # Score below this = "low confidence"
 _CONFIDENCE_BYPASS_AVG_THRESHOLD = 0.3    # Average below this → bypass
 _CONFIDENCE_BYPASS_RATIO_THRESHOLD = 0.8  # >80% low-confidence detections → bypass
 
+# Adaptive coverage threshold: when layout model confidence is low/high,
+# adjust the text-coverage bypass threshold to be more/less aggressive.
+_LOW_CONFIDENCE_THRESHOLD = 0.6             # avg confidence below this → low
+_HIGH_CONFIDENCE_THRESHOLD = 0.85           # avg confidence above this → high
+_LOW_CONFIDENCE_COVERAGE_MULTIPLIER = 0.6   # reduce threshold when uncertain
+_HIGH_CONFIDENCE_COVERAGE_MULTIPLIER = 1.3  # raise threshold when confident
+
 
 class _LayoutBlockMixin:
     """Mixin providing local layout-block OCR methods for AiOcrClient."""
