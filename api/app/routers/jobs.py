@@ -200,8 +200,8 @@ async def _create_job_core(
         file_size_mb = file_size / (1024 * 1024)
 
         upload_kind = _write_upload_as_input_pdf(
-            filename=filename,
-            content_type=normalized_content_type,
+            filename=file.filename or "input.pdf",
+            content_type=file.content_type,
             content=None,  # Already written via streaming
             output_path=input_path,
         )
