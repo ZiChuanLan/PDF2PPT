@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-13-refactor-settings-page-by-backend-flow/research/backend-flow.md", "reason": "Verify configuration dependencies and parse mode routing logic are correctly implemented"}
+{"file": ".trellis/tasks/05-13-refactor-settings-page-by-backend-flow/prd.md", "reason": "Verify all acceptance criteria are met: flow-based organization, dynamic display, user-friendly terminology"}

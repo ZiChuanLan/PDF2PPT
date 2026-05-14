@@ -1,0 +1,6 @@
+
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Components"}
+{"file": "/home/lan/workspace/pdf2ppt/.trellis/tasks/05-13-comprehensive-audit/research/dead-backend.md", "reason": "Backend dead code"}
+{"file": "/home/lan/workspace/pdf2ppt/.trellis/tasks/05-13-comprehensive-audit/research/dead-frontend.md", "reason": "Frontend dead code"}
+{"file": "/home/lan/workspace/pdf2ppt/.trellis/tasks/05-13-comprehensive-audit/research/missing-features.md", "reason": "Missing features"}
