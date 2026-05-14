@@ -25,6 +25,7 @@ import {
   PromptTextarea,
 } from "@/components/settings/settings-shared"
 import { useModelDownload } from "@/hooks/use-model-download"
+import { useModelStatus } from "@/hooks/use-model-status"
 import { DownloadProgressButton } from "@/components/download-progress-button"
 import { fetchModels } from "@/lib/api"
 import { toast } from "sonner"
@@ -76,6 +77,29 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
   const [availableModels, setAvailableModels] = React.useState<string[]>([])
 
   const { startDownload, cancelDownload, getDownloadState } = useModelDownload()
+  const { data: modelStatus } = useModelStatus()
+
+  // Compute which layout models are downloaded (from backend model status — authoritative)
+  const downloadedLayoutModels = React.useMemo(() => {
+    if (!modelStatus?.local) return new Set<string>()
+    return new Set(
+      LAYOUT_MODEL_OPTIONS
+        .filter((opt) => modelStatus.local[opt.id]?.ready)
+        .map((opt) => opt.id)
+    )
+  }, [modelStatus])
+
+  // Reset layout model selection if current model is no longer downloaded
+  React.useEffect(() => {
+    if (downloadedLayoutModels.size > 0 && settings.ocrAiLayoutModel) {
+      if (!downloadedLayoutModels.has(settings.ocrAiLayoutModel)) {
+        const first = [...downloadedLayoutModels][0]
+        if (first) {
+          onSettingsChange({ ocrAiLayoutModel: first as Settings["ocrAiLayoutModel"] })
+        }
+      }
+    }
+  }, [downloadedLayoutModels, settings.ocrAiLayoutModel, onSettingsChange])
 
   const handleFetchModels = React.useCallback(async () => {
     if (!settings.ocrAiApiKey) {
@@ -460,14 +484,12 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                         ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
                       })
                     }
-                    options={LAYOUT_MODEL_OPTIONS.map((opt) => {
-                      const state = getDownloadState(opt.id)
-                      const dlLabel = state?.status === "completed" ? "已下载" : "未下载"
-                      return {
+                    options={LAYOUT_MODEL_OPTIONS
+                      .filter((opt) => downloadedLayoutModels.has(opt.id))
+                      .map((opt) => ({
                         id: opt.id,
-                        label: `${opt.label} (${opt.sizeMb}MB) — ${dlLabel}`,
-                      }
-                    })}
+                        label: `${opt.label} (${opt.sizeMb}MB)`,
+                      }))}
                   />
                   <div className="mt-2">
                     <DownloadProgressButton
