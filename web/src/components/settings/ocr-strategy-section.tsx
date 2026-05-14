@@ -484,12 +484,13 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                         ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
                       })
                     }
-                    options={LAYOUT_MODEL_OPTIONS
-                      .filter((opt) => downloadedLayoutModels.has(opt.id))
-                      .map((opt) => ({
+                    options={LAYOUT_MODEL_OPTIONS.map((opt) => {
+                      const isDownloaded = modelStatus?.local[opt.id]?.ready ?? false
+                      return {
                         id: opt.id,
-                        label: `${opt.label} (${opt.sizeMb}MB)`,
-                      }))}
+                        label: `${opt.label} (${opt.sizeMb}MB) — ${isDownloaded ? "已下载" : "未下载"}`,
+                      }
+                    })}
                   />
                   <div className="mt-2">
                     <DownloadProgressButton
