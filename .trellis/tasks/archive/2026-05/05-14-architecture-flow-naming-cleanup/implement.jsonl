@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend architecture and conventions for API, queue, worker, and schema-layer changes."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend conventions and pre-development checklist for page/hook/type updates."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Relevant for updating job submission/tracking hooks and avoiding hook-pattern regressions."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend forbidden patterns and quality rules for naming/alignment cleanup."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Needed because this task touches shared status/config types and contracts."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"This task spans frontend settings, API schema, worker kwargs, and runtime stages."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"This task should reduce duplicate stage/config naming sources instead of adding more."}
+{"file":".trellis/tasks/05-14-architecture-flow-naming-cleanup/research/architecture-flow-map.md","reason":"Code-level end-to-end flow map for the current app architecture and chain hotspots."}
+{"file":".trellis/tasks/05-14-architecture-flow-naming-cleanup/research/naming-contract-map.md","reason":"Cross-layer naming contract map and first-wave alignment targets for this MVP."}
+{"file":".trellis/tasks/05-14-architecture-flow-naming-cleanup/research/active-task-boundaries.md","reason":"Task-boundary context to avoid duplicating other active task scopes while implementing fixes."}

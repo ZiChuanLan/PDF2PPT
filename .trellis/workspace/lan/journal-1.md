@@ -344,3 +344,38 @@ Completed 14-item frontend optimization: Settings conditional tab rendering, Hom
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Architecture flow naming cleanup MVP
+
+**Date**: 2026-05-14
+**Task**: Architecture flow naming cleanup MVP
+**Branch**: `main`
+
+### Summary
+
+Mapped the frontend-to-worker pipeline, fixed the v2 JobConfig layout-assist propagation bug, aligned homepage job-stage naming with shared contracts, and captured new backend/frontend spec rules for config flattening and stage naming.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9481c8d` | (see git log) |
+| `0e09119` | (see git log) |
+| `884ba48` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

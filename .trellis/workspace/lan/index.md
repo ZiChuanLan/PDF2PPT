@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-05-13
+- **Total Sessions**: 11
+- **Last Active**: 2026-05-14
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~346 | Active |
+| `journal-1.md` | ~381 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-05-14 | Architecture flow naming cleanup MVP | `9481c8d`, `0e09119`, `884ba48` | `main` |
 | 10 | 2026-05-13 | Frontend Optimization + PaddleOCR Fix | `452c5d7`, `1cfe5db` | `main` |
 | 9 | 2026-05-12 | Settings & Setup UX Simplification | `6bcda58` | `main` |
 | 8 | 2026-05-12 | Comprehensive Code Review + Security Fixes (P0/P1) | `b264d21` | `main` |

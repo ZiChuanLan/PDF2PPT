@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend review baseline for schema-layer and worker-path correctness."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend review baseline for page, hook, and status/config contract changes."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check-agent should enforce frontend quality and forbidden-pattern constraints."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check-agent should verify type-safe stage/config naming alignment."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check cross-layer consistency from settings through API schema to worker runtime."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check that cleanup consolidates duplicated naming sources instead of multiplying them."}
+{"file":".trellis/tasks/05-14-architecture-flow-naming-cleanup/research/architecture-flow-map.md","reason":"Review should validate implementation against the actual end-to-end chain."}
+{"file":".trellis/tasks/05-14-architecture-flow-naming-cleanup/research/naming-contract-map.md","reason":"Review should validate that first-wave naming alignment matches the documented contract map."}
