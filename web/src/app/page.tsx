@@ -303,11 +303,16 @@ export default function Home() {
   })()
 
   // Stepped progress for multi-file
+  // Maps 8 backend JobStage values (JOB_STAGE_FLOW) to 4 frontend display steps.
+  // flowToStep index corresponds to JOB_STAGE_FLOW index:
+  //   0=queued, 1=parsing, 2=ocr, 3=layout_assist,
+  //   4=pptx_generating, 5=packaging, 6=cleanup, 7=done
+  // Step codes match backend JobStage values where possible for debuggability.
   const stageSteps = React.useMemo(() => {
     const STEPS = [
       { code: "parsing", label: "解析" },
       { code: "ocr", label: "OCR" },
-      { code: "generating", label: "生成" },
+      { code: "pptx_generating", label: "生成" },
       { code: "done", label: "完成" },
     ] as const
 
