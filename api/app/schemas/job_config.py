@@ -345,6 +345,16 @@ class JobConfig(BaseModel):
         description="Remove NotebookLM footer branding text",
     )
 
+    # Layout assist flags
+    enable_layout_assist: bool = Field(
+        False,
+        description="Enable AI layout assist for improved element placement",
+    )
+    layout_assist_apply_image_regions: bool = Field(
+        False,
+        description="Apply image region detection during layout assist",
+    )
+
     # Structured sub-configs
     parse: ParseConfig = Field(
         default_factory=ParseConfig,
@@ -386,9 +396,9 @@ class JobConfig(BaseModel):
             "enable_ocr": self.enable_ocr,
             "retain_process_artifacts": self.retain_process_artifacts,
             "remove_footer_notebooklm": self.remove_footer_notebooklm,
-            # Deprecated (always False)
-            "enable_layout_assist": False,
-            "layout_assist_apply_image_regions": False,
+            # Layout assist
+            "enable_layout_assist": self.enable_layout_assist,
+            "layout_assist_apply_image_regions": self.layout_assist_apply_image_regions,
             # LLM config
             "provider": self.llm.provider,
             "api_key": self.llm.api_key,
