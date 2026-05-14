@@ -23,6 +23,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+| [Task Governance Thinking Guide](./task-governance-thinking-guide.md) | Distinguish unfinished work from stale-complete tasks before reopening or repairing task metadata | When many active tasks remain, task metadata looks broken, or archive cleanup may be overdue |
 
 ---
 
@@ -46,6 +47,15 @@ These guides help you **ask the right questions before coding**.
 - [ ] **You're creating a new utility/helper function** ← Search first!
 
 → Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
+
+### When to Think About Task Governance
+
+- [ ] There are many `planning` / `in_progress` tasks left over
+- [ ] A task looks broken because PRD / JSONL is incomplete
+- [ ] You suspect code already landed on `main` but the task was never archived
+- [ ] One task appears to depend on another task's research or artifacts
+
+→ Read [Task Governance Thinking Guide](./task-governance-thinking-guide.md)
 
 ---
 
