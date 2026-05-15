@@ -379,3 +379,36 @@ Mapped the frontend-to-worker pipeline, fixed the v2 JobConfig layout-assist pro
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Active tasks governance cleanup
+
+**Date**: 2026-05-15
+**Task**: Active tasks governance cleanup
+**Branch**: `main`
+
+### Summary
+
+Verified the remaining active tasks against committed work, confirmed residual issues were already resolved, batch-archived five stale completed sibling tasks, and added a Trellis task-governance thinking guide for future cleanup decisions.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ee6395` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
