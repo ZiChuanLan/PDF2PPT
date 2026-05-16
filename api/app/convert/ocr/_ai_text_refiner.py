@@ -18,6 +18,7 @@ from .vendors import (
     _normalize_ai_ocr_model_name,
     _should_send_image_first_for_ai_ocr,
 )
+from .json_extraction import _extract_json_list
 from .result_parsing import _normalize_bbox_px
 from ._ai_helpers import (
     _coerce_int_in_range,

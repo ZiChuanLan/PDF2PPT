@@ -15,7 +15,7 @@ from typing import Any
 from .base import _clean_str, _env_flag, _env_float, _normalize_paddle_doc_backend, _normalize_paddle_doc_server_url, _resolve_paddle_doc_model_and_pipeline, _run_in_daemon_thread_with_timeout
 from .result_parsing import _derive_paddle_doc_predict_max_pixels, _normalize_layout_label
 from .routing import ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
-from ._ai_rate_limiter import _AiRequestRateLimiter, _AiRequestReservation, _estimate_chat_completion_tokens
+from ._ai_rate_limiter import _AiRequestRateLimiter, _AiRequestReservation, _estimate_chat_completion_tokens, _extract_completion_total_tokens
 from .utils import _coerce_bbox_xyxy, _is_paddleocr_vl_model
 
 # ---------------------------------------------------------------------------
@@ -412,6 +412,16 @@ def _is_retryable_chat_completion_error(error: BaseException) -> bool:
         "overloaded",
     )
     return any(marker in lowered for marker in retry_markers)
+
+
+def _get_retry_backoff_base() -> float:
+    """Return the base retry backoff in seconds (env-overridable)."""
+    return _RETRY_BACKOFF_BASE_S
+
+
+def _get_rate_limited_min_delay() -> float:
+    """Return the minimum delay for rate-limited requests (env-overridable)."""
+    return _RATE_LIMITED_MIN_DELAY_S
 
 
 def _retry_delay_s_for_chat_completion(

@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 import numpy as np
 from PIL import Image
 
-from .base import _clean_str, _env_float, _run_in_daemon_thread_with_timeout
+from .base import _clean_str, _env_flag, _env_float, _run_in_daemon_thread_with_timeout
 from .deepseek_parser import _extract_deepseek_tagged_items, _is_deepseek_ocr_model, _looks_like_ocr_prompt_echo_text
 from .json_extraction import _extract_json_list, _extract_message_text, _extract_partial_json_object_list
 from .prompts import build_ai_ocr_layout_block_prompt, normalize_ai_ocr_prompt_override, resolve_ai_ocr_prompt_preset
@@ -95,6 +95,33 @@ _LOW_CONFIDENCE_THRESHOLD = 0.6             # avg confidence below this → low
 _HIGH_CONFIDENCE_THRESHOLD = 0.85           # avg confidence above this → high
 _LOW_CONFIDENCE_COVERAGE_MULTIPLIER = 0.6   # reduce threshold when uncertain
 _HIGH_CONFIDENCE_COVERAGE_MULTIPLIER = 1.3  # raise threshold when confident
+
+# ---------------------------------------------------------------------------
+# Request timeout constants for layout block OCR retry calculation
+# ---------------------------------------------------------------------------
+_REQUEST_TIMEOUT_BUFFER_S = 5.0      # Extra seconds added to base timeout
+_REQUEST_TIMEOUT_MULTIPLIER = 1.5    # Multiplier for auto-computing retry timeout
+_REQUEST_TIMEOUT_CAP_S = 90.0        # Maximum retry timeout in seconds
+_RETRY_TIMEOUT_BUFFER_S = 10.0       # Extra seconds for retry-specific buffer
+
+# ---------------------------------------------------------------------------
+# Wide-flat layout bypass detection constants
+# ---------------------------------------------------------------------------
+_WIDE_FLAT_MIN_ASPECT_RATIO = 3.0       # Block aspect ratio must be >= 3
+_WIDE_FLAT_MIN_WIDTH_RATIO = 0.3        # Block width must be >= 30% of page
+_WIDE_FLAT_MAX_HEIGHT_RATIO = 0.15      # Block height must be <= 15% of page
+_WIDE_FLAT_MAX_VERTICAL_SPAN = 0.33     # Vertical span <= 33% of page height
+_WIDE_FLAT_MIN_COVERAGE_RATIO = 0.7     # Widest block covers >= 70% of page width
+
+# ---------------------------------------------------------------------------
+# Post-OCR quality validation constants
+# ---------------------------------------------------------------------------
+_PIXELS_PER_10K = 10000                         # Divisor for chars-per-10Kpx density
+_VALIDATION_DENSITY_THRESHOLD = 0.5             # Min chars per 10K px before suspicious
+_VALIDATION_COHERENCE_THRESHOLD = 0.7           # Min alphanumeric ratio before suspicious
+_VALIDATION_MIN_CHARS_FOR_COHERENCE = 20        # Min chars to judge coherence
+_VALIDATION_TOO_FEW_BLOCKS = 2                  # Blocks count <= this on large image
+_VALIDATION_LARGE_IMAGE_AREA = 5000000          # Pixel area threshold for "large image"
 
 
 class _LayoutBlockMixin:

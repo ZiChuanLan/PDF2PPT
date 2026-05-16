@@ -9,6 +9,7 @@ from PIL import Image
 
 from .ai_client import AiOcrTextRefiner, _clone_image_region_payload, _is_multiline_candidate_for_linebreak_assist
 from .base import _ACRONYM_ALLOWLIST, _clean_str
+from .deepseek_parser import _looks_like_ocr_prompt_echo_text
 from ._ocr_constants import (
     _BAND_CLOSE_Y_THRESHOLD_MULTIPLIER,
     _BAND_OVERLAP_THRESHOLD_MULTIPLIER,
