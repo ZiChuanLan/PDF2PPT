@@ -476,3 +476,41 @@ Confirmed the standard docker compose stack was running stale images, performed 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Stabilize OCR and artifact flows
+
+**Date**: 2026-05-17
+**Task**: Stabilize OCR and artifact flows
+**Branch**: `main`
+
+### Summary
+
+Fixed OCR runtime NameErrors, repaired PPTX font import and same-origin artifact loading, and hardened frontend OCR model readiness/status UX with spec updates and MCP validation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3317a1b` | (see git log) |
+| `a524126` | (see git log) |
+| `11c1409` | (see git log) |
+| `bf2aa69` | (see git log) |
+| `32d7920` | (see git log) |
+| `2c7e2c9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

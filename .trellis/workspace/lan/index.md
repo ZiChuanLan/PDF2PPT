@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-05-16
+- **Total Sessions**: 15
+- **Last Active**: 2026-05-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~478 | Active |
+| `journal-1.md` | ~516 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-05-17 | Stabilize OCR and artifact flows | `3317a1b`, `a524126`, `11c1409`, `bf2aa69`, `32d7920`, `2c7e2c9` | `main` |
 | 14 | 2026-05-16 | Runtime rebuild for OCR fix activation | - | `main` |
 | 13 | 2026-05-16 | Chain code issues first-wave OCR fix | `2a82e5a` | `main` |
 | 12 | 2026-05-15 | Active tasks governance cleanup | `7ee6395` | `main` |
