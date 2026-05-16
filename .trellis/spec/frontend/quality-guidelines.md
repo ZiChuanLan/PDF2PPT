@@ -209,6 +209,49 @@ deployment-sensitive network/CORS failure.
 - inline PDF preview URLs
 - "open in new window" links for job artifacts
 
+### Model Readiness Must Come From `/models/status`
+
+For OCR/layout model UX, treat download-task progress and runtime readiness as **different contracts**:
+
+- `/api/v1/models/download/status` tells you whether a download job is running / completed / failed.
+- `/api/v1/models/status` tells you whether the model is actually ready for use.
+
+```tsx
+// ❌ FORBIDDEN
+const isReady = downloadState?.status === "completed"
+const label = isReady ? "已下载" : "下载"
+
+// ✅ REQUIRED
+const isReady = modelStatus?.local[modelId]?.ready ?? false
+const label = isReady
+  ? "已下载"
+  : downloadState?.status === "completed"
+    ? "刷新状态"
+    : "下载"
+```
+
+**Why**: a download task can finish while the runtime probe still reports the model unavailable
+(for example, model root missing, install incomplete, or readiness check failed). Showing `已下载`
+from download-task completion alone creates a false-positive success state.
+
+### Transient Status Errors Must Clear After Successful Refetch
+
+If a status hook exposes both current error state and historical error state, UI error badges must render from the
+**current** error and clear when a later refetch succeeds.
+
+```tsx
+// ❌ FORBIDDEN
+const { lastError } = useModelStatus()
+<ModelStatusBadge error={lastError} />
+
+// ✅ REQUIRED
+const { error } = useModelStatus()
+<ModelStatusBadge error={error} />
+```
+
+**Why**: request aborts during navigation are common. Reusing sticky historical errors keeps the UI stuck on
+`状态获取失败` even after `/models/status` starts returning healthy responses again.
+
 ### Single Source of Truth for Job Stages
 
 Job stage displays must derive from shared stage contracts in `web/src/lib/job-status.ts`.
