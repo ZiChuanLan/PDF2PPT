@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { DownloadIcon, CheckIcon, XIcon } from "lucide-react"
+import { DownloadIcon, CheckIcon, RefreshCwIcon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -16,8 +16,10 @@ export function DownloadProgressButton({
   modelId,
   label,
   downloadState,
+  isReady = false,
   onDownload,
   onCancel,
+  onRefreshStatus,
   size = "sm",
   variant = "outline",
   className,
@@ -25,8 +27,10 @@ export function DownloadProgressButton({
   modelId: string
   label?: string
   downloadState: DownloadStatusItem | null
+  isReady?: boolean
   onDownload: (modelId: string) => void
   onCancel: (modelId: string) => void
+  onRefreshStatus?: () => void
   size?: "sm" | "default" | "xs"
   variant?: "outline" | "ghost" | "default"
   className?: string
@@ -121,12 +125,36 @@ export function DownloadProgressButton({
       </div>
     )
   }
-  
-  if (downloadState?.status === "completed") {
+
+  if (isReady) {
     return (
       <span className={cn("inline-flex items-center gap-1 text-xs text-muted-foreground", className)}>
         <CheckIcon className="size-3" />
         已下载
+      </span>
+    )
+  }
+
+  if (downloadState?.status === "completed") {
+    if (onRefreshStatus) {
+      return (
+        <Button
+          type="button"
+          variant={variant}
+          size={size}
+          className={className}
+          onClick={onRefreshStatus}
+        >
+          <RefreshCwIcon className="size-3" />
+          刷新状态
+        </Button>
+      )
+    }
+
+    return (
+      <span className={cn("inline-flex items-center gap-1 text-xs text-muted-foreground", className)}>
+        <CheckIcon className="size-3" />
+        下载完成，待校验
       </span>
     )
   }

@@ -169,7 +169,7 @@ export default function Home() {
   const isImageInput = isImageUploadFile(currentPreviewFile)
 
   // Model status
-  const { data: backendModelStatus, isLoading: isModelStatusLoading, lastError: modelStatusError, refetch: refetchModelStatus } = useModelStatus()
+  const { data: backendModelStatus, isLoading: isModelStatusLoading, error: modelStatusError, refetch: refetchModelStatus } = useModelStatus()
   const modelStatus = useEffectiveModelStatus(backendModelStatus, settingsSnapshot)
   const [preflightAcknowledged, setPreflightAcknowledged] = React.useState(false)
 

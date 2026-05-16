@@ -36,6 +36,7 @@ export function useModelStatus() {
   const refetch = React.useCallback(async () => {
     setIsLoading(true)
     setError(null)
+    setLastError(null)
 
     const MAX_RETRIES = 3
     const RETRY_DELAYS = [2000, 4000, 8000]
@@ -50,6 +51,8 @@ export function useModelStatus() {
         const body = (await res.json()) as ModelStatusResponse
         if (mountedRef.current) {
           setData(body)
+          setError(null)
+          setLastError(null)
           retryCountRef.current = 0
         }
       } catch (e) {

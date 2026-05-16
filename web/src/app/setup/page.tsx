@@ -52,19 +52,22 @@ export default function SetupPage() {
   const [needsSetup, setNeedsSetup] = React.useState<boolean | null>(null)
   const [modelStatus, setModelStatus] = React.useState<ModelStatusResponse | null>(null)
   const [modelStatusLoading, setModelStatusLoading] = React.useState(false)
-  const { startDownload, cancelDownload, getDownloadState } = useModelDownload({
-    onDownloadComplete: async () => {
-      // Refresh model status after download
-      try {
-        const statusRes = await apiFetch("/models/status")
-        if (statusRes.ok) {
-          const statusData = (await statusRes.json()) as ModelStatusResponse
-          setModelStatus(statusData)
-        }
-      } catch {
-        // Non-fatal
+  const refetchModelStatus = React.useCallback(async () => {
+    setModelStatusLoading(true)
+    try {
+      const statusRes = await apiFetch("/models/status")
+      if (statusRes.ok) {
+        const statusData = (await statusRes.json()) as ModelStatusResponse
+        setModelStatus(statusData)
       }
-    },
+    } catch {
+      // Non-fatal
+    } finally {
+      setModelStatusLoading(false)
+    }
+  }, [])
+  const { startDownload, cancelDownload, getDownloadState } = useModelDownload({
+    onDownloadComplete: () => void refetchModelStatus(),
   })
 
   // Check if setup is needed
@@ -117,18 +120,7 @@ export default function SetupPage() {
       await refetch()
 
       // Fetch model status for the model download step
-      setModelStatusLoading(true)
-      try {
-        const statusRes = await apiFetch("/models/status")
-        if (statusRes.ok) {
-          const statusData = (await statusRes.json()) as ModelStatusResponse
-          setModelStatus(statusData)
-        }
-      } catch {
-        // Non-fatal — user can skip model setup
-      } finally {
-        setModelStatusLoading(false)
-      }
+      await refetchModelStatus()
 
       // Move to model download step
       setStep(2)
@@ -138,7 +130,7 @@ export default function SetupPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [deployMode, username, password, refetch])
+  }, [deployMode, username, password, refetch, refetchModelStatus])
 
   const handleDownloadModel = React.useCallback(async (model: string) => {
     const modelInfo = LAYOUT_MODELS[model]
@@ -401,8 +393,10 @@ export default function SetupPage() {
                             <DownloadProgressButton
                               modelId={key}
                               downloadState={getDownloadState(key)}
+                              isReady={isReady}
                               onDownload={(id) => void handleDownloadModel(id)}
                               onCancel={cancelDownload}
+                              onRefreshStatus={() => void refetchModelStatus()}
                             />
                           ) : (
                             <span className="text-xs text-muted-foreground">
@@ -457,8 +451,10 @@ export default function SetupPage() {
                               <DownloadProgressButton
                                 modelId={model.modelId}
                                 downloadState={getDownloadState(model.modelId)}
+                                isReady={isDownloaded}
                                 onDownload={(id) => void handleDownloadModel(id)}
                                 onCancel={cancelDownload}
+                                onRefreshStatus={() => void refetchModelStatus()}
                               />
                             )}
                           </div>

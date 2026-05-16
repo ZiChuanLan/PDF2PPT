@@ -109,6 +109,7 @@ export function useModelDownload(options?: {
   const [downloads, setDownloads] = React.useState<Record<string, DownloadStatusItem>>(globalDownloads)
   const mountedRef = React.useRef(true)
   const callbacksRef = React.useRef(options)
+  const previousDownloadsRef = React.useRef<Record<string, DownloadStatusItem>>({})
   callbacksRef.current = options
 
   // Subscribe to global state changes
@@ -152,6 +153,27 @@ export function useModelDownload(options?: {
   React.useEffect(() => {
     void fetchGlobalStatus()
   }, [])
+
+  React.useEffect(() => {
+    const previousDownloads = previousDownloadsRef.current
+
+    for (const [modelId, item] of Object.entries(downloads)) {
+      const previous = previousDownloads[modelId]
+      if (previous?.status !== "downloading" || item.status === "downloading") {
+        continue
+      }
+
+      if (item.status === "completed") {
+        callbacksRef.current?.onDownloadComplete?.(modelId)
+      } else if (item.status === "failed") {
+        callbacksRef.current?.onDownloadFailed?.(modelId, item.message || "未知错误")
+      } else if (item.status === "cancelled") {
+        callbacksRef.current?.onDownloadCancelled?.(modelId)
+      }
+    }
+
+    previousDownloadsRef.current = downloads
+  }, [downloads])
 
   /**
    * Start downloading a model. Returns immediately — poll downloads state

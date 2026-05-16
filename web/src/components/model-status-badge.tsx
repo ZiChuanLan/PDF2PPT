@@ -233,8 +233,10 @@ function ProviderRow({
           <DownloadProgressButton
             modelId={display.key}
             downloadState={downloadState}
+            isReady={provStatus.ready}
             onDownload={onDownload}
             onCancel={onCancel}
+            onRefreshStatus={onStatusChange}
             variant="ghost"
             size="xs"
             className="h-6 px-1.5 text-[10px]"
@@ -244,8 +246,10 @@ function ProviderRow({
           <DownloadProgressButton
             modelId={display.key}
             downloadState={downloadState}
+            isReady={provStatus?.ready ?? false}
             onDownload={onDownload}
             onCancel={onCancel}
+            onRefreshStatus={onStatusChange}
             variant="ghost"
             size="xs"
             className="h-6 px-1.5 text-[10px]"

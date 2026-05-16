@@ -76,8 +76,10 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
   const [fetchingModels, setFetchingModels] = React.useState(false)
   const [availableModels, setAvailableModels] = React.useState<string[]>([])
 
-  const { startDownload, cancelDownload, getDownloadState } = useModelDownload()
-  const { data: modelStatus } = useModelStatus()
+  const { data: modelStatus, refetch: refetchModelStatus } = useModelStatus()
+  const { startDownload, cancelDownload, getDownloadState } = useModelDownload({
+    onDownloadComplete: () => void refetchModelStatus(),
+  })
 
   // Compute which layout models are downloaded (from backend model status — authoritative)
   const downloadedLayoutModels = React.useMemo(() => {
@@ -184,8 +186,10 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                 modelId="paddleocr"
                 label="PaddleOCR"
                 downloadState={getDownloadState("paddleocr")}
+                isReady={modelStatus?.local.paddleocr?.ready ?? false}
                 onDownload={() => startDownload("paddleocr")}
                 onCancel={() => cancelDownload("paddleocr")}
+                onRefreshStatus={() => void refetchModelStatus()}
               />
             </div>
           )}
@@ -501,8 +505,10 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                         )?.label || settings.ocrAiLayoutModel
                       }
                       downloadState={getDownloadState(settings.ocrAiLayoutModel)}
+                      isReady={modelStatus?.local[settings.ocrAiLayoutModel]?.ready ?? false}
                       onDownload={() => startDownload(settings.ocrAiLayoutModel)}
                       onCancel={() => cancelDownload(settings.ocrAiLayoutModel)}
+                      onRefreshStatus={() => void refetchModelStatus()}
                     />
                   </div>
                 </div>
