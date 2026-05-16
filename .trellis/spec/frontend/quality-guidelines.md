@@ -183,6 +183,32 @@ React.useEffect(() => {
 }, [])
 ```
 
+### Relative Artifact URLs Stay Relative
+
+Tracking/debug artifact payloads from the backend already return same-origin relative URLs such as
+`/api/v1/jobs/<job_id>/artifacts/file?...`.
+When rendering artifact images, PDFs, or download links in the frontend, use those paths directly.
+
+```tsx
+// ❌ FORBIDDEN
+const src = `${apiOrigin}${artifact.url}`
+const pdfHref = `${apiOrigin}${sourcePdfUrl}`
+
+// ✅ REQUIRED
+const src = artifact.url
+const pdfHref = sourcePdfUrl
+```
+
+**Why**: regular API traffic already goes through the frontend's same-origin `/api/v1` rewrite.
+Prefixing artifact URLs with a resolved/manual API origin reintroduces unnecessary cross-origin
+dependencies, can bypass the frontend domain, and turns a valid relative artifact path into a
+deployment-sensitive network/CORS failure.
+
+**Applies to**:
+- tracking artifact image components
+- inline PDF preview URLs
+- "open in new window" links for job artifacts
+
 ### Single Source of Truth for Job Stages
 
 Job stage displays must derive from shared stage contracts in `web/src/lib/job-status.ts`.
