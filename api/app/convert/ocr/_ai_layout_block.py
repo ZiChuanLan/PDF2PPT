@@ -6,14 +6,15 @@ import json
 import logging
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
 from PIL import Image
 
-from .base import _env_float, _run_in_daemon_thread_with_timeout
-from .deepseek_parser import _extract_deepseek_tagged_items, _looks_like_ocr_prompt_echo_text
+from .base import _clean_str, _env_float, _run_in_daemon_thread_with_timeout
+from .deepseek_parser import _extract_deepseek_tagged_items, _is_deepseek_ocr_model, _looks_like_ocr_prompt_echo_text
 from .json_extraction import _extract_json_list, _extract_message_text, _extract_partial_json_object_list
 from .prompts import build_ai_ocr_layout_block_prompt, normalize_ai_ocr_prompt_override, resolve_ai_ocr_prompt_preset
 from .result_parsing import _is_image_like_layout_label, _normalize_layout_label, _normalize_bbox_px

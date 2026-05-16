@@ -40,7 +40,7 @@ from .result_parsing import (
 )
 from .routing import ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR, ROUTE_KIND_REMOTE_DOC_PARSER, ROUTE_KIND_REMOTE_PROMPT_OCR
 from .vendors import get_vendor_tuning
-from .utils import _coerce_bbox_xyxy
+from .utils import _coerce_bbox_xyxy, _is_paddleocr_vl_model
 from ._ai_helpers import (
     _CONCURRENCY_WAIT_MAX_S,
     _CONCURRENCY_WAIT_MIN_S,

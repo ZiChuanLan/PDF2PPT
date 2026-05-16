@@ -445,3 +445,34 @@ Mapped the end-to-end chain, confirmed the live OCR failure was caused by a miss
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: Runtime rebuild for OCR fix activation
+
+**Date**: 2026-05-16
+**Task**: Runtime rebuild for OCR fix activation
+**Branch**: `main`
+
+### Summary
+
+Confirmed the standard docker compose stack was running stale images, performed a full-stack docker compose up -d --build rebuild, verified the pathlib.Path OCR fix was live in both api and worker containers, and confirmed logs were clean with no lingering Path-related runtime errors.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
