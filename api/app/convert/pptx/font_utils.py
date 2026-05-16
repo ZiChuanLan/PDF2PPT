@@ -66,7 +66,7 @@ def _fit_font_size_pt(
     height_fit_ratio: float = 0.98,
 ) -> float:
     """Pick a conservative font size for OCR text in a fixed bbox."""
-    from ._font_measure import _measure_text_lines
+    from ._font_wrap import _measure_text_lines
 
     text = str(text or "").strip()
     if not text:

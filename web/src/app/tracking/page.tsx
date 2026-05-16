@@ -24,7 +24,7 @@ import {
   resolveActiveArtifactPage,
 } from "@/lib/tracking-artifacts"
 import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError, resolveApiOrigin } from "@/lib/api"
+import { apiFetch, normalizeFetchError } from "@/lib/api"
 import { downloadJobOutput } from "@/lib/download-utils"
 import { JOB_POLL_INTERVAL_MS, TRACKING_JOB_LIMIT } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -95,7 +95,6 @@ function getStatusBadgeClass(status: JobStatusValue) {
 }
 
 function TrackingPageContent() {
-  const [apiOrigin, setApiOrigin] = React.useState("")
   const searchParams = useSearchParams()
   const requestedJobId = (searchParams.get("job") || "").trim()
 
@@ -290,18 +289,6 @@ function TrackingPageContent() {
   )
 
   React.useEffect(() => {
-    let mounted = true
-    void resolveApiOrigin()
-      .then((origin) => {
-        if (mounted) setApiOrigin(origin)
-      })
-      .catch((e) => { console.error("Failed to resolve API origin:", e) })
-    return () => {
-      mounted = false
-    }
-  }, [])
-
-  React.useEffect(() => {
     void fetchJobs(false)
     const timer = window.setInterval(() => {
       void fetchJobs(true)
@@ -381,9 +368,7 @@ function TrackingPageContent() {
 
   // --- Derived values ---
   const trackedPages = trackedArtifacts?.available_pages || []
-  const sourcePdfAbsoluteUrl = trackedArtifacts?.source_pdf_url
-    ? `${apiOrigin}${trackedArtifacts.source_pdf_url}`
-    : null
+  const sourcePdfUrl = trackedArtifacts?.source_pdf_url ?? null
   const activeTrackedPage = resolveActiveArtifactPage(trackedPages, trackedArtifactsPage)
   const activeTrackedPageIndex = getArtifactPageIndex(trackedPages, activeTrackedPage)
   const activeTrackedPageLabel = formatArtifactPageLabel(activeTrackedPage)
@@ -672,7 +657,7 @@ function TrackingPageContent() {
               {trackedArtifacts?.job_id ? (
                 <>
                   {/* Page navigation — shared between frames and compare views */}
-                  {trackedPages.length || sourcePdfAbsoluteUrl ? (
+                  {trackedPages.length || sourcePdfUrl ? (
                     <div className="flex flex-wrap items-center gap-2">
                       {trackedPages.length ? (
                         <>
@@ -719,7 +704,7 @@ function TrackingPageContent() {
                           当前任务未保留逐页过程图
                         </div>
                       )}
-                      {sourcePdfAbsoluteUrl ? (
+                      {sourcePdfUrl ? (
                         <>
                           <Button
                             type="button"
@@ -730,7 +715,7 @@ function TrackingPageContent() {
                             {showInlinePdf ? "收起 PDF 预览" : "内嵌预览 PDF"}
                           </Button>
                           <Button asChild type="button" size="xs" variant="outline">
-                            <a href={sourcePdfAbsoluteUrl} target="_blank" rel="noreferrer">
+                            <a href={sourcePdfUrl} target="_blank" rel="noreferrer">
                               新窗口查看 PDF
                             </a>
                           </Button>
@@ -749,10 +734,10 @@ function TrackingPageContent() {
                     </div>
                   ) : null}
 
-                  {showInlinePdf && sourcePdfAbsoluteUrl ? (
+                  {showInlinePdf && sourcePdfUrl ? (
                     <div className="overflow-hidden border bg-muted/10">
                       <iframe
-                        src={sourcePdfAbsoluteUrl}
+                        src={sourcePdfUrl}
                         title={`原始 PDF - ${trackedArtifacts.job_id}`}
                         className="h-[68vh] w-full bg-white"
                         loading="lazy"
@@ -763,7 +748,6 @@ function TrackingPageContent() {
                   {/* Frames view */}
                   {trackingMenu === "frames" && (
                     <ArtifactFramesView
-                      apiOrigin={apiOrigin}
                       activeTrackedPageLabel={activeTrackedPageLabel}
                       findArtifactByPage={findArtifactByPage}
                       trackedArtifacts={trackedArtifacts}
@@ -774,7 +758,6 @@ function TrackingPageContent() {
                   {/* Compare slider view */}
                   {trackingMenu === "compare" && (
                     <CompareSlider
-                      apiOrigin={apiOrigin}
                       trackedCompareBase={trackedCompareBase}
                       trackedCompareAfter={trackedCompareAfter}
                       trackedBeforeOverlay={trackedBeforeOverlay}

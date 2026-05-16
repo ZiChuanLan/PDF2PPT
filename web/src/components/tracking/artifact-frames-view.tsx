@@ -11,7 +11,6 @@ type ArtifactImage = {
 }
 
 export type ArtifactFramesViewProps = {
-  apiOrigin: string
   activeTrackedPageLabel: string
   /** Find artifact image by page index */
   findArtifactByPage: (
@@ -34,7 +33,6 @@ export type ArtifactFramesViewProps = {
  * Left: original PDF with hover overlay. Right: converted image with hover overlay.
  */
 export function ArtifactFramesView({
-  apiOrigin,
   activeTrackedPageLabel,
   findArtifactByPage,
   trackedArtifacts,
@@ -71,7 +69,7 @@ export function ArtifactFramesView({
         <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
           {trackedOriginal ? (
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedOriginal.url}`}
+              src={trackedOriginal.url}
               alt={`原始第 ${activeTrackedPageLabel} 页`}
               className="object-contain"
               priority
@@ -83,7 +81,7 @@ export function ArtifactFramesView({
           )}
           {trackedBeforeOverlay ? (
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedBeforeOverlay.url}`}
+              src={trackedBeforeOverlay.url}
               alt={`第 ${activeTrackedPageLabel} 页识别框`}
               className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
             />
@@ -98,14 +96,14 @@ export function ArtifactFramesView({
         <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
           {trackedAfterOverlay ? (
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedAfterOverlay.url}`}
+              src={trackedAfterOverlay.url}
               alt={`第 ${activeTrackedPageLabel} 页转换对比`}
               className="object-contain"
               priority
             />
           ) : trackedOriginal ? (
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedOriginal.url}`}
+              src={trackedOriginal.url}
               alt={`第 ${activeTrackedPageLabel} 页原图`}
               className="object-contain"
               priority
@@ -117,7 +115,7 @@ export function ArtifactFramesView({
           )}
           {trackedLayoutAfter ? (
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedLayoutAfter.url}`}
+              src={trackedLayoutAfter.url}
               alt={`第 ${activeTrackedPageLabel} 页后处理框`}
               className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
             />

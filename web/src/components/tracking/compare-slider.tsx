@@ -12,7 +12,6 @@ type ArtifactImage = {
 }
 
 export type CompareSliderProps = {
-  apiOrigin: string
   /** Base image for the comparison */
   trackedCompareBase: ArtifactImage | null
   /** After image overlaid on the right */
@@ -35,7 +34,6 @@ export type CompareSliderProps = {
  * The left side shows "before" and the right side shows "after" via clip-path.
  */
 export function CompareSlider({
-  apiOrigin,
   trackedCompareBase,
   trackedCompareAfter,
   trackedBeforeOverlay,
@@ -88,7 +86,7 @@ export function CompareSlider({
       >
         {trackedCompareBase ? (
           <TrackingArtifactImage
-            src={`${apiOrigin}${trackedCompareBase.url}`}
+            src={trackedCompareBase.url}
             alt={`第 ${activeTrackedPageLabel} 页对比底图`}
             className="object-contain"
             priority
@@ -105,7 +103,7 @@ export function CompareSlider({
             style={{ clipPath: `inset(0 0 0 ${compareSplitPercent}%)` }}
           >
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedCompareAfter.url}`}
+              src={trackedCompareAfter.url}
               alt={`第 ${activeTrackedPageLabel} 页转换后`}
               className="object-contain"
             />
@@ -118,7 +116,7 @@ export function CompareSlider({
             style={{ clipPath: `inset(0 ${100 - compareSplitPercent}% 0 0)` }}
           >
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedBeforeOverlay.url}`}
+              src={trackedBeforeOverlay.url}
               alt={`第 ${activeTrackedPageLabel} 页转换前高亮`}
               className="object-contain opacity-45"
             />
@@ -131,7 +129,7 @@ export function CompareSlider({
             style={{ clipPath: `inset(0 0 0 ${compareSplitPercent}%)` }}
           >
             <TrackingArtifactImage
-              src={`${apiOrigin}${trackedLayoutAfter.url}`}
+              src={trackedLayoutAfter.url}
               alt={`第 ${activeTrackedPageLabel} 页转换后高亮`}
               className="object-contain opacity-60"
             />
