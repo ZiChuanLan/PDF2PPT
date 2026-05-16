@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-05-15
+- **Total Sessions**: 13
+- **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~414 | Active |
+| `journal-1.md` | ~447 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-05-16 | Chain code issues first-wave OCR fix | `2a82e5a` | `main` |
 | 12 | 2026-05-15 | Active tasks governance cleanup | `7ee6395` | `main` |
 | 11 | 2026-05-14 | Architecture flow naming cleanup MVP | `9481c8d`, `0e09119`, `884ba48` | `main` |
 | 10 | 2026-05-13 | Frontend Optimization + PaddleOCR Fix | `452c5d7`, `1cfe5db` | `main` |

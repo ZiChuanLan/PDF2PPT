@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions for worker/router/OCR-side chain fixes."}
+{"file": ".trellis/spec/backend/job-config-contracts.md", "reason": "Job config flattening is one of the highest-risk cross-layer hotspots in this task."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions may matter if chain/status/capability issues reach the web layer."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality rules for any first-wave status/capability UI fixes."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "The task spans frontend submit, API, worker, OCR, and model filtering boundaries."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Need to avoid duplicating mapping/check logic while fixing chain issues."}
+{"file": ".trellis/tasks/05-15-chain-code-issues-mcp-detection/research/end-to-end-chain-map.md", "reason": "Primary chain map for tracing failures across layers."}
+{"file": ".trellis/tasks/05-15-chain-code-issues-mcp-detection/research/high-risk-hotspots.md", "reason": "Prioritized hotspot list and known fragile areas for first-wave repair."}

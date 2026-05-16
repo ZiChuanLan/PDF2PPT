@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Review backend-side chain fixes against project conventions."}
+{"file": ".trellis/spec/backend/job-config-contracts.md", "reason": "Check that any config/worker-boundary changes preserve cross-layer contracts."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Review any frontend-side chain findings against existing conventions."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Check any UI/status/capability changes against frontend quality rules."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify that fixes and findings respect end-to-end boundary thinking."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Review whether mapping/check logic stayed reusable instead of duplicated."}
+{"file": ".trellis/tasks/05-15-chain-code-issues-mcp-detection/research/end-to-end-chain-map.md", "reason": "Reference chain map for verifying repaired paths and remaining risks."}
+{"file": ".trellis/tasks/05-15-chain-code-issues-mcp-detection/research/high-risk-hotspots.md", "reason": "Cross-check implementation scope against the ranked hotspot list."}
