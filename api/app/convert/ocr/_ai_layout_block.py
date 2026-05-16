@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
@@ -1494,4 +1495,3 @@ class _LayoutBlockMixin:
             "Local layout block OCR returned no usable text blocks"
             + (f" ({failure_preview})" if failure_preview else "")
         )
-
