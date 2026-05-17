@@ -7,6 +7,9 @@ import logging
 import math
 import os
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -17,10 +20,10 @@ from .base import _clean_str, _env_flag, _env_float, _run_in_daemon_thread_with_
 from .deepseek_parser import _extract_deepseek_tagged_items, _is_deepseek_ocr_model, _looks_like_ocr_prompt_echo_text
 from .json_extraction import _extract_json_list, _extract_message_text, _extract_partial_json_object_list
 from .prompts import build_ai_ocr_layout_block_prompt, normalize_ai_ocr_prompt_override, resolve_ai_ocr_prompt_preset
-from .result_parsing import _is_image_like_layout_label, _normalize_layout_label, _normalize_bbox_px
+from .result_parsing import _is_image_like_layout_label, _is_ocr_eligible_image_like_label, _normalize_layout_label, _normalize_bbox_px
 from .routing import ROUTE_KIND_REMOTE_PROMPT_OCR
 from .utils import _coerce_bbox_xyxy
-from .vendors import get_vendor_tuning, _should_send_image_first_for_ai_ocr
+from .vendors import get_vendor_tuning, _normalize_ai_ocr_model_name, _should_send_image_first_for_ai_ocr
 from ._ai_helpers import (
     _BG_DIFF_DARK_THRESHOLD,
     _BG_DIFF_LIGHT_BG_LUMA,
@@ -1196,7 +1199,8 @@ class _LayoutBlockMixin:
         text_tasks: list[dict[str, Any]] = []
         for index, block in enumerate(layout_blocks):
             label = str(block.get("label") or "")
-            if _is_image_like_layout_label(label):
+            is_image_like = _is_image_like_layout_label(label)
+            if is_image_like and not _is_ocr_eligible_image_like_label(label):
                 continue
             if self._should_skip_layout_block_for_ocr(label=label):
                 if index < len(self.last_layout_blocks):
@@ -1263,6 +1267,7 @@ class _LayoutBlockMixin:
                     "crop_width": int(crop.size[0]),
                     "crop_height": int(crop.size[1]),
                     "data_uri": self._image_to_data_uri(crop),
+                    "ocr_image_like": bool(is_image_like),
                 }
             )
 
@@ -1493,6 +1498,7 @@ class _LayoutBlockMixin:
                             or None,
                             "ocr_layout_geometry_points": result.get("geometry_points")
                             or None,
+                            "ocr_image_like": bool(result.get("ocr_image_like")),
                         }
                     )
                     self.last_layout_blocks[int(result["index"])]["text"] = text

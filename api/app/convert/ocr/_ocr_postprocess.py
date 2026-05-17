@@ -2182,6 +2182,7 @@ def ocr_image_to_elements(
                 "ocr_layout_geometry_source": item.get("ocr_layout_geometry_source"),
                 "ocr_layout_geometry_kind": item.get("ocr_layout_geometry_kind"),
                 "ocr_layout_geometry_points_pt": geometry_points_pt,
+                "ocr_image_like": bool(item.get("ocr_image_like")),
             }
         )
 

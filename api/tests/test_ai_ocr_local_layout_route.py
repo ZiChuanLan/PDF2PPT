@@ -16,12 +16,19 @@ if str(API_ROOT) not in sys.path:
 
 from app.convert.ocr import ai_client as ai_client_module
 from app.convert.ocr import local_providers
+from app.convert.ocr.result_parsing import (
+    _is_image_like_layout_label,
+    _is_ocr_eligible_image_like_label,
+)
 from app.convert.ocr.routing import ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
 
 
 class _DummyOpenAIClient:
     def __init__(self, **kwargs) -> None:
         self.kwargs = kwargs
+
+    def with_options(self, **kwargs):
+        return self
 
 
 class _DummyVendorAdapter:
@@ -1090,3 +1097,213 @@ def test_layout_block_crop_retries_timeout_once_for_qwen(monkeypatch) -> None:
     second_timeout = cast(float, calls[1]["timeout_s"])
     assert first_timeout >= 40.0
     assert second_timeout > first_timeout
+
+
+# ---------------------------------------------------------------------------
+# _is_ocr_eligible_image_like_label tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_ocr_eligible_image_like_label_chart_is_eligible() -> None:
+    assert _is_ocr_eligible_image_like_label("chart") is True
+
+
+def test_is_ocr_eligible_image_like_label_image_is_not_eligible() -> None:
+    assert _is_ocr_eligible_image_like_label("image") is False
+
+
+def test_is_ocr_eligible_image_like_label_seal_is_not_eligible() -> None:
+    assert _is_ocr_eligible_image_like_label("seal") is False
+
+
+def test_is_ocr_eligible_image_like_label_logo_is_not_eligible() -> None:
+    assert _is_ocr_eligible_image_like_label("logo") is False
+
+
+def test_is_ocr_eligible_image_like_label_text_is_not_image_like() -> None:
+    assert _is_ocr_eligible_image_like_label("text") is False
+
+
+def test_is_ocr_eligible_image_like_label_figure_title_is_not_eligible() -> None:
+    # "figure_title" contains "title" (non-image token) → not image-like at all
+    assert _is_image_like_layout_label("figure_title") is False
+    assert _is_ocr_eligible_image_like_label("figure_title") is False
+
+
+def test_is_ocr_eligible_image_like_label_empty() -> None:
+    assert _is_ocr_eligible_image_like_label("") is False
+    assert _is_ocr_eligible_image_like_label(None) is False
+
+
+# ---------------------------------------------------------------------------
+# Chart dual-path OCR: chart blocks enter OCR AND remain in image_regions
+# ---------------------------------------------------------------------------
+
+
+def test_chart_block_enters_ocr_and_stays_in_image_regions(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    # Patch _run_local_layout_analysis to return text + chart blocks
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "text",
+                    "bbox": [10.0, 10.0, 110.0, 40.0],
+                    "score": 0.93,
+                    "order": 0,
+                    "text": "",
+                },
+                {
+                    "label": "chart",
+                    "bbox": [140.0, 20.0, 340.0, 180.0],
+                    "score": 0.88,
+                    "order": 1,
+                    "text": "",
+                },
+            ],
+            [
+                {
+                    "bbox": [140.0, 20.0, 340.0, 180.0],
+                    "label": "chart",
+                    "score": 0.88,
+                }
+            ],
+        ),
+    )
+
+    ocr_labels: list[str] = []
+
+    def _fake_ocr_local_layout_block_crop(**kwargs):
+        ocr_labels.append(str(kwargs["label"]))
+        if kwargs["label"] == "chart":
+            return "Revenue 2024: $12M"
+        return "Body text"
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_local_layout_block_crop",
+        _fake_ocr_local_layout_block_crop,
+    )
+
+    # Patch crop preparation to avoid _normalize_ai_ocr_model_name dependency
+    monkeypatch.setattr(
+        client,
+        "_prepare_layout_block_crop_for_model",
+        lambda crop, effective_model: crop,
+    )
+
+    image_path = tmp_path / "chart-dual-path.png"
+    Image.new("RGB", (400, 220), "white").save(image_path)
+    image = Image.open(image_path)
+
+    # Call _ocr_image_with_local_layout_blocks directly
+    items = client._ocr_image_with_local_layout_blocks(
+        str(image_path), image=image
+    )
+
+    # Both text and chart blocks should be OCR'd
+    assert "text" in ocr_labels
+    assert "chart" in ocr_labels
+    assert len(items) == 2
+
+    chart_item = next(el for el in items if el.get("ocr_layout_label") == "chart")
+    assert chart_item["text"] == "Revenue 2024: $12M"
+    assert chart_item["ocr_image_like"] is True
+
+    text_item = next(el for el in items if el.get("ocr_layout_label") == "text")
+    assert text_item["ocr_image_like"] is False
+
+    # Chart region is still in image_regions for overlay
+    assert len(client.last_image_regions_px) == 1
+
+
+def test_image_block_still_skipped_for_ocr(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "text",
+                    "bbox": [10.0, 10.0, 110.0, 40.0],
+                    "score": 0.93,
+                    "order": 0,
+                    "text": "",
+                },
+                {
+                    "label": "image",
+                    "bbox": [140.0, 20.0, 240.0, 120.0],
+                    "score": 0.88,
+                    "order": None,
+                    "text": "",
+                },
+            ],
+            [[140.0, 20.0, 240.0, 120.0]],
+        ),
+    )
+
+    ocr_labels: list[str] = []
+
+    def _fake_ocr_local_layout_block_crop(**kwargs):
+        ocr_labels.append(str(kwargs["label"]))
+        return "Body text"
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_local_layout_block_crop",
+        _fake_ocr_local_layout_block_crop,
+    )
+
+    # Patch crop preparation to avoid _normalize_ai_ocr_model_name dependency
+    monkeypatch.setattr(
+        client,
+        "_prepare_layout_block_crop_for_model",
+        lambda crop, effective_model: crop,
+    )
+
+    image_path = tmp_path / "image-skip.png"
+    Image.new("RGB", (300, 180), "white").save(image_path)
+    image = Image.open(image_path)
+
+    # Call _ocr_image_with_local_layout_blocks directly
+    items = client._ocr_image_with_local_layout_blocks(
+        str(image_path), image=image
+    )
+
+    # Only text block should be OCR'd; image block should be skipped
+    assert ocr_labels == ["text"]
+    assert len(items) == 1
+    assert items[0]["ocr_layout_label"] == "text"
+    assert items[0]["ocr_image_like"] is False
+
+    # Image region is still in image_regions for overlay
+    assert client.last_image_regions_px == [[140.0, 20.0, 240.0, 120.0]]

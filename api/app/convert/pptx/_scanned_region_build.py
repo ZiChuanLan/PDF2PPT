@@ -189,6 +189,7 @@ def _save_scanned_image_region_crop(
     geometry_points_pt: list[list[float]] | None = None,
     exclude_bboxes_pt: list[list[float]] | None = None,
     exclude_polygons_pt: list[list[list[float]]] | None = None,
+    expand_pt: float = 0.0,
 ) -> bool:
     try:
         from PIL import Image, ImageChops, ImageDraw
@@ -199,6 +200,14 @@ def _save_scanned_image_region_crop(
         x0, y0, x1, y1 = _coerce_bbox_pt(bbox_pt)
     except Exception:
         return False
+
+    # Expand crop bbox by a small margin (used for polygon-backed regions
+    # where the mask makes extra pixels transparent anyway).
+    if expand_pt > 0.0:
+        x0 -= expand_pt
+        y0 -= expand_pt
+        x1 += expand_pt
+        y1 += expand_pt
 
     x0p, y0p = _pdf_pt_to_pix_px(
         x0,
@@ -1603,6 +1612,13 @@ def _build_scanned_image_region_infos(
                 ] or None
 
         crop_out_path = crops_dir / f"page-{page_index:04d}-crop-{ri:02d}.png"
+        # For AI-hint polygon regions, add a small crop expansion margin.
+        # The polygon mask makes extra pixels transparent, so this safely
+        # prevents clipping at polygon edges without visual artifacts.
+        _polygon_expand_pt = 0.0
+        if is_ai_hint and geometry_points_pt is not None:
+            min_dim = min(w_pt, h_pt)
+            _polygon_expand_pt = max(2.0, min(8.0, 0.02 * min_dim))
         if not _save_scanned_image_region_crop(
             img=img,
             bbox_pt=cand_bbox,
@@ -1610,6 +1626,7 @@ def _build_scanned_image_region_infos(
             page_h_pt=page_h_pt,
             scanned_render_dpi=int(scanned_render_dpi),
             geometry_points_pt=geometry_points_pt,
+            expand_pt=_polygon_expand_pt,
         ):
             continue
         shape_confirmed = _is_shape_confirmed_crop(crop_out_path)
@@ -1781,6 +1798,13 @@ def _filter_scanned_ocr_text_elements(
         tw = float(tx1 - tx0)
         th = float(ty1 - ty0)
         if tw <= 0.0 or th <= 0.0:
+            continue
+
+        # OCR text from eligible image-like blocks (e.g. charts) must be
+        # preserved even when it overlaps its paired image region, because
+        # the block is intentionally dual-path: image overlay + OCR text.
+        if bool(el.get("ocr_image_like")):
+            filtered.append(el)
             continue
 
         text_value = str(el.get("text") or "").strip()

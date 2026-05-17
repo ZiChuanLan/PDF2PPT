@@ -46,6 +46,7 @@ from .result_parsing import (
     _extract_deepseek_image_regions,
     _extract_image_regions_json,
     _is_image_like_layout_label,
+    _is_ocr_eligible_image_like_label,
     _normalize_layout_label,
     _extract_paddle_doc_parser_output,
     _normalize_bbox_px,

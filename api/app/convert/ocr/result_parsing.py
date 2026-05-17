@@ -41,6 +41,10 @@ _NON_IMAGE_REGION_LABEL_TOKENS = {
     "footer",
 }
 
+_OCR_ELIGIBLE_IMAGE_LABEL_TOKENS = {
+    "chart",
+}
+
 _PADDLE_DOC_VLM_PIXEL_FACTOR = 28 * 28
 _PADDLE_DOC_VLM_MIN_PIXELS = _PADDLE_DOC_VLM_PIXEL_FACTOR * 130
 _PADDLE_DOC_VLM_DEFAULT_MAX_PIXELS = _PADDLE_DOC_VLM_PIXEL_FACTOR * 1280
@@ -131,6 +135,23 @@ def _is_image_like_layout_label(value: Any) -> bool:
     if any(token in label for token in _NON_IMAGE_REGION_LABEL_TOKENS):
         return False
     return any(token in label for token in _IMAGE_REGION_LABEL_TOKENS)
+
+
+def _is_ocr_eligible_image_like_label(value: Any) -> bool:
+    """Return True for image-like labels that should also receive OCR.
+
+    Some image-like layout blocks (e.g. charts) contain meaningful text
+    (axis labels, legends, data values).  These blocks should be sent to
+    OCR *in addition to* being recorded as image regions for overlay.
+    """
+    label = _normalize_layout_label(value)
+    if not label:
+        return False
+    if any(token in label for token in _NON_IMAGE_REGION_LABEL_TOKENS):
+        return False
+    if not any(token in label for token in _IMAGE_REGION_LABEL_TOKENS):
+        return False
+    return any(token in label for token in _OCR_ELIGIBLE_IMAGE_LABEL_TOKENS)
 
 
 def _extract_image_regions_from_json_payload(value: Any) -> list[list[float]] | None:

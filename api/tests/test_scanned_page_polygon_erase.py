@@ -341,8 +341,10 @@ def test_merge_fragmented_scanned_regions_merges_same_ai_hint_polygon_fragments(
         ),
     ]
 
+    from app.convert.pptx import _scanned_region_build
+
     monkeypatch.setattr(
-        scanned_page,
+        _scanned_region_build,
         "_analyze_shape_crop",
         lambda _path: {"confirmed": True},
     )
@@ -509,3 +511,174 @@ def test_save_scanned_regions_debug_overlay_writes_regions_json_only(tmp_path) -
     payload = json.loads(json_path.read_text())
     assert payload["page_index"] == 0
     assert payload["regions_pt"] == [[20.0, 20.0, 100.0, 100.0]]
+
+
+# ---------------------------------------------------------------------------
+# ocr_image_like text preservation through scanned-page filtering
+# ---------------------------------------------------------------------------
+
+
+def test_filter_scanned_ocr_text_elements_preserves_ocr_image_like_text(
+    tmp_path,
+) -> None:
+    from app.convert.pptx._scanned_region_build import (
+        _ScannedImageRegionInfo,
+        _filter_scanned_ocr_text_elements,
+    )
+
+    info = _ScannedImageRegionInfo(
+        bbox_pt=[100.0, 20.0, 300.0, 180.0],
+        suppress_bbox_pt=[98.0, 18.0, 302.0, 182.0],
+        crop_path=tmp_path / "crop.png",
+        shape_confirmed=True,
+        ai_hint=True,
+    )
+
+    # Normal OCR text inside the image region → should be filtered out
+    normal_el = {
+        "bbox_pt": [120.0, 40.0, 280.0, 60.0],
+        "text": "Normal text inside image",
+        "source": "ocr",
+    }
+
+    # OCR text from an image-like block (chart) → should be preserved
+    chart_el = {
+        "bbox_pt": [120.0, 40.0, 280.0, 60.0],
+        "text": "Revenue 2024: $12M",
+        "source": "ocr",
+        "ocr_image_like": True,
+    }
+
+    # OCR text outside image region → should be preserved
+    outside_el = {
+        "bbox_pt": [10.0, 10.0, 80.0, 30.0],
+        "text": "Outside text",
+        "source": "ocr",
+    }
+
+    filtered = _filter_scanned_ocr_text_elements(
+        ocr_text_elements=[normal_el, chart_el, outside_el],
+        image_region_infos=[info],
+        baseline_ocr_h_pt=12.0,
+    )
+
+    texts = [el["text"] for el in filtered]
+    assert "Revenue 2024: $12M" in texts
+    assert "Outside text" in texts
+    assert "Normal text inside image" not in texts
+
+
+def test_filter_scanned_ocr_text_elements_preserves_chart_text_even_fully_inside(
+    tmp_path,
+) -> None:
+    from app.convert.pptx._scanned_region_build import (
+        _ScannedImageRegionInfo,
+        _filter_scanned_ocr_text_elements,
+    )
+
+    info = _ScannedImageRegionInfo(
+        bbox_pt=[100.0, 20.0, 300.0, 180.0],
+        suppress_bbox_pt=[98.0, 18.0, 302.0, 182.0],
+        crop_path=tmp_path / "crop.png",
+        shape_confirmed=True,
+        ai_hint=True,
+    )
+
+    # Chart OCR text fully inside the image region
+    chart_el = {
+        "bbox_pt": [110.0, 30.0, 290.0, 170.0],
+        "text": "Axis: X Y Z",
+        "source": "ocr",
+        "ocr_image_like": True,
+    }
+
+    filtered = _filter_scanned_ocr_text_elements(
+        ocr_text_elements=[chart_el],
+        image_region_infos=[info],
+        baseline_ocr_h_pt=12.0,
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0]["text"] == "Axis: X Y Z"
+
+
+# ---------------------------------------------------------------------------
+# Polygon-aware crop padding
+# ---------------------------------------------------------------------------
+
+
+def test_save_scanned_image_region_crop_with_polygon_expand(tmp_path) -> None:
+    from app.convert.pptx._scanned_region_build import _save_scanned_image_region_crop
+
+    # Create a render image with a colored rectangle and a diamond polygon
+    img = Image.new("RGB", (200, 200), "white")
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([40, 40, 160, 160], fill=(200, 200, 200))
+    # Diamond polygon inside the rectangle
+    polygon = [(100, 40), (160, 100), (100, 160), (40, 100)]
+    draw.polygon(polygon, fill=(0, 128, 0))
+
+    crop_path = tmp_path / "crop_expand.png"
+
+    # With polygon geometry and expand_pt, the crop should be slightly larger
+    # than the bbox but the polygon mask should clip to the diamond shape
+    result = _save_scanned_image_region_crop(
+        img=img,
+        bbox_pt=[40.0, 40.0, 160.0, 160.0],
+        crop_out_path=crop_path,
+        page_h_pt=200.0,
+        scanned_render_dpi=72,
+        geometry_points_pt=[
+            [100.0, 40.0],
+            [160.0, 100.0],
+            [100.0, 160.0],
+            [40.0, 100.0],
+        ],
+        expand_pt=4.0,
+    )
+
+    assert result is True
+    assert crop_path.exists()
+
+    crop = Image.open(crop_path)
+    assert crop.mode == "RGBA"
+
+    # The crop should be larger than the original 120x120 bbox due to expand
+    # At 72 DPI with 200pt page height, 120pt maps to 120px
+    # With 4pt expansion on each side, the crop should be ~128px wide
+    assert crop.width >= 120
+    assert crop.height >= 120
+
+    # Center of the diamond should be opaque green
+    cx, cy = crop.width // 2, crop.height // 2
+    r, g, b, a = crop.getpixel((cx, cy))
+    assert a == 255
+    assert g > 100  # green channel should be significant
+
+    # Corner of the crop (outside the diamond) should be transparent
+    r, g, b, a = crop.getpixel((2, 2))
+    assert a == 0
+
+
+def test_save_scanned_image_region_crop_without_expand_unchanged(tmp_path) -> None:
+    from app.convert.pptx._scanned_region_build import _save_scanned_image_region_crop
+
+    img = Image.new("RGB", (200, 200), "white")
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([40, 40, 160, 160], fill=(128, 128, 128))
+
+    crop_path_no_expand = tmp_path / "crop_no_expand.png"
+    result = _save_scanned_image_region_crop(
+        img=img,
+        bbox_pt=[40.0, 40.0, 160.0, 160.0],
+        crop_out_path=crop_path_no_expand,
+        page_h_pt=200.0,
+        scanned_render_dpi=72,
+    )
+
+    assert result is True
+
+    crop = Image.open(crop_path_no_expand)
+    # Without expand, crop should be exactly 120x120
+    assert crop.width == 120
+    assert crop.height == 120
