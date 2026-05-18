@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -1307,3 +1308,423 @@ def test_image_block_still_skipped_for_ocr(
 
     # Image region is still in image_regions for overlay
     assert client.last_image_regions_px == [[140.0, 20.0, 240.0, 120.0]]
+
+
+# ---------------------------------------------------------------------------
+# Under-segmentation fallback tests
+# ---------------------------------------------------------------------------
+
+
+def test_no_text_blocks_bypass_triggers_direct_page_ocr(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """When layout model finds zero text blocks, bypass to direct page OCR."""
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://api.siliconflow.cn/v1",
+        model="deepseek-ai/DeepSeek-OCR",
+        provider="siliconflow",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    # Layout analysis returns only image-like blocks, no text blocks
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "image",
+                    "bbox": [10.0, 10.0, 590.0, 390.0],
+                    "score": 0.92,
+                    "order": 0,
+                    "text": "",
+                },
+            ],
+            [
+                {
+                    "bbox": [10.0, 10.0, 590.0, 390.0],
+                    "label": "image",
+                    "score": 0.92,
+                }
+            ],
+        ),
+    )
+
+    def _unexpected_layout_block(**kwargs):
+        raise AssertionError("layout block OCR should be bypassed when no text blocks found")
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_image_with_local_layout_blocks",
+        _unexpected_layout_block,
+    )
+    monkeypatch.setattr(
+        client,
+        "_chat_completion",
+        lambda **kwargs: types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(
+                        content=(
+                            "<|ref|>Direct page OCR text<|/ref|>"
+                            "<|det|>[[12,12,180,42]]<|/det|>"
+                        )
+                    ),
+                    finish_reason="stop",
+                )
+            ]
+        ),
+    )
+
+    image_path = tmp_path / "no-text-blocks.png"
+    Image.new("RGB", (600, 400), "white").save(image_path)
+
+    items = client.ocr_image(str(image_path))
+
+    # Should have fallen back to direct page OCR
+    assert len(items) >= 1
+    assert items[0]["text"] == "Direct page OCR text"
+    assert client.last_layout_analysis_debug["layout_block_bypass_reason"] == "no_text_blocks"
+    # Image regions should still be preserved from layout analysis
+    assert len(client.last_image_regions_px) == 1
+
+
+def test_too_few_text_blocks_on_large_image_bypasses_block_ocr(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """When layout model finds very few text blocks on a large image, bypass."""
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://api.siliconflow.cn/v1",
+        model="deepseek-ai/DeepSeek-OCR",
+        provider="siliconflow",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    # Layout analysis returns only 2 text blocks on a large image (2500x3500 ≈ 8.75M px²)
+    # Coverage is high enough to pass the low_text_coverage check but too few blocks
+    # for the too_few_text_blocks signal.
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "text",
+                    "bbox": [100.0, 50.0, 2400.0, 1200.0],
+                    "score": 0.85,
+                    "order": 0,
+                    "text": "",
+                },
+                {
+                    "label": "text",
+                    "bbox": [100.0, 1300.0, 2400.0, 2400.0],
+                    "score": 0.78,
+                    "order": 1,
+                    "text": "",
+                },
+            ],
+            [],
+        ),
+    )
+
+    def _unexpected_layout_block(**kwargs):
+        raise AssertionError("layout block OCR should be bypassed for too-few-blocks large image")
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_image_with_local_layout_blocks",
+        _unexpected_layout_block,
+    )
+    monkeypatch.setattr(
+        client,
+        "_chat_completion",
+        lambda **kwargs: types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(
+                        content=(
+                            "<|ref|>Full page fallback text<|/ref|>"
+                            "<|det|>[[100,50,2400,1200]]<|/det|>"
+                        )
+                    ),
+                    finish_reason="stop",
+                )
+            ]
+        ),
+    )
+
+    image_path = tmp_path / "large-sparse.png"
+    # Large image: 2500x3500 = 8,750,000 px² > _BYPASS_LARGE_IMAGE_AREA (3M)
+    Image.new("RGB", (2500, 3500), "white").save(image_path)
+
+    items = client.ocr_image(str(image_path))
+
+    assert len(items) >= 1
+    assert items[0]["text"] == "Full page fallback text"
+    assert client.last_layout_analysis_debug["layout_block_bypass_reason"] == "too_few_text_blocks"
+
+
+def test_many_text_blocks_does_not_bypass(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """When layout model finds enough text blocks, block OCR is used normally."""
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    # 5 text blocks covering a large portion of the page — should NOT trigger bypass.
+    # Each block is 500x60 = 30000 px², total = 150000 px².
+    # Page is 800x600 = 480000 px². Coverage = 31.25% > 30% threshold.
+    layout_blocks = [
+        {
+            "label": "text",
+            "bbox": [50.0, 30.0 + i * 100.0, 550.0, 90.0 + i * 100.0],
+            "score": 0.88,
+            "order": i,
+            "text": "",
+        }
+        for i in range(5)
+    ]
+
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (layout_blocks, []),
+    )
+
+    ocr_labels: list[str] = []
+
+    def _fake_ocr_local_layout_block_crop(**kwargs):
+        ocr_labels.append(str(kwargs["label"]))
+        return f"Block text {kwargs['label']}"
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_local_layout_block_crop",
+        _fake_ocr_local_layout_block_crop,
+    )
+    monkeypatch.setattr(
+        client,
+        "_prepare_layout_block_crop_for_model",
+        lambda crop, effective_model: crop,
+    )
+
+    image_path = tmp_path / "many-blocks.png"
+    # 800x600 = 480,000 px² — not large enough for too_few_text_blocks
+    Image.new("RGB", (800, 600), "white").save(image_path)
+    image = Image.open(image_path)
+
+    # Call _ocr_image_with_local_layout_blocks directly to test the
+    # block OCR path without going through the bypass check in ocr_image.
+    items = client._ocr_image_with_local_layout_blocks(
+        str(image_path), image=image
+    )
+
+    # Should have used layout block OCR, not bypassed
+    assert len(ocr_labels) == 5
+    assert len(items) == 5
+
+
+def test_non_deepseek_empty_block_ocr_result_falls_back_to_direct_page(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Non-DeepSeek model with empty block OCR result falls back to direct page OCR."""
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    # Layout analysis returns blocks with good coverage/score so bypass
+    # check does NOT trigger — but block OCR will return empty results.
+    monkeypatch.setattr(
+        client,
+        "_should_bypass_local_layout_block_ocr",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "text",
+                    "bbox": [10.0, 10.0, 290.0, 170.0],
+                    "score": 0.93,
+                    "order": 0,
+                    "text": "",
+                },
+            ],
+            [],
+        ),
+    )
+
+    # Block OCR returns empty list (simulating under-segmentation where
+    # the layout block crop doesn't contain readable text)
+    monkeypatch.setattr(
+        client,
+        "_ocr_image_with_local_layout_blocks",
+        lambda image_path, image: [],
+    )
+
+    # Mock _chat_completion to return JSON-formatted OCR output that
+    # the non-DeepSeek direct page OCR path can parse.
+    monkeypatch.setattr(
+        client,
+        "_chat_completion",
+        lambda **kwargs: types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(
+                        content=json.dumps([
+                            {"bbox": [12, 12, 180, 42], "text": "Direct page fallback text"}
+                        ])
+                    ),
+                    finish_reason="stop",
+                )
+            ]
+        ),
+    )
+
+    image_path = tmp_path / "empty-block-result.png"
+    Image.new("RGB", (300, 180), "white").save(image_path)
+
+    items = client.ocr_image(str(image_path))
+
+    # Should have fallen back to direct page OCR
+    assert len(items) >= 1
+    assert items[0]["text"] == "Direct page fallback text"
+    assert client.last_layout_analysis_debug["layout_block_bypass_reason"] == "empty_block_ocr_result"
+
+
+def test_chart_dual_path_preserved_when_no_bypass(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Chart dual-path OCR works when under-segmentation bypass is NOT triggered."""
+    _patch_openai_and_adapter(monkeypatch)
+
+    client = ai_client_module.AiOcrClient(
+        api_key="test-key",
+        base_url="https://example.com/v1",
+        model="Qwen/Qwen2.5-VL-72B-Instruct",
+        provider="openai",
+        layout_model="pp_doclayout_v3",
+        route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
+    )
+
+    # Enough text blocks with good coverage to avoid all bypass signals.
+    # 4 text blocks + 1 chart block. Text blocks cover ~50% of the page.
+    monkeypatch.setattr(
+        client,
+        "_run_local_layout_analysis",
+        lambda image_path: (
+            [
+                {
+                    "label": "text",
+                    "bbox": [10.0, 10.0, 190.0, 80.0],
+                    "score": 0.93,
+                    "order": 0,
+                    "text": "",
+                },
+                {
+                    "label": "text",
+                    "bbox": [10.0, 90.0, 190.0, 160.0],
+                    "score": 0.91,
+                    "order": 1,
+                    "text": "",
+                },
+                {
+                    "label": "text",
+                    "bbox": [10.0, 170.0, 190.0, 240.0],
+                    "score": 0.89,
+                    "order": 2,
+                    "text": "",
+                },
+                {
+                    "label": "text",
+                    "bbox": [10.0, 250.0, 190.0, 320.0],
+                    "score": 0.87,
+                    "order": 3,
+                    "text": "",
+                },
+                {
+                    "label": "chart",
+                    "bbox": [210.0, 10.0, 390.0, 320.0],
+                    "score": 0.88,
+                    "order": 4,
+                    "text": "",
+                },
+            ],
+            [
+                {
+                    "bbox": [210.0, 10.0, 390.0, 320.0],
+                    "label": "chart",
+                    "score": 0.88,
+                }
+            ],
+        ),
+    )
+
+    ocr_labels: list[str] = []
+
+    def _fake_ocr_local_layout_block_crop(**kwargs):
+        ocr_labels.append(str(kwargs["label"]))
+        if kwargs["label"] == "chart":
+            return "Chart axis: Q1 Q2 Q3 Q4"
+        return f"Text block {kwargs['label']}"
+
+    monkeypatch.setattr(
+        client,
+        "_ocr_local_layout_block_crop",
+        _fake_ocr_local_layout_block_crop,
+    )
+    monkeypatch.setattr(
+        client,
+        "_prepare_layout_block_crop_for_model",
+        lambda crop, effective_model: crop,
+    )
+
+    image_path = tmp_path / "chart-dual-no-bypass.png"
+    # 400x340 = 136,000 px² — not large enough for too_few_text_blocks
+    Image.new("RGB", (400, 340), "white").save(image_path)
+    image = Image.open(image_path)
+
+    # Call _ocr_image_with_local_layout_blocks directly to test the
+    # block OCR path without going through the bypass check in ocr_image.
+    items = client._ocr_image_with_local_layout_blocks(
+        str(image_path), image=image
+    )
+
+    # Both text and chart blocks should be OCR'd
+    assert "chart" in ocr_labels
+    chart_item = next(el for el in items if el.get("ocr_layout_label") == "chart")
+    assert chart_item["ocr_image_like"] is True
+    assert chart_item["text"] == "Chart axis: Q1 Q2 Q3 Q4"
+
+    # Chart region still in image_regions for overlay
+    assert len(client.last_image_regions_px) == 1

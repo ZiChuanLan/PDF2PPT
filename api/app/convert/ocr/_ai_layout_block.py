@@ -117,6 +117,12 @@ _WIDE_FLAT_MAX_VERTICAL_SPAN = 0.33     # Vertical span <= 33% of page height
 _WIDE_FLAT_MIN_COVERAGE_RATIO = 0.7     # Widest block covers >= 70% of page width
 
 # ---------------------------------------------------------------------------
+# Pre-OCR under-segmentation bypass constants
+# ---------------------------------------------------------------------------
+_BYPASS_TOO_FEW_BLOCKS_FOR_LARGE_IMAGE = 3   # ≤ this many text blocks on large image
+_BYPASS_LARGE_IMAGE_AREA = 3000000           # Pixel area threshold for "large image"
+
+# ---------------------------------------------------------------------------
 # Post-OCR quality validation constants
 # ---------------------------------------------------------------------------
 _PIXELS_PER_10K = 10000                         # Divisor for chars-per-10Kpx density
@@ -992,7 +998,38 @@ class _LayoutBlockMixin:
             )
             return "low_text_coverage"
 
-        if not text_blocks or len(text_blocks) > 3:
+        # Signal 3: No text blocks at all — layout model classified everything
+        # as image-like or low-value.  Direct page OCR is the only viable path.
+        if not text_blocks:
+            logger.info(
+                "Layout model found no text blocks — bypassing block OCR"
+                " (image_like_regions=%s, layout_model=%s, image=%s)",
+                len(image_regions),
+                self.layout_model,
+                Path(image_path).name,
+            )
+            return "no_text_blocks"
+
+        # Signal 4: Too few text blocks for a large image — layout model
+        # under-segmented the page (common on screenshots / UI pages where
+        # PP-DocLayoutV3 misses many small text regions).
+        if (
+            len(text_blocks) <= _BYPASS_TOO_FEW_BLOCKS_FOR_LARGE_IMAGE
+            and page_area > _BYPASS_LARGE_IMAGE_AREA
+        ):
+            logger.info(
+                "Layout model found only %s text blocks on large image (%d px²) — bypassing block OCR"
+                " (coverage=%.1f%%, avg_conf=%.2f, layout_model=%s, image=%s)",
+                len(text_blocks),
+                int(page_area),
+                coverage * 100,
+                sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0,
+                self.layout_model,
+                Path(image_path).name,
+            )
+            return "too_few_text_blocks"
+
+        if len(text_blocks) > 3:
             return None
 
         min_y = float(page_h)

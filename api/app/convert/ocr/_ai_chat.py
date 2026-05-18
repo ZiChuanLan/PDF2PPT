@@ -658,15 +658,39 @@ class _AiChatMixin:
                             self._refresh_route_kind()
                             return result
                     if not is_deepseek_layout_block:
-                        self._refresh_route_kind()
-                        return result
-                    logger.warning(
-                        "Local layout_block OCR returned no usable text; falling back to direct page OCR"
-                        " (provider=%s, model=%s, image=%s)",
-                        self.provider_id,
-                        self.model,
-                        Path(image_path).name,
-                    )
+                        if result:
+                            self._refresh_route_kind()
+                            return result
+                        # Non-DeepSeek model returned empty results from
+                        # layout block OCR — fall through to direct page OCR
+                        # instead of returning nothing.
+                        layout_debug = (
+                            dict(self.last_layout_analysis_debug)
+                            if isinstance(self.last_layout_analysis_debug, dict)
+                            else {}
+                        )
+                        self.last_layout_analysis_debug = {
+                            **layout_debug,
+                            "layout_block_bypass_reason": "empty_block_ocr_result",
+                        }
+                        logger.warning(
+                            "Local layout_block OCR returned no usable text for non-DeepSeek model; "
+                            "falling back to direct page OCR"
+                            " (provider=%s, model=%s, image=%s)",
+                            self.provider_id,
+                            self.model,
+                            Path(image_path).name,
+                        )
+                    else:
+                        # DeepSeek model: always fall through to direct page
+                        # OCR when block-level result is empty or suspicious.
+                        logger.warning(
+                            "Local layout_block OCR returned no usable text; falling back to direct page OCR"
+                            " (provider=%s, model=%s, image=%s)",
+                            self.provider_id,
+                            self.model,
+                            Path(image_path).name,
+                        )
 
         is_paddle_model = _is_paddleocr_vl_model(self.model)
         should_use_doc_parser = self._uses_remote_doc_parser()
