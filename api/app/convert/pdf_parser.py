@@ -1,7 +1,7 @@
 """PDF parsing + IR generation (PyMuPDF).
 
 This module extracts layout-relevant information from a PDF into a simple
-intermediate representation (IR) for downstream OCR / layout assist / PPTX
+intermediate representation (IR) for downstream OCR / PPTX
 rendering steps.
 """
 

@@ -144,7 +144,6 @@
 - 清理后背景
 - 最终预览图
 - OCR overlay
-- layout assist 前后图
 
 ### 前后对比
 

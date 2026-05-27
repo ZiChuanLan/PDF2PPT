@@ -1,14 +1,10 @@
 # pyright: reportMissingImports=false, reportMissingTypeArgument=false
 
-"""LLM-powered layout assist (optional).
+"""LLM adapter for optional AI-powered features.
 
-This module provides a small, provider-pluggable interface for *narrow* layout
-assists:
-- reading order suggestions (useful for multi-column pages)
-- table grid inference (useful when OCR returns words without table structure)
-
-All usage must be best-effort: time-bounded (30s/page) and failures must not
-break the baseline conversion.
+This module provides a small, provider-pluggable interface for AI-assisted
+processing. All usage must be best-effort: time-bounded (30s/page) and
+failures must not break the baseline conversion.
 """
 
 from __future__ import annotations
@@ -30,12 +26,6 @@ logger = get_logger(__name__)
 _PAGE_TIMEOUT_S = 30.0
 _DEFAULT_RENDER_DPI = 150
 
-
-def _allow_layout_assist_image_regions() -> bool:
-    value = str(os.getenv("LAYOUT_ASSIST_ENABLE_IMAGE_REGIONS") or "").strip().lower()
-    if not value:
-        return False
-    return value in {"1", "true", "yes", "on"}
 
 
 def _with_ir_warning(ir: dict[str, Any], warning: str) -> dict[str, Any]:
@@ -652,173 +642,3 @@ class AnthropicProvider(LlmProvider):
         parsed = _extract_json_object("\n".join(text_parts))
         return parsed or {"reading_order": [], "table_grids": [], "image_regions": []}
 
-
-class LlmLayoutService:
-    def __init__(self, provider: Optional[LlmProvider] = None):
-        self.provider = provider
-
-    def enhance_ir(
-        self,
-        ir: dict[str, Any],
-        layout_mode: str = "fidelity",
-        *,
-        force_ai: bool = False,
-        allow_image_regions: bool | None = None,
-    ) -> dict[str, Any]:
-        """Enhance IR with AI layout analysis.
-
-        layout_mode: 'fidelity' (no AI) or 'assist' (use AI)
-        """
-
-        if layout_mode == "fidelity" or not self.provider:
-            return ir  # No AI, use heuristics
-
-        try:
-            pages = ir.get("pages")
-            if not isinstance(pages, list):
-                return ir
-            source_pdf = ir.get("source_pdf")
-            if not source_pdf:
-                return ir
-
-            out: dict[str, Any] = copy.deepcopy(ir)
-            out_pages = out.get("pages")
-            if not isinstance(out_pages, list):
-                return ir
-
-            pages_considered = 0
-            pages_changed = 0
-            image_regions_enabled = (
-                bool(allow_image_regions)
-                if allow_image_regions is not None
-                else _allow_layout_assist_image_regions()
-            )
-            suggested_image_region_pages = 0
-            applied_image_region_pages = 0
-            preserved_existing_image_region_pages = 0
-
-            for page in out_pages:
-                if not isinstance(page, dict):
-                    continue
-                elements = page.get("elements")
-                if not isinstance(elements, list) or not elements:
-                    continue
-
-                if not force_ai:
-                    needs_ai = _is_multi_column_ambiguous(
-                        page
-                    ) or _needs_table_inference(page)
-                    if not needs_ai:
-                        continue
-
-                page_index = int(page.get("page_index") or 0)
-                img_bytes = _render_page_png_bytes(source_pdf, page_index=page_index)
-                img_w_px: int | None = None
-                img_h_px: int | None = None
-                try:
-                    import io
-                    from PIL import Image
-
-                    im = Image.open(io.BytesIO(img_bytes))
-                    img_w_px, img_h_px = im.size
-                except Exception:
-                    img_w_px, img_h_px = None, None
-
-                llm_elements: list[dict[str, Any]] = []
-                for el in elements:
-                    if not isinstance(el, dict):
-                        continue
-                    item = dict(el)
-                    item["_page_width_pt"] = page.get("page_width_pt")
-                    item["_page_height_pt"] = page.get("page_height_pt")
-                    llm_elements.append(item)
-
-                suggestion = self.provider.analyze_layout(img_bytes, llm_elements)  # type: ignore[arg-type]
-                if not isinstance(suggestion, dict):
-                    continue
-
-                pages_considered += 1
-                page_changed = False
-
-                ro = _validate_reading_order(
-                    suggestion.get("reading_order"), n=len(elements)
-                )
-                tg = _validate_table_grids(suggestion.get("table_grids"))
-                if ro == [] and not page.get("reading_order"):
-                    ro = None
-                if tg == [] and not page.get("table_grids"):
-                    tg = None
-                ir_image_regions: list[list[float]] | None = None
-                if img_w_px and img_h_px:
-                    regions_px = _validate_image_regions_px(
-                        suggestion.get("image_regions"),
-                        width_px=int(img_w_px),
-                        height_px=int(img_h_px),
-                    )
-                    if regions_px is not None:
-                        page_w_pt = page.get("page_width_pt")
-                        page_h_pt = page.get("page_height_pt")
-                        if isinstance(page_w_pt, (int, float)) and isinstance(
-                            page_h_pt, (int, float)
-                        ):
-                            ir_image_regions = _image_regions_px_to_pt(
-                                regions_px,
-                                image_width_px=int(img_w_px),
-                                image_height_px=int(img_h_px),
-                                page_width_pt=float(page_w_pt),
-                                page_height_pt=float(page_h_pt),
-                            )
-
-                if ro is not None:
-                    if page.get("reading_order") != ro:
-                        page_changed = True
-                    page["reading_order"] = ro
-                if tg is not None:
-                    if page.get("table_grids") != tg:
-                        page_changed = True
-                    page["table_grids"] = tg
-                if ir_image_regions is not None:
-                    suggested_image_region_pages += 1
-                    if image_regions_enabled:
-                        existing_image_regions = page.get("image_regions")
-                        has_existing_image_regions = (
-                            isinstance(existing_image_regions, list)
-                            and len(existing_image_regions) > 0
-                        )
-                        # Treat an empty layout-assist suggestion as "no opinion"
-                        # when OCR has already provided image regions. Otherwise
-                        # layout assist can wipe authoritative OCR/Paddle boxes
-                        # and force PPT generation back onto heuristic crops.
-                        if (not ir_image_regions) and has_existing_image_regions:
-                            preserved_existing_image_region_pages += 1
-                        else:
-                            if page.get("image_regions") != ir_image_regions:
-                                page_changed = True
-                            page["image_regions"] = ir_image_regions
-                            applied_image_region_pages += 1
-                if page_changed:
-                    pages_changed += 1
-
-            out.setdefault("warnings", []).append(
-                f"layout_assist_pages={pages_considered},changed={pages_changed}"
-            )
-            if suggested_image_region_pages > 0:
-                if image_regions_enabled:
-                    out.setdefault("warnings", []).append(
-                        f"layout_assist_image_regions=applied:{applied_image_region_pages}/{suggested_image_region_pages}"
-                    )
-                    if preserved_existing_image_region_pages > 0:
-                        out.setdefault("warnings", []).append(
-                            "layout_assist_image_regions_preserved_existing="
-                            f"{preserved_existing_image_region_pages}"
-                        )
-                else:
-                    out.setdefault("warnings", []).append(
-                        f"layout_assist_image_regions=ignored:{suggested_image_region_pages}"
-                    )
-
-            return out
-        except Exception as e:
-            # Graceful degradation
-            logger.warning(f"LLM layout assist failed; falling back to fidelity: {e!s}")
-            return _with_ir_warning(ir, f"layout_assist_failed:{e!s}")

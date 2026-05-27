@@ -34,14 +34,12 @@ def resolve_page_artifact_export(
 
 @dataclass(frozen=True)
 class ArtifactExportPolicy:
-    layout_assist_debug_images: bool
     final_preview_images: bool
 
 
 @dataclass(frozen=True)
 class ArtifactExportSettings:
     ocr_overlay_images: bool = False
-    layout_assist_debug_images: bool = False
     final_preview_images: bool = False
     final_preview_max_pages: int = 5
 
@@ -50,9 +48,6 @@ class ArtifactExportSettings:
         return cls(
             ocr_overlay_images=bool(
                 getattr(settings, "export_ocr_overlay_images", False)
-            ),
-            layout_assist_debug_images=bool(
-                getattr(settings, "export_layout_assist_debug_images", False)
             ),
             final_preview_images=bool(
                 getattr(settings, "export_final_preview_images", False)
@@ -64,10 +59,6 @@ class ArtifactExportSettings:
 
     def resolve_for_parsed_document(self, *, parsed_pages: int) -> ArtifactExportPolicy:
         return ArtifactExportPolicy(
-            layout_assist_debug_images=resolve_page_artifact_export(
-                enabled=self.layout_assist_debug_images,
-                total_pages=parsed_pages,
-            ),
             final_preview_images=resolve_page_artifact_export(
                 enabled=self.final_preview_images,
                 total_pages=parsed_pages,

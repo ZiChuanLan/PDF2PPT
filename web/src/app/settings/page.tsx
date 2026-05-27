@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowLeftIcon, FileTextIcon, ScanIcon, SlidersHorizontalIcon, WrenchIcon } from "lucide-react"
+import { ArrowLeftIcon, ScanIcon, SlidersHorizontalIcon, WrenchIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -12,8 +12,7 @@ import { useSettings } from "@/hooks/use-settings"
 import { clearStoredApiOrigin } from "@/lib/api"
 
 import { QuickPresets } from "@/components/settings/quick-presets"
-import { ParsingMethodSection } from "@/components/settings/parsing-method-section"
-import { OcrStrategySection } from "@/components/settings/ocr-strategy-section"
+import { RecognitionMethodSection } from "@/components/settings/recognition-method-section"
 import { OutputQualitySection } from "@/components/settings/output-quality-section"
 import { AdminSettings } from "@/components/settings/admin-settings"
 
@@ -37,7 +36,7 @@ export default function SettingsPage() {
   } = useSettings()
 
   const [saving, setSaving] = React.useState(false)
-  const [activeTab, setActiveTab] = React.useState("parse")
+  const [activeTab, setActiveTab] = React.useState("recognition")
   const [isDirty, setIsDirty] = React.useState(false)
 
   // beforeunload warning when there are unsaved changes
@@ -114,7 +113,7 @@ export default function SettingsPage() {
           </div>
           <h1 className="mt-2 text-2xl font-bold">设置</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            按照处理流程配置：解析 → 识别 → 输出 → 高级
+            选择识别方式 → 配置 API → 调整输出
           </p>
         </div>
         <div className="flex gap-2">
@@ -147,8 +146,7 @@ export default function SettingsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <nav className="flex border-b border-border" role="tablist">
           {([
-            ["parse", "解析", FileTextIcon],
-            ["ocr", "识别", ScanIcon],
+            ["recognition", "识别", ScanIcon],
             ["output", "输出", SlidersHorizontalIcon],
             ["advanced", "高级", WrenchIcon],
           ] as const).map(([val, label, Icon]) => (
@@ -174,27 +172,12 @@ export default function SettingsPage() {
 
         {/* Content panels — conditionally rendered to avoid mount-side-effects on inactive tabs */}
         <div className="border border-t-0 p-6">
-          {activeTab === "parse" && (
-            <div role="tabpanel" id="tabpanel-parse">
-              <ParsingMethodSection
+          {activeTab === "recognition" && (
+            <div role="tabpanel" id="tabpanel-recognition">
+              <RecognitionMethodSection
                 settings={settings}
                 onSettingsChange={handleSettingsChange}
               />
-            </div>
-          )}
-
-          {activeTab === "ocr" && (
-            <div role="tabpanel" id="tabpanel-ocr">
-              {settings.parseEngineMode === "mineru_cloud" ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  MinerU 已内置 OCR 处理，无需额外配置
-                </div>
-              ) : (
-                <OcrStrategySection
-                  settings={settings}
-                  onSettingsChange={handleSettingsChange}
-                />
-              )}
             </div>
           )}
 

@@ -24,7 +24,6 @@ export type OcrAiPromptPreset =
   | "qwen_vl"
   | "glm_v"
   | "deepseek_ocr"
-export type LayoutAssistMode = "off" | "on" | "auto"
 export type ScannedPageMode = "segmented" | "fullpage"
 export type PptGenerationMode = "standard" | "fast" | "turbo"
 export type MineruModelVersion = "pipeline" | "vlm" | "MinerU-HTML"
@@ -46,8 +45,6 @@ export type Settings = {
   mineruLanguage: string
   mineruIsOcr: boolean
   mineruHybridOcr: boolean
-  enableLayoutAssist: boolean
-  layoutAssistApplyImageRegions: boolean
   enableOcr: boolean
   removeFooterNotebooklm: boolean
   textEraseMode: TextEraseMode
@@ -137,10 +134,6 @@ export const defaultSettings: Settings = {
   mineruLanguage: "",
   mineruIsOcr: false,
   mineruHybridOcr: false,
-  // Experimental and can timeout on some endpoints; keep opt-in by default.
-  enableLayoutAssist: false,
-  // Keep off by default: some pages may over-match and hide decorative images.
-  layoutAssistApplyImageRegions: false,
   // Most real-world PDFs are scans. Default to OCR-on so output is editable.
   enableOcr: true,
   // Keep off by default: only enable when exported decks contain NotebookLM footer branding.
@@ -260,7 +253,6 @@ export const BUILT_IN_PRESETS: JobPreset[] = [
       parseEngineMode: "remote_ocr",
       ocrProvider: "aiocr",
       ocrAiChainMode: "layout_block",
-      enableLayoutAssist: true,
       pptGenerationMode: "standard",
     },
   },
@@ -742,9 +734,6 @@ export function loadStoredSettings(): Settings {
   } else {
     merged.ocrAiMaxRetries = String(Math.min(1000, Math.round(maxRetries)))
   }
-  // Layout Assist is controlled by server-side ENABLE_LAYOUT_ASSIST env var.
-  // The user can override via the settings page (runtime config section).
-  // No longer force-disabled here.
   if (typeof merged.ocrAiPageConcurrencyAuto !== "boolean") {
     merged.ocrAiPageConcurrencyAuto = true
   }

@@ -13,7 +13,7 @@ from app.perf_policies import (
     RuntimePerformanceSettings,
     resolve_page_artifact_export,
 )
-from app.worker_helpers import layout_assist_stage, ppt_stage
+from app.worker_helpers import ppt_stage
 
 
 def test_resolve_page_artifact_export_disables_large_doc_preview() -> None:
@@ -39,12 +39,10 @@ def test_resolve_page_artifact_export_keeps_small_doc_preview() -> None:
 def test_artifact_export_settings_resolve_document_policy() -> None:
     policy = ArtifactExportSettings(
         ocr_overlay_images=False,
-        layout_assist_debug_images=True,
         final_preview_images=True,
         final_preview_max_pages=5,
     ).resolve_for_parsed_document(parsed_pages=13)
 
-    assert policy.layout_assist_debug_images is True
     assert policy.final_preview_images is False
 
 
@@ -54,7 +52,6 @@ def test_runtime_performance_settings_loads_from_settings_object() -> None:
         scanned_render_dpi = 160
         job_keepalive_interval_s = 9
         export_ocr_overlay_images = True
-        export_layout_assist_debug_images = False
         export_final_preview_images = True
         export_final_preview_max_pages = 4
 
@@ -65,78 +62,6 @@ def test_runtime_performance_settings_loads_from_settings_object() -> None:
     assert runtime.keepalive_interval_s == 9.0
     assert runtime.artifact_exports.ocr_overlay_images is True
     assert runtime.artifact_exports.final_preview_max_pages == 4
-
-
-def test_run_layout_assist_stage_skips_debug_export_when_disabled(
-    monkeypatch, tmp_path: Path
-) -> None:
-    called = {"debug_export": 0}
-
-    class _FakeLayoutService:
-        def __init__(self, _provider: object) -> None:
-            pass
-
-        def enhance_ir(self, ir: dict, **_kwargs: object) -> dict:
-            return ir
-
-    def _fake_debug_export(**_kwargs: object) -> dict:
-        called["debug_export"] += 1
-        return {"pages_exported": 1, "pages_changed": 0}
-
-    monkeypatch.setattr(layout_assist_stage, "LlmLayoutService", _FakeLayoutService)
-    monkeypatch.setattr(
-        layout_assist_stage,
-        "run_blocking_with_guards",
-        lambda fn, **_kwargs: fn(),
-    )
-    monkeypatch.setattr(layout_assist_stage, "_apply_ai_tables", lambda ir: ir)
-    monkeypatch.setattr(
-        layout_assist_stage,
-        "_count_layout_assist_page_changes",
-        lambda _before, _after: (0, 1),
-    )
-    monkeypatch.setattr(
-        layout_assist_stage,
-        "_extract_warning_suffix",
-        lambda _warnings, prefix: None,
-    )
-    monkeypatch.setattr(
-        layout_assist_stage,
-        "_export_layout_assist_debug_images",
-        _fake_debug_export,
-    )
-
-    job_path = tmp_path / "job"
-    job_path.mkdir()
-    artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
-
-    result = layout_assist_stage.run_layout_assist_stage(
-        ir={
-            "pages": [
-                {
-                    "page_index": 0,
-                    "page_width_pt": 720.0,
-                    "page_height_pt": 540.0,
-                    "elements": [],
-                }
-            ]
-        },
-        job_id="job-1",
-        enable_layout_assist=True,
-        layout_assist_apply_image_regions=False,
-        input_pdf=tmp_path / "input.pdf",
-        job_path=job_path,
-        artifacts_dir=artifacts_dir,
-        scanned_render_dpi=200,
-        export_debug_images=False,
-        select_provider=lambda: object(),
-        set_processing_progress=lambda *_args, **_kwargs: None,
-        abort_if_cancelled=lambda **_kwargs: None,
-    )
-
-    assert called["debug_export"] == 0
-    assert result.status == "no_change"
 
 
 def test_run_ppt_stage_forwards_final_preview_flag(

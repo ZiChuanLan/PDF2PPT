@@ -47,7 +47,6 @@ class RuntimeConfigValues(BaseModel):
     OCR_PADDLE_VL_PREDICT_TIMEOUT_S: float = Field(default=180.0, description="PaddleOCR-VL predict timeout (seconds)")
     OCR_AI_RETRY_BACKOFF_BASE_S: float = Field(default=8.0, description="Base retry backoff for AI OCR calls (seconds)")
     OCR_AI_RATE_LIMITED_MIN_DELAY_S: float = Field(default=2.0, description="Min delay after rate-limited response (seconds)")
-    ENABLE_LAYOUT_ASSIST: bool = Field(default=False, description="Enable AI layout assist stage")
     SCANNED_RENDER_DPI: int = Field(default=200, description="PPTX background render DPI")
     OCR_AI_PAGE_CONCURRENCY_MAX: int = Field(default=8, description="Max page concurrency cap")
     OCR_AI_BLOCK_CONCURRENCY_MAX: int = Field(default=8, description="Max block concurrency cap")
@@ -147,7 +146,6 @@ _FIELD_ENV_MAP: dict[str, tuple[str, type]] = {
     "OCR_PADDLE_VL_PREDICT_TIMEOUT_S": ("OCR_PADDLE_VL_PREDICT_TIMEOUT_S", float),
     "OCR_AI_RETRY_BACKOFF_BASE_S": ("OCR_AI_RETRY_BACKOFF_BASE_S", float),
     "OCR_AI_RATE_LIMITED_MIN_DELAY_S": ("OCR_AI_RATE_LIMITED_MIN_DELAY_S", float),
-    "ENABLE_LAYOUT_ASSIST": ("ENABLE_LAYOUT_ASSIST", bool),
     "SCANNED_RENDER_DPI": ("SCANNED_RENDER_DPI", int),
     "OCR_AI_PAGE_CONCURRENCY_MAX": ("OCR_AI_PAGE_CONCURRENCY_MAX", int),
     "OCR_AI_BLOCK_CONCURRENCY_MAX": ("OCR_AI_BLOCK_CONCURRENCY_MAX", int),
@@ -246,7 +244,6 @@ def _build_get_response() -> RuntimeConfigResponse:
         OCR_PADDLE_VL_PREDICT_TIMEOUT_S=settings.ocr_paddle_vl_predict_timeout_s,
         OCR_AI_RETRY_BACKOFF_BASE_S=settings.ocr_ai_retry_backoff_base_s,
         OCR_AI_RATE_LIMITED_MIN_DELAY_S=settings.ocr_ai_rate_limited_min_delay_s,
-        ENABLE_LAYOUT_ASSIST=settings.enable_layout_assist,
         SCANNED_RENDER_DPI=settings.scanned_render_dpi,
         OCR_AI_PAGE_CONCURRENCY_MAX=settings.ocr_ai_page_concurrency_max,
         OCR_AI_BLOCK_CONCURRENCY_MAX=settings.ocr_ai_block_concurrency_max,

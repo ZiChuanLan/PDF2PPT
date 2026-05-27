@@ -25,8 +25,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class AiProviderConfig(BaseModel):
     """AI provider credentials and connection settings.
 
-    Used for both layout-assist LLM and OCR AI providers.
-    All providers must be OpenAI-compatible (base_url + api_key + model).
+    Used for OCR AI providers. All providers must be OpenAI-compatible
+    (base_url + api_key + model).
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -46,7 +46,7 @@ class AiProviderConfig(BaseModel):
 
 
 class LlmConfig(BaseModel):
-    """LLM configuration for layout assist (PPT generation)."""
+    """LLM configuration for AI-powered features."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -56,15 +56,15 @@ class LlmConfig(BaseModel):
     )
     api_key: str | None = Field(
         None,
-        description="Optional API key for layout assist LLM",
+        description="Optional API key for LLM",
     )
     base_url: str | None = Field(
         None,
-        description="Optional OpenAI-compatible base URL for layout assist",
+        description="Optional OpenAI-compatible base URL for LLM",
     )
     model: str | None = Field(
         None,
-        description="Optional model identifier for layout assist",
+        description="Optional model identifier for LLM",
     )
 
 
@@ -345,16 +345,6 @@ class JobConfig(BaseModel):
         description="Remove NotebookLM footer branding text",
     )
 
-    # Layout assist flags
-    enable_layout_assist: bool = Field(
-        False,
-        description="Enable AI layout assist for improved element placement",
-    )
-    layout_assist_apply_image_regions: bool = Field(
-        False,
-        description="Apply image region detection during layout assist",
-    )
-
     # Structured sub-configs
     parse: ParseConfig = Field(
         default_factory=ParseConfig,
@@ -366,7 +356,7 @@ class JobConfig(BaseModel):
     )
     llm: LlmConfig = Field(
         default_factory=LlmConfig,
-        description="LLM configuration for layout assist",
+        description="LLM configuration for AI-powered features",
     )
     ppt: PptConfig = Field(
         default_factory=PptConfig,
@@ -396,9 +386,6 @@ class JobConfig(BaseModel):
             "enable_ocr": self.enable_ocr,
             "retain_process_artifacts": self.retain_process_artifacts,
             "remove_footer_notebooklm": self.remove_footer_notebooklm,
-            # Layout assist
-            "enable_layout_assist": self.enable_layout_assist,
-            "layout_assist_apply_image_regions": self.layout_assist_apply_image_regions,
             # LLM config
             "provider": self.llm.provider,
             "api_key": self.llm.api_key,

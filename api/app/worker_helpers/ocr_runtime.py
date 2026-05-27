@@ -124,7 +124,7 @@ def setup_ocr_runtime(
     allow_main_ai_reuse = _should_allow_main_ai_reuse(requested_ocr_provider)
 
     # If the user didn't configure separate AI OCR credentials, reuse
-    # the layout-assist OpenAI-compatible settings (when available).
+    # the main LLM OpenAI-compatible settings (when available).
     effective_ocr_ai_api_key = clean_str(ocr_ai_api_key)
     effective_ocr_ai_provider = normalize_ai_ocr_provider(ocr_ai_provider)
     effective_ocr_ai_base_url = clean_str(ocr_ai_base_url)

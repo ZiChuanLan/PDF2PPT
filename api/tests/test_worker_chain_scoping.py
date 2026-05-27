@@ -36,73 +36,18 @@ class _FakeSettings:
     scanned_render_dpi = 200
     job_keepalive_interval_s = 15
     export_ocr_overlay_images = False
-    export_layout_assist_debug_images = False
     export_final_preview_images = False
     export_final_preview_max_pages = 0
-
-
-def test_layout_assist_no_longer_forces_ocr_stage(monkeypatch, tmp_path) -> None:
-    job_dir = tmp_path / "job"
-    job_dir.mkdir(parents=True, exist_ok=True)
-    (job_dir / "input.pdf").write_bytes(b"%PDF-1.4\n")
-
-    redis_service = _FakeRedisService()
-    setup_calls: list[str] = []
-    layout_assist_flags: list[bool] = []
-
-    monkeypatch.setattr(worker, "_job_dir", lambda job_id: job_dir)
-    monkeypatch.setattr(worker, "get_settings", lambda: _FakeSettings())
-    monkeypatch.setattr(worker, "get_redis_service", lambda: redis_service)
-    monkeypatch.setattr(
-        worker,
-        "parse_pdf_to_ir",
-        lambda *args, **kwargs: {
-            "source_pdf": str(job_dir / "input.pdf"),
-            "warnings": [],
-            "pages": [
-                {
-                    "page_index": 0,
-                    "page_width_pt": 100.0,
-                    "page_height_pt": 100.0,
-                    "has_text_layer": False,
-                    "ocr_used": False,
-                    "elements": [],
-                }
-            ],
-        },
-    )
-    monkeypatch.setattr(
-        worker,
-        "setup_ocr_runtime",
-        lambda **kwargs: setup_calls.append("called"),
-    )
-    monkeypatch.setattr(
-        worker,
-        "run_layout_assist_stage",
-        lambda **kwargs: (
-            layout_assist_flags.append(bool(kwargs["enable_layout_assist"]))
-            or SimpleNamespace(ir=kwargs["ir"])
-        ),
-    )
-
-    def _fake_run_ppt_stage(**kwargs):
-        kwargs["output_pptx"].write_bytes(b"pptx")
-        return SimpleNamespace(worker_compat_mode=False)
-
-    monkeypatch.setattr(worker, "run_ppt_stage", _fake_run_ppt_stage)
-
-    worker.process_pdf_job(
-        "job-layout-assist-only",
-        options=JobOptions(
-            parse_provider="local",
-            enable_ocr=False,
-            enable_layout_assist=True,
-        ),
-    )
-
-    assert setup_calls == []
-    assert layout_assist_flags == [False]
-    assert (job_dir / "output.pptx").exists()
+    ocr_ai_page_concurrency_default = 1
+    ocr_ai_page_concurrency_max = 8
+    ocr_ai_block_concurrency_default = 1
+    ocr_ai_block_concurrency_max = 8
+    ocr_ai_rpm_default = 1
+    ocr_ai_rpm_max = 2000
+    ocr_ai_tpm_default = 1000
+    ocr_ai_tpm_max = 2_000_000
+    ocr_ai_max_retries_default = 0
+    ocr_ai_max_retries_max = 8
 
 
 def test_fast_ppt_generation_forwards_ocr_image_region_skip(
@@ -167,11 +112,6 @@ def test_fast_ppt_generation_forwards_ocr_image_region_skip(
         "run_ocr_stage",
         lambda **kwargs: captured_ocr_kwargs.update(kwargs),
     )
-    monkeypatch.setattr(
-        worker,
-        "run_layout_assist_stage",
-        lambda **kwargs: SimpleNamespace(ir=kwargs["ir"]),
-    )
 
     def _fake_run_ppt_stage(**kwargs):
         kwargs["output_pptx"].write_bytes(b"pptx")
@@ -186,6 +126,7 @@ def test_fast_ppt_generation_forwards_ocr_image_region_skip(
             enable_ocr=True,
             ocr_provider="aiocr",
             ppt_generation_mode="fast",
+            scanned_page_mode="fullpage",
         ),
     )
 

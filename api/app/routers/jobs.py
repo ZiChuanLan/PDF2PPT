@@ -492,8 +492,6 @@ async def list_jobs(
 async def create_job(
     file: UploadFile = File(..., description="PDF or image file to convert"),
     enable_ocr: bool = Form(False, description="Enable OCR for scanned PDFs or images"),
-    enable_layout_assist: bool = Form(False, description="Enable AI layout assist for improved element placement"),
-    layout_assist_apply_image_regions: bool = Form(False, description="Enable AI image region detection during layout assist"),
     retain_process_artifacts: bool = Form(
         False,
         description=(
@@ -514,10 +512,6 @@ async def create_job(
             "Parser provider (local, baidu_doc, mineru). Legacy `v2` is accepted for backward compatibility "
             "and maps to local+fullpage+AI OCR."
         ),
-    ),
-    provider: str = Form(
-        "openai",
-        description="LLM provider identifier (openai, claude, siliconflow, domestic)",
     ),
     api_key: str | None = Form(None, description="Optional API key for AI services"),
     baidu_doc_parse_type: str | None = Form(
@@ -764,9 +758,6 @@ async def create_job(
         enable_ocr=enable_ocr,
         retain_process_artifacts=retain_process_artifacts,
         remove_footer_notebooklm=remove_footer_notebooklm,
-        enable_layout_assist=enable_layout_assist,
-        layout_assist_apply_image_regions=layout_assist_apply_image_regions,
-        provider=normalized_options.provider,
         api_key=api_key,
         baidu_doc_parse_type=normalized_options.baidu_doc_parse_type,
         base_url=base_url,
@@ -886,7 +877,6 @@ async def create_job_v2(
 
     # Apply normalized values back to kwargs
     kwargs["parse_provider"] = normalized_options.parse_provider
-    kwargs["provider"] = normalized_options.provider
     kwargs["baidu_doc_parse_type"] = normalized_options.baidu_doc_parse_type
     kwargs["ocr_provider"] = normalized_options.ocr_provider
     kwargs["ocr_ai_provider"] = normalized_options.ocr_ai_provider
@@ -1272,18 +1262,6 @@ async def get_job_artifacts(job_id: str):
         regex=r"^page-(\d{4})\.overlay\.png$",
         url_prefix=prefix,
     )
-    layout_before_images = _collect_page_images(
-        job_dir=job_dir,
-        subdir="artifacts/layout_assist",
-        regex=r"^page-(\d{4})\.before\.png$",
-        url_prefix=prefix,
-    )
-    layout_after_images = _collect_page_images(
-        job_dir=job_dir,
-        subdir="artifacts/layout_assist",
-        regex=r"^page-(\d{4})\.after\.png$",
-        url_prefix=prefix,
-    )
 
     all_pages = sorted(
         {
@@ -1291,8 +1269,6 @@ async def get_job_artifacts(job_id: str):
             *[img.page_index for img in cleaned_images],
             *[img.page_index for img in final_preview_images],
             *[img.page_index for img in ocr_overlay_images],
-            *[img.page_index for img in layout_before_images],
-            *[img.page_index for img in layout_after_images],
         }
     )
 
@@ -1305,8 +1281,6 @@ async def get_job_artifacts(job_id: str):
         cleaned_images=cleaned_images,
         final_preview_images=final_preview_images,
         ocr_overlay_images=ocr_overlay_images,
-        layout_before_images=layout_before_images,
-        layout_after_images=layout_after_images,
         available_pages=all_pages,
     )
 

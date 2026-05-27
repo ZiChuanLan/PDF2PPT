@@ -17,8 +17,6 @@ class JobOptions:
     retain_process_artifacts: bool = False
     remove_footer_notebooklm: bool = False
     text_erase_mode: str | None = None
-    enable_layout_assist: bool = False
-    layout_assist_apply_image_regions: bool = False
 
     # LLM / AI provider
     provider: str | None = None

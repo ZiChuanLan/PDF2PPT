@@ -21,44 +21,27 @@ def _default_config() -> JobConfig:
     return JobConfig()
 
 
-def test_to_worker_kwargs_layout_assist_default_false() -> None:
-    """Default config produces enable_layout_assist=False in kwargs."""
+def test_to_worker_kwargs_defaults() -> None:
+    """Default config produces expected default values in kwargs."""
     config = _default_config()
     kwargs = config.to_worker_kwargs()
-    assert kwargs["enable_layout_assist"] is False
-    assert kwargs["layout_assist_apply_image_regions"] is False
-
-
-def test_to_worker_kwargs_layout_assist_explicit_true() -> None:
-    """When enable_layout_assist=True, kwargs carries True (not hardcoded False)."""
-    config = JobConfig(enable_layout_assist=True)
-    kwargs = config.to_worker_kwargs()
-    assert kwargs["enable_layout_assist"] is True
-
-
-def test_to_worker_kwargs_layout_assist_apply_image_regions_true() -> None:
-    """When both flags are True, kwargs correctly propagates them."""
-    config = JobConfig(
-        enable_layout_assist=True,
-        layout_assist_apply_image_regions=True,
-    )
-    kwargs = config.to_worker_kwargs()
-    assert kwargs["enable_layout_assist"] is True
-    assert kwargs["layout_assist_apply_image_regions"] is True
-
-
-def test_to_worker_kwargs_does_not_affect_other_fields() -> None:
-    """Setting layout assist flags should not unexpectedly alter other kwargs."""
-    config = JobConfig(
-        enable_layout_assist=True,
-        layout_assist_apply_image_regions=True,
-    )
-    kwargs = config.to_worker_kwargs()
-
-    # Core flags should still reflect defaults
     assert kwargs["enable_ocr"] is False
     assert kwargs["retain_process_artifacts"] is False
     assert kwargs["remove_footer_notebooklm"] is False
+
+
+def test_to_worker_kwargs_does_not_affect_other_fields() -> None:
+    """Setting one flag should not unexpectedly alter other kwargs."""
+    config = JobConfig(
+        enable_ocr=True,
+        remove_footer_notebooklm=True,
+    )
+    kwargs = config.to_worker_kwargs()
+
+    # Core flags should reflect the config
+    assert kwargs["enable_ocr"] is True
+    assert kwargs["remove_footer_notebooklm"] is True
+    assert kwargs["retain_process_artifacts"] is False
 
     # Parse provider should still be 'local' by default
     assert kwargs["parse_provider"] == "local"
@@ -70,24 +53,13 @@ def test_to_worker_kwargs_does_not_affect_other_fields() -> None:
     assert kwargs["ppt_generation_mode"] == "standard"
 
 
-def test_to_worker_kwargs_layout_assist_independent_of_ocr() -> None:
-    """Layout assist flags should be independent of OCR enablement."""
-    config_ocr = JobConfig(enable_ocr=True, enable_layout_assist=False)
-    config_layout = JobConfig(enable_ocr=False, enable_layout_assist=True)
-    config_both = JobConfig(enable_ocr=True, enable_layout_assist=True)
+def test_to_worker_kwargs_ocr_independent() -> None:
+    """OCR enablement should be independent of other flags."""
+    config_ocr = JobConfig(enable_ocr=True)
+    config_no_ocr = JobConfig(enable_ocr=False)
 
     kwargs_ocr = config_ocr.to_worker_kwargs()
-    kwargs_layout = config_layout.to_worker_kwargs()
-    kwargs_both = config_both.to_worker_kwargs()
+    kwargs_no_ocr = config_no_ocr.to_worker_kwargs()
 
-    # OCR-only config: layout assist is False
-    assert kwargs_ocr["enable_layout_assist"] is False
     assert kwargs_ocr["enable_ocr"] is True
-
-    # Layout-only config: OCR is False
-    assert kwargs_layout["enable_layout_assist"] is True
-    assert kwargs_layout["enable_ocr"] is False
-
-    # Both enabled
-    assert kwargs_both["enable_layout_assist"] is True
-    assert kwargs_both["enable_ocr"] is True
+    assert kwargs_no_ocr["enable_ocr"] is False

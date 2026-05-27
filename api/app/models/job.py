@@ -26,7 +26,6 @@ class JobStage(str, Enum):
     queued = "queued"
     parsing = "parsing"
     ocr = "ocr"
-    layout_assist = "layout_assist"
     pptx_generating = "pptx_generating"
     packaging = "packaging"
     cleanup = "cleanup"
@@ -321,6 +320,4 @@ class JobArtifactsResponse(BaseModel):
     cleaned_images: list[JobArtifactImage] = Field(default_factory=list)
     final_preview_images: list[JobArtifactImage] = Field(default_factory=list)
     ocr_overlay_images: list[JobArtifactImage] = Field(default_factory=list)
-    layout_before_images: list[JobArtifactImage] = Field(default_factory=list)
-    layout_after_images: list[JobArtifactImage] = Field(default_factory=list)
     available_pages: list[int] = Field(default_factory=list)

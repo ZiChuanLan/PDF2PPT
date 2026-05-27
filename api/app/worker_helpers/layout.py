@@ -154,24 +154,6 @@ def _layout_page_signature(page: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def _count_layout_assist_page_changes(
-    before_ir: dict[str, Any], after_ir: dict[str, Any]
-) -> tuple[int, int]:
-    before_pages = _to_page_map(before_ir)
-    after_pages = _to_page_map(after_ir)
-    page_indices = sorted(set(before_pages.keys()) | set(after_pages.keys()))
-    pages_total = 0
-    pages_changed = 0
-    for page_index in page_indices:
-        before_page = before_pages.get(page_index)
-        after_page = after_pages.get(page_index)
-        if not isinstance(before_page, dict) and not isinstance(after_page, dict):
-            continue
-        pages_total += 1
-        if _layout_page_signature(before_page) != _layout_page_signature(after_page):
-            pages_changed += 1
-    return pages_changed, pages_total
-
 
 def _extract_warning_suffix(warnings: list[Any] | None, *, prefix: str) -> str | None:
     if not isinstance(warnings, list):

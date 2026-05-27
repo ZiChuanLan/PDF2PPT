@@ -142,7 +142,6 @@ Useful when checking one page in detail. Typical visuals may include:
 - cleaned background
 - final preview image
 - OCR overlay
-- layout assist before/after images
 
 ### Before/After Comparison
 

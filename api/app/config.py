@@ -47,7 +47,6 @@ class Settings(BaseSettings):
     # Large multi-page jobs can spend a lot of time exporting debug/preview
     # images that are not required for the final PPTX output.
     export_ocr_overlay_images: bool = False
-    export_layout_assist_debug_images: bool = False
     # Final preview images are useful for QA, but they are pure extra output and
     # add avoidable rendering work. Keep them opt-in for speed-focused runs.
     export_final_preview_images: bool = False
@@ -118,9 +117,6 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------
     # Feature toggles
     # -------------------------------------------------------------------
-    # Enable the AI layout assist stage (disabled by default).
-    enable_layout_assist: bool = False
-
     # Enable CSRF token validation for state-changing requests.
     # Disabled by default — session auth is sufficient for self-hosted setups.
     enable_csrf: bool = False

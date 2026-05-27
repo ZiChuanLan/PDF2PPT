@@ -21,10 +21,8 @@ from rq import Connection, Queue, Worker
 
 from .config import get_settings
 from .job_options import (
-    LAYOUT_PROVIDER_ALIASES,
     normalize_baidu_doc_parse_type,
     normalize_ai_ocr_provider,
-    normalize_layout_provider,
     normalize_parse_provider,
     normalize_ppt_generation_mode,
     normalize_requested_ocr_provider,
@@ -35,7 +33,7 @@ from .job_paths import get_job_dir
 from .convert.baidu_doc_adapter import parse_pdf_to_ir_with_baidu_doc
 from .convert.mineru_adapter import parse_pdf_to_ir_with_mineru
 from .convert.pdf_parser import parse_pdf_to_ir
-from .convert.llm_adapter import AnthropicProvider, OpenAiProvider
+
 from .logging_config import get_logger
 from .logging_config import set_job_id, set_job_stage, setup_logging
 from .models.error import AppException, ErrorCode
@@ -46,7 +44,6 @@ from .services.job_cleanup import cleanup_job_process_artifacts
 from .utils.text import clean_str
 from .worker_helpers import (
     build_ocr_debug_payload,
-    run_layout_assist_stage,
     run_ocr_stage,
     run_ppt_stage,
     setup_ocr_runtime,
@@ -74,7 +71,6 @@ def _retrieve_job_secrets(job_id: str) -> dict[str, str]:
     Falls back to empty dict if secrets not found (e.g., legacy jobs).
     """
     try:
-        redis_service = get_redis_service()
         return redis_service.get_job_secrets(job_id)
     except Exception:
         logger.debug("Could not retrieve secrets for job %s", job_id, exc_info=True)
@@ -84,48 +80,6 @@ def _retrieve_job_secrets(job_id: str) -> dict[str, str]:
 class JobCancelledError(Exception):
     """Internal control-flow exception used to abort cancelled jobs."""
 
-
-def _select_layout_assist_provider(
-    *,
-    provider: str | None,
-    api_key: str | None,
-    base_url: str | None,
-    model: str | None,
-    ocr_ai_api_key: str | None,
-    ocr_ai_base_url: str | None,
-    ocr_ai_model: str | None,
-) -> OpenAiProvider | AnthropicProvider | None:
-    raw_provider = (clean_str(provider) or "").lower()
-    if raw_provider and raw_provider not in LAYOUT_PROVIDER_ALIASES:
-        raise AppException(
-            code=ErrorCode.VALIDATION_ERROR,
-            message="Unsupported layout assist provider",
-            details={"provider": provider},
-            status_code=400,
-        )
-    provider_id = normalize_layout_provider(provider)
-
-    # Primary: main AI credentials.
-    key = clean_str(api_key)
-    if key:
-        if provider_id == "claude":
-            return AnthropicProvider(key)
-        return OpenAiProvider(
-            key,
-            base_url=clean_str(base_url),
-            model=clean_str(model),
-        )
-
-    # Fallback: reuse OCR AI credentials for optional layout assist.
-    ocr_key = clean_str(ocr_ai_api_key)
-    if not ocr_key:
-        return None
-
-    return OpenAiProvider(
-        ocr_key,
-        base_url=clean_str(ocr_ai_base_url),
-        model=clean_str(ocr_ai_model),
-    )
 
 
 def get_redis_connection() -> Any:
@@ -175,11 +129,7 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
     options.ocr_baidu_secret_key = _secrets.get("ocr_baidu_secret_key") or options.ocr_baidu_secret_key
     options.ocr_ai_api_key = _secrets.get("ocr_ai_api_key") or options.ocr_ai_api_key
 
-    # Layout assist requires both server-side enablement (ENABLE_LAYOUT_ASSIST env var)
-    # and user opt-in via settings (enableLayoutAssist checkbox).
     settings = get_settings()
-    enable_layout_assist = options.enable_layout_assist
-    layout_assist_apply_image_regions = options.layout_assist_apply_image_regions
     redis_service = get_redis_service()
     set_job_id(job_id)
     set_job_stage(None)
@@ -217,25 +167,6 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
         set_job_id(None)
         return
 
-    def _select_provider() -> OpenAiProvider | AnthropicProvider | None:
-        selected = _select_layout_assist_provider(
-            provider=options.provider,
-            api_key=options.api_key,
-            base_url=options.base_url,
-            model=options.model,
-            ocr_ai_api_key=options.ocr_ai_api_key,
-            ocr_ai_base_url=options.ocr_ai_base_url,
-            ocr_ai_model=options.ocr_ai_model,
-        )
-        if (
-            selected is not None
-            and (not clean_str(options.api_key))
-            and clean_str(options.ocr_ai_api_key)
-        ):
-            logger.info(
-                "Using OCR AI credentials for layout assist (main API key missing)"
-            )
-        return selected
 
     # --- Normalize string enum fields ---
     normalized_text_erase_mode = normalize_text_erase_mode(options.text_erase_mode)
@@ -429,7 +360,6 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
                 _refresh_job_ttl()
 
             options.enable_ocr = False
-            enable_layout_assist = False
             ir = parse_pdf_to_ir_with_baidu_doc(
                 input_pdf,
                 artifacts_dir / "baidu_doc",
@@ -683,22 +613,6 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
                 abort_if_cancelled=_abort_if_cancelled,
             )
 
-        ir = run_layout_assist_stage(
-            ir=ir,
-            job_id=job_id,
-            enable_layout_assist=bool(enable_layout_assist),
-            layout_assist_apply_image_regions=bool(layout_assist_apply_image_regions),
-            input_pdf=input_pdf,
-            job_path=job_path,
-            artifacts_dir=artifacts_dir,
-            scanned_render_dpi=int(scanned_render_dpi),
-            export_debug_images=artifact_export_policy.layout_assist_debug_images,
-            select_provider=_select_provider,
-            set_processing_progress=_set_processing_progress,
-            abort_if_cancelled=_abort_if_cancelled,
-            heartbeat=_refresh_job_ttl,
-            heartbeat_interval_s=keepalive_interval_s,
-        ).ir
 
         ppt_stage_kwargs: dict[str, Any] = {
             "ir": ir,
@@ -760,10 +674,6 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
                 user_warnings.append(
                     "PaddleOCR-VL 当前页识别结果偏粗，可能漏掉流程图小字；这类页面更建议用 DeepSeek OCR / Qwen"
                 )
-            elif "layout_assist_status=failed" in w_str:
-                user_warnings.append("AI 版式辅助失败，使用原始布局")
-            elif "layout_assist_status=skipped_missing_provider" in w_str:
-                user_warnings.append("AI 版式辅助未执行：缺少可用 AI 配置")
         # Deduplicate
         user_warnings = list(dict.fromkeys(user_warnings))
 

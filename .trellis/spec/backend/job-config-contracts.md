@@ -34,8 +34,8 @@
 - `to_worker_kwargs()` is a translation layer, not a policy reset layer.
 - Do **not** silently replace user-provided booleans with hardcoded defaults during flattening.
 - Top-level booleans such as:
-  - `enable_layout_assist`
-  - `layout_assist_apply_image_regions`
+  - `enable_ocr`
+  - `ocr_strict_mode`
   must round-trip from `JobConfig(...)` into worker kwargs unless a documented per-provider exception applies.
 
 #### Worker contract
@@ -54,7 +54,7 @@
 
 ### 5. Good / Base / Bad Cases
 
-- Good: `JobConfig(enable_layout_assist=True).to_worker_kwargs()["enable_layout_assist"] is True`
+- Good: `JobConfig(enable_ocr=True).to_worker_kwargs()["enable_ocr"] is True`
 - Base: defaults remain stable for unrelated fields when one config flag changes.
 - Bad: a valid field exists on `JobConfig`, but `to_worker_kwargs()` emits a hardcoded value and disables the feature silently.
 
@@ -71,9 +71,9 @@
 Minimum regression pattern:
 
 ```python
-config = JobConfig(enable_layout_assist=True)
+config = JobConfig(enable_ocr=True)
 kwargs = config.to_worker_kwargs()
-assert kwargs["enable_layout_assist"] is True
+assert kwargs["enable_ocr"] is True
 ```
 
 ### 7. Wrong vs Correct
@@ -82,8 +82,8 @@ assert kwargs["enable_layout_assist"] is True
 
 ```python
 return {
-    "enable_layout_assist": False,
-    "layout_assist_apply_image_regions": False,
+    "enable_ocr": False,
+    "ocr_strict_mode": False,
 }
 ```
 
@@ -91,8 +91,8 @@ return {
 
 ```python
 return {
-    "enable_layout_assist": self.enable_layout_assist,
-    "layout_assist_apply_image_regions": self.layout_assist_apply_image_regions,
+    "enable_ocr": self.enable_ocr,
+    "ocr_strict_mode": self.ocr.strict_mode,
 }
 ```
 

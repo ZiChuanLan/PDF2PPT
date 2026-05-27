@@ -17,7 +17,6 @@ type RuntimeConfig = {
   OCR_PADDLE_VL_PREDICT_TIMEOUT_S: number
   OCR_AI_RETRY_BACKOFF_BASE_S: number
   OCR_AI_RATE_LIMITED_MIN_DELAY_S: number
-  ENABLE_LAYOUT_ASSIST: boolean
   SCANNED_RENDER_DPI: number
   OCR_AI_PAGE_CONCURRENCY_MAX: number
   OCR_AI_BLOCK_CONCURRENCY_MAX: number
@@ -33,7 +32,6 @@ const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   OCR_PADDLE_VL_PREDICT_TIMEOUT_S: 30,
   OCR_AI_RETRY_BACKOFF_BASE_S: 2,
   OCR_AI_RATE_LIMITED_MIN_DELAY_S: 5,
-  ENABLE_LAYOUT_ASSIST: false,
   SCANNED_RENDER_DPI: 150,
   OCR_AI_PAGE_CONCURRENCY_MAX: 100,
   OCR_AI_BLOCK_CONCURRENCY_MAX: 200,
@@ -192,22 +190,6 @@ export function AdminSettings() {
                     onChange={(v) => updateField("OCR_AI_RATE_LIMITED_MIN_DELAY_S", v)}
                     step="0.5"
                   />
-                </div>
-
-                {/* Layout Assist */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={config.ENABLE_LAYOUT_ASSIST}
-                      onChange={(e) => updateField("ENABLE_LAYOUT_ASSIST", e.target.checked)}
-                      className="size-4 accent-foreground"
-                    />
-                    <span className="text-xs font-medium">启用 Layout Assist</span>
-                  </label>
-                  <div className="pl-6 text-[11px] text-amber-600">
-                    注意：Layout Assist 可能增加处理时间，建议先在测试文档上验证效果。
-                  </div>
                 </div>
 
                 {/* Rendering DPI */}

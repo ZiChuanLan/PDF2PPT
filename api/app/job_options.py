@@ -8,7 +8,6 @@ from .utils.text import clean_str
 
 VALID_PARSE_PROVIDERS = {"local", "mineru", "baidu_doc", "v2"}
 VALID_OCR_PROVIDERS = {"auto", "aiocr", "baidu", "machine", "tesseract", "paddle", "paddle_local", "paddleocr"}
-VALID_LAYOUT_PROVIDERS = {"openai", "claude"}
 VALID_BAIDU_DOC_PARSE_TYPES = {"general", "paddle_vl"}
 VALID_OCR_AI_PROVIDERS = {
     "auto",
@@ -49,13 +48,6 @@ SCANNED_PAGE_MODE_ALIASES = VALID_SCANNED_PAGE_MODES | {
     "page",
     "full",
     "full_page",
-}
-LAYOUT_PROVIDER_ALIASES = VALID_LAYOUT_PROVIDERS | {
-    "domestic",
-    "siliconflow",
-    "openai-compatible",
-    "openai_compatible",
-    "anthropic",
 }
 BAIDU_DOC_PARSE_TYPE_ALIASES = VALID_BAIDU_DOC_PARSE_TYPES | {
     "default",
@@ -113,7 +105,6 @@ PPT_GENERATION_MODE_ALIASES = VALID_PPT_GENERATION_MODES | {
 @dataclass(frozen=True)
 class NormalizedJobOptions:
     parse_provider: str
-    provider: str
     baidu_doc_parse_type: str
     ocr_provider: str
     ocr_ai_provider: str
@@ -149,14 +140,6 @@ def normalize_requested_ocr_provider(value: str | None) -> str:
         return "aiocr"
     return provider_id
 
-
-def normalize_layout_provider(value: str | None) -> str:
-    provider_id = (clean_str(_unwrap_form_default(value)) or "openai").lower()
-    if provider_id in {"domestic", "siliconflow", "openai-compatible", "openai_compatible"}:
-        return "openai"
-    if provider_id == "anthropic":
-        return "claude"
-    return provider_id
 
 
 def normalize_baidu_doc_parse_type(value: str | None) -> str:
@@ -317,15 +300,6 @@ def validate_and_normalize_job_options(
             code=ErrorCode.VALIDATION_ERROR,
             message="Unsupported parse provider",
             details={"parse_provider": parse_provider},
-            status_code=400,
-        )
-    normalized_provider = normalize_layout_provider(provider)
-    raw_provider = (clean_str(provider) or "").lower()
-    if raw_provider and raw_provider not in LAYOUT_PROVIDER_ALIASES:
-        raise AppException(
-            code=ErrorCode.VALIDATION_ERROR,
-            message="Unsupported layout assist provider",
-            details={"provider": provider},
             status_code=400,
         )
 
@@ -545,7 +519,6 @@ def validate_and_normalize_job_options(
 
     return NormalizedJobOptions(
         parse_provider=normalized_parse_provider,
-        provider=normalized_provider,
         baidu_doc_parse_type=normalized_baidu_doc_parse_type,
         ocr_provider=normalized_ocr_provider,
         ocr_ai_provider=normalized_ocr_ai_provider,

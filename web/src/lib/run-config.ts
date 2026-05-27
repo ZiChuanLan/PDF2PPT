@@ -9,7 +9,6 @@ import {
   type OcrAiChainMode,
   type OcrAiLayoutModel,
   type BaiduDocParseType,
-  type LayoutAssistMode,
   type MainProvider,
   type OcrProvider,
   type PptGenerationMode,
@@ -41,9 +40,6 @@ export type RunConfig = {
   ocrAiTokensPerMinute: number | null
   ocrAiMaxRetries: number
   ocrAiConfigSource: OcrConfigSource
-  layoutAssistChain: ParseEngineMode
-  layoutAssistMode: LayoutAssistMode
-  layoutAssistEnabled: boolean
   shouldAttachOcrAiParams: boolean
   pptGenerationMode: PptGenerationMode
 }
@@ -328,9 +324,6 @@ export function resolveRunConfig(settings: Settings): RunConfig {
   const ocrAiTokensPerMinute = toFinitePositiveIntOrNull(settings.ocrAiTokensPerMinute)
   const ocrAiMaxRetries = Math.min(8, Math.max(0, Number(settings.ocrAiMaxRetries) || 0))
 
-  const layoutAssistChain = parseEngineMode
-  const layoutAssistEnabled = Boolean(settings.enableLayoutAssist)
-  const layoutAssistMode: LayoutAssistMode = layoutAssistEnabled ? "on" : "off"
   const shouldAttachOcrAiParams = explicitAiOcrSelected && Boolean(effectiveOcrAiKey)
 
   return {
@@ -354,9 +347,6 @@ export function resolveRunConfig(settings: Settings): RunConfig {
     ocrAiTokensPerMinute,
     ocrAiMaxRetries,
     ocrAiConfigSource,
-    layoutAssistChain,
-    layoutAssistMode,
-    layoutAssistEnabled,
     shouldAttachOcrAiParams,
     pptGenerationMode: settings.pptGenerationMode,
   }
@@ -364,7 +354,11 @@ export function resolveRunConfig(settings: Settings): RunConfig {
 
 export function resolveOcrSettingsState(settings: Settings): OcrSettingsState {
   const runConfig = resolveRunConfig(settings)
-  const parseEngineMode = runConfig.layoutAssistChain
+  const parseEngineMode = runConfig.parseProvider === "mineru"
+    ? "mineru_cloud" as ParseEngineMode
+    : runConfig.parseProvider === "baidu_doc"
+      ? "baidu_doc" as ParseEngineMode
+      : settings.parseEngineMode
   const isMineruProvider = parseEngineMode === "mineru_cloud"
   const isBaiduDocParseMode = parseEngineMode === "baidu_doc"
   const isOcrEnabledForCurrentEngine = !isMineruProvider
@@ -437,7 +431,12 @@ export function resolveOcrSettingsState(settings: Settings): OcrSettingsState {
 export const deriveSettingsUiState = resolveOcrSettingsState
 
 export function getRunParseEngineLabel(runConfig: RunConfig): string {
-  return PARSE_ENGINE_MODE_LABELS[runConfig.layoutAssistChain]
+  const mode = runConfig.parseProvider === "mineru"
+    ? "mineru_cloud" as ParseEngineMode
+    : runConfig.parseProvider === "baidu_doc"
+      ? "baidu_doc" as ParseEngineMode
+      : "local_ocr" as ParseEngineMode
+  return PARSE_ENGINE_MODE_LABELS[mode]
 }
 
 export function getRunModelLabel(runConfig: RunConfig): string {
@@ -530,8 +529,6 @@ export type JobConfig = {
   enable_ocr?: boolean
   retain_process_artifacts?: boolean
   remove_footer_notebooklm?: boolean
-  enable_layout_assist?: boolean
-  layout_assist_apply_image_regions?: boolean
   ocr?: {
     provider?: string
     ai?: {
@@ -624,11 +621,9 @@ export function buildJobConfig(
     enable_ocr: run.parseProvider === "local" ? Boolean(settings.enableOcr) : false,
     retain_process_artifacts: Boolean(options?.retainProcessArtifacts),
     remove_footer_notebooklm: Boolean(settings.removeFooterNotebooklm),
-    enable_layout_assist: Boolean(settings.enableLayoutAssist),
-    layout_assist_apply_image_regions: Boolean(settings.layoutAssistApplyImageRegions),
   }
 
-  // LLM config (for layout assist / main provider)
+  // LLM config (main provider)
   if (run.mainApiKey || run.mainBaseUrl || run.mainModel) {
     config.llm = {
       provider: run.llmProvider,
