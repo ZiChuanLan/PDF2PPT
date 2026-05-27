@@ -25,7 +25,6 @@ export type OcrAiPromptPreset =
   | "glm_v"
   | "deepseek_ocr"
 export type LayoutAssistMode = "off" | "on" | "auto"
-export type VisionAssistMode = LayoutAssistMode
 export type ScannedPageMode = "segmented" | "fullpage"
 export type PptGenerationMode = "standard" | "fast" | "turbo"
 export type MineruModelVersion = "pipeline" | "vlm" | "MinerU-HTML"
@@ -49,10 +48,6 @@ export type Settings = {
   mineruHybridOcr: boolean
   enableLayoutAssist: boolean
   layoutAssistApplyImageRegions: boolean
-  visualAssistModeLocal: LayoutAssistMode
-  visualAssistModeRemote: LayoutAssistMode
-  visualAssistModeBaiduDoc: LayoutAssistMode
-  visualAssistModeMineru: LayoutAssistMode
   enableOcr: boolean
   removeFooterNotebooklm: boolean
   textEraseMode: TextEraseMode
@@ -146,11 +141,6 @@ export const defaultSettings: Settings = {
   enableLayoutAssist: false,
   // Keep off by default: some pages may over-match and hide decorative images.
   layoutAssistApplyImageRegions: false,
-  // AI layout-assist policy for the four parse chains. Keep all off by default.
-  visualAssistModeLocal: "off",
-  visualAssistModeRemote: "off",
-  visualAssistModeBaiduDoc: "off",
-  visualAssistModeMineru: "off",
   // Most real-world PDFs are scans. Default to OCR-on so output is editable.
   enableOcr: true,
   // Keep off by default: only enable when exported decks contain NotebookLM footer branding.

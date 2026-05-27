@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 import pymupdf
 
+from ..convert.rendered_page import RenderedPage
 from ..convert.ocr import ocr_image_to_elements
 from ..logging_config import get_logger
 from ..models.error import AppException, ErrorCode
@@ -121,18 +122,8 @@ def _run_sequential_ocr_page_loop(
             )
             continue
 
-        image_path = ocr_dir / f"page-{page_index:04d}.png"
-        try:
-            pix.save(str(image_path))
-        except Exception as e:
-            logger.warning("Failed to save OCR image %s: %s", image_path, e)
-            ocr_debug["pages"].append(
-                {
-                    "page_index": page_index,
-                    "error": f"image_save_failed: {e!s}",
-                }
-            )
-            continue
+        rendered = RenderedPage(pix, page_index)
+        image_path = rendered.as_tempfile_path(ocr_dir)
 
         fallback_reason: str | None = None
         ocr_call_started = time.perf_counter()
@@ -161,6 +152,7 @@ def _run_sequential_ocr_page_loop(
                     linebreak_refiner=linebreak_refiner,
                     linebreak_assist=linebreak_assist_effective,
                     strict_no_fallback=bool(strict_no_fallback),
+                    rendered_page=rendered,
                 ),
                 timeout_s=float(ocr_page_timeout),
                 label=f"worker:ocr_page:{page_index}",
@@ -325,6 +317,7 @@ def _run_sequential_ocr_page_loop(
                 page_w_pt=page_w_pt,
                 page_h_pt=page_h_pt,
                 skip_reason=image_region_detection_skip_reason,
+                rendered_page=rendered,
             )
         )
 
@@ -339,6 +332,7 @@ def _run_sequential_ocr_page_loop(
             page_w_pt=page_w_pt,
             page_h_pt=page_h_pt,
             ocr_elements=ocr_elements if isinstance(ocr_elements, list) else None,
+            rendered_page=rendered,
         )
         if ocr_elements:
             page.setdefault("elements", []).extend(ocr_elements)

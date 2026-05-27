@@ -817,7 +817,6 @@ export function applyParseEngineMode(
       parseEngineMode: nextMode,
       provider: mainProvider,
       preferredMainProvider: mainProvider,
-      visualAssistModeBaiduDoc: "off",
     }
   }
 

@@ -19,7 +19,6 @@ from ._scanned_render import (
 from ._scanned_region_detect import (
     _analyze_shape_crop,
     _coerce_polygon_points_pt,
-    _detect_image_regions_from_render,
     _element_polygon_points_px,
     _is_shape_confirmed_crop,
     _pdf_pt_to_pix_px,

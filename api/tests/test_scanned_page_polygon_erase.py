@@ -277,7 +277,7 @@ def test_build_scanned_image_region_infos_trusts_explicit_image_regions(
 
 
 def test_build_scanned_image_region_infos_skips_without_explicit_image_regions(
-    tmp_path, monkeypatch
+    tmp_path,
 ) -> None:
     render_path = tmp_path / "render.no-fallback.png"
     image = Image.new("RGB", (120, 120), "white")
@@ -285,14 +285,6 @@ def test_build_scanned_image_region_infos_skips_without_explicit_image_regions(
     draw.rectangle([10, 10, 110, 110], fill=(180, 180, 180))
     draw.rectangle([24, 28, 96, 88], fill=(40, 40, 40))
     image.save(render_path)
-
-    monkeypatch.setattr(
-        scanned_page,
-        "_detect_image_regions_from_render",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("render-based fallback should not run")
-        ),
-    )
 
     infos = scanned_page._build_scanned_image_region_infos(
         page={},

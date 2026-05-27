@@ -60,68 +60,55 @@ export function ArtifactFramesView({
   const trackedBeforeOverlay = trackedLayoutBefore || trackedOcrOverlay
   const trackedAfterOverlay = trackedFinalPreview || trackedLayoutAfter || trackedClean || null
 
+  if (!trackedOriginal && !trackedAfterOverlay) return null
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <div className="grid gap-2">
-        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          原始 PDF（悬停显示识别框）
-        </div>
-        <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
-          {trackedOriginal ? (
+      {trackedOriginal && (
+        <div className="grid gap-2">
+          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            原始 PDF（悬停显示识别框）
+          </div>
+          <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
             <TrackingArtifactImage
               src={trackedOriginal.url}
               alt={`原始第 ${activeTrackedPageLabel} 页`}
               className="object-contain"
               priority
             />
-          ) : (
-            <div className="grid h-52 place-items-center text-xs text-white/80">
-              暂无原始页图
-            </div>
-          )}
-          {trackedBeforeOverlay ? (
-            <TrackingArtifactImage
-              src={trackedBeforeOverlay.url}
-              alt={`第 ${activeTrackedPageLabel} 页识别框`}
-              className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-            />
-          ) : null}
+            {trackedBeforeOverlay ? (
+              <TrackingArtifactImage
+                src={trackedBeforeOverlay.url}
+                alt={`第 ${activeTrackedPageLabel} 页识别框`}
+                className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid gap-2">
-        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          转换完成图（悬停显示后处理框）
-        </div>
-        <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
-          {trackedAfterOverlay ? (
+      {trackedAfterOverlay && (
+        <div className="grid gap-2">
+          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            转换完成图（悬停显示后处理框）
+          </div>
+          <div className="panel-contrast tracking-stage group relative min-h-[22rem] overflow-hidden border sm:min-h-[28rem]">
             <TrackingArtifactImage
               src={trackedAfterOverlay.url}
               alt={`第 ${activeTrackedPageLabel} 页转换对比`}
               className="object-contain"
               priority
             />
-          ) : trackedOriginal ? (
-            <TrackingArtifactImage
-              src={trackedOriginal.url}
-              alt={`第 ${activeTrackedPageLabel} 页原图`}
-              className="object-contain"
-              priority
-            />
-          ) : (
-            <div className="grid h-52 place-items-center text-xs text-white/80">
-              暂无转换对比图
-            </div>
-          )}
-          {trackedLayoutAfter ? (
-            <TrackingArtifactImage
-              src={trackedLayoutAfter.url}
-              alt={`第 ${activeTrackedPageLabel} 页后处理框`}
-              className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-            />
-          ) : null}
+            {trackedLayoutAfter ? (
+              <TrackingArtifactImage
+                src={trackedLayoutAfter.url}
+                alt={`第 ${activeTrackedPageLabel} 页后处理框`}
+                className="pointer-events-none object-contain opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

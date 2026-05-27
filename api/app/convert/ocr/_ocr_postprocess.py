@@ -2,7 +2,10 @@
 
 import math
 import re
-from typing import Any, Callable, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple
+
+if TYPE_CHECKING:
+    from ..rendered_page import RenderedPage
 
 import numpy as np
 from PIL import Image
@@ -1649,9 +1652,14 @@ def ocr_image_to_elements(
     linebreak_refiner: AiOcrTextRefiner | None = None,
     strict_no_fallback: bool = True,
     linebreak_assist: bool | None = None,
+    rendered_page: "RenderedPage | None" = None,
 ) -> List[Dict]:
-    image = Image.open(image_path).convert("RGB")
-    width, height = image.size
+    if rendered_page is not None:
+        image = rendered_page.as_pil_image()
+        width, height = rendered_page.width, rendered_page.height
+    else:
+        image = Image.open(image_path).convert("RGB")
+        width, height = image.size
     if width <= 0 or height <= 0:
         return []
 

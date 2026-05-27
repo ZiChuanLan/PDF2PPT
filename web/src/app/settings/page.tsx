@@ -15,7 +15,6 @@ import { QuickPresets } from "@/components/settings/quick-presets"
 import { ParsingMethodSection } from "@/components/settings/parsing-method-section"
 import { OcrStrategySection } from "@/components/settings/ocr-strategy-section"
 import { OutputQualitySection } from "@/components/settings/output-quality-section"
-import { GeneralAdvancedSection } from "@/components/settings/general-advanced-section"
 import { AdminSettings } from "@/components/settings/admin-settings"
 
 function formatTimeAgo(timestamp: number): string {
@@ -211,10 +210,6 @@ export default function SettingsPage() {
           {activeTab === "advanced" && (
             <div role="tabpanel" id="tabpanel-advanced">
               <div className="space-y-6">
-                <GeneralAdvancedSection
-                  settings={settings}
-                  onSettingsChange={handleSettingsChange}
-                />
                 {!isPublicMode && <AdminSettings />}
               </div>
             </div>
