@@ -15,6 +15,7 @@ import { QuickPresets } from "@/components/settings/quick-presets"
 import { RecognitionMethodSection } from "@/components/settings/recognition-method-section"
 import { OutputQualitySection } from "@/components/settings/output-quality-section"
 import { AdminSettings } from "@/components/settings/admin-settings"
+import { ModelManagement } from "@/components/settings/model-management"
 
 function formatTimeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000)
@@ -193,6 +194,16 @@ export default function SettingsPage() {
           {activeTab === "advanced" && (
             <div role="tabpanel" id="tabpanel-advanced">
               <div className="space-y-6">
+                {/* Model Management — visible to all users */}
+                <div>
+                  <h3 className="text-base font-semibold">模型管理</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    下载或删除本地 OCR 和版面分析模型。下载后的模型可在任意识别方式中使用。
+                  </p>
+                  <div className="mt-3">
+                    <ModelManagement />
+                  </div>
+                </div>
                 {!isPublicMode && <AdminSettings />}
               </div>
             </div>
