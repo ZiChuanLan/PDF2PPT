@@ -9,7 +9,8 @@ from PIL import Image
 from app.config import get_settings
 
 from .base import _normalize_paddle_language, OcrProvider
-from .utils import _coerce_bbox_xyxy, _is_paddleocr_vl_model
+from .result_parsing import _is_image_like_layout_label, _normalize_layout_label
+from .utils import _coerce_bbox_xyxy
 
 # ---------------------------------------------------------------------------
 # Constants: PaddleOCR thresholds
@@ -34,6 +35,9 @@ class PaddleOcrClient(OcrProvider):
         # PaddleOCR 3.x (PaddleX pipeline) can be memory-hungry on large page
         # renders. Downscale long-edge to keep CPU inference stable.
         self._max_side_px: int = int(get_settings().ocr_paddle_vl_docparser_max_side_px)
+        # Layout detection state (populated after ocr_image())
+        self.last_image_regions_px: list[Any] = []
+        self.last_layout_blocks: list[dict[str, Any]] = []
 
         try:
             from paddleocr import PaddleOCR
@@ -83,7 +87,72 @@ class PaddleOcrClient(OcrProvider):
 
         raise RuntimeError("Failed to initialize PaddleOCR runtime") from last_error
 
+    def _run_layout_detection(
+        self, image_path: str
+    ) -> tuple[list[dict[str, Any]], list[Any]]:
+        """Run PP-DocLayoutV3 layout detection and return (layout_blocks, image_regions).
+
+        Layout blocks: list of {label, score, bbox, order, polygon_points}
+        Image regions: list of image region payloads for non-text blocks
+        """
+        from .layout_models import get_layout_model, DEFAULT_LAYOUT_MODEL_ID
+
+        try:
+            layout_model = get_layout_model(DEFAULT_LAYOUT_MODEL_ID)
+            raw_blocks = layout_model.predict(image_path)
+        except Exception as e:
+            logger.warning("Layout detection failed, skipping: %s", e)
+            return [], []
+
+        layout_blocks: list[dict[str, Any]] = []
+        image_regions: list[Any] = []
+
+        for block in raw_blocks:
+            label = _normalize_layout_label(block.get("label", ""))
+            score = float(block.get("score", 0.0))
+            bbox = block.get("bbox", [0, 0, 0, 0])
+            order = block.get("order")
+
+            if not label or len(bbox) < 4:
+                continue
+
+            bbox_xyxy = [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])]
+            layout_block: dict[str, Any] = {
+                "label": label,
+                "score": score,
+                "bbox": bbox_xyxy,
+                "order": order,
+            }
+
+            # Preserve polygon_points from layout model
+            poly_pts = block.get("polygon_points")
+            if isinstance(poly_pts, list) and len(poly_pts) >= 3:
+                layout_block["polygon_points"] = poly_pts
+
+            layout_blocks.append(layout_block)
+
+            if _is_image_like_layout_label(label):
+                image_regions.append(list(bbox_xyxy))
+
+        logger.info(
+            "Layout detection found %d blocks (%d image regions) from %s",
+            len(layout_blocks),
+            len(image_regions),
+            image_path,
+        )
+        return layout_blocks, image_regions
+
     def ocr_image(self, image_path: str) -> List[Dict]:
+        # Run layout detection first to identify text vs image regions
+        self.last_layout_blocks = []
+        self.last_image_regions_px = []
+        try:
+            layout_blocks, image_regions = self._run_layout_detection(image_path)
+            self.last_layout_blocks = layout_blocks
+            self.last_image_regions_px = image_regions
+        except Exception as e:
+            logger.debug("Layout detection skipped: %s", e)
+
         engine = self._ensure_engine()
 
         # PaddleOCR can run on file paths or numpy arrays. We downscale huge
@@ -191,6 +260,16 @@ class PaddleOcrClient(OcrProvider):
                 if not text or not bbox:
                     continue
 
+                # Preserve polygon points from rec_polys (4-point quadrilateral)
+                geometry_points: list[list[float]] | None = None
+                if isinstance(poly, (list, tuple)) and len(poly) >= 3:
+                    pts: list[list[float]] = []
+                    for pt in poly:
+                        if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                            pts.append([float(pt[0]), float(pt[1])])
+                    if len(pts) >= 3:
+                        geometry_points = pts
+
                 confidence_raw: Any = None
                 if isinstance(scores, list) and i < len(scores):
                     confidence_raw = scores[i]
@@ -204,18 +283,21 @@ class PaddleOcrClient(OcrProvider):
                     confidence = confidence / 100.0 if confidence <= 100.0 else 1.0
                 confidence = max(0.0, min(confidence, 1.0))
 
-                elements.append(
-                    {
-                        "text": text,
-                        "bbox": [
-                            float(bbox[0]),
-                            float(bbox[1]),
-                            float(bbox[2]),
-                            float(bbox[3]),
-                        ],
-                        "confidence": confidence,
-                    }
-                )
+                element: dict[str, Any] = {
+                    "text": text,
+                    "bbox": [
+                        float(bbox[0]),
+                        float(bbox[1]),
+                        float(bbox[2]),
+                        float(bbox[3]),
+                    ],
+                    "confidence": confidence,
+                }
+                if geometry_points is not None:
+                    element["ocr_layout_geometry_kind"] = "polygon"
+                    element["ocr_layout_geometry_points"] = geometry_points
+
+                elements.append(element)
                 used = True
 
             return used
@@ -293,6 +375,14 @@ class PaddleOcrClient(OcrProvider):
                             x1 * scale_x,
                             y1 * scale_y,
                         ]
+                        # Scale polygon points too
+                        pts = el.get("ocr_layout_geometry_points")
+                        if isinstance(pts, list):
+                            el["ocr_layout_geometry_points"] = [
+                                [float(p[0]) * scale_x, float(p[1]) * scale_y]
+                                for p in pts
+                                if isinstance(p, (list, tuple)) and len(p) >= 2
+                            ]
                 logger.info(
                     "PaddleOCR extracted %s text elements from %s (paddlex pipeline)",
                     len(elements),
@@ -374,6 +464,13 @@ class PaddleOcrClient(OcrProvider):
                     continue
                 x0, y0, x1, y1 = [float(v) for v in bbox]
                 el["bbox"] = [x0 * scale_x, y0 * scale_y, x1 * scale_x, y1 * scale_y]
+                pts = el.get("ocr_layout_geometry_points")
+                if isinstance(pts, list):
+                    el["ocr_layout_geometry_points"] = [
+                        [float(p[0]) * scale_x, float(p[1]) * scale_y]
+                        for p in pts
+                        if isinstance(p, (list, tuple)) and len(p) >= 2
+                    ]
 
         logger.info(
             "PaddleOCR extracted %s text elements from %s", len(elements), image_path

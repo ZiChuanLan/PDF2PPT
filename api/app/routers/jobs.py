@@ -719,7 +719,7 @@ async def create_job(
     normalized_options = validate_and_normalize_job_options(
         parse_provider=parse_provider,
         mineru_api_token=mineru_api_token,
-        provider=provider,
+        provider=parse_provider,
         api_key=api_key,
         baidu_doc_parse_type=baidu_doc_parse_type,
         ocr_provider=ocr_provider,
@@ -731,6 +731,7 @@ async def create_job(
         ocr_baidu_app_id=ocr_baidu_app_id,
         ocr_baidu_api_key=ocr_baidu_api_key,
         ocr_baidu_secret_key=ocr_baidu_secret_key,
+        ocr_geometry_mode="auto",
         text_erase_mode=text_erase_mode,
         scanned_page_mode=scanned_page_mode,
         ppt_generation_mode=ppt_generation_mode,

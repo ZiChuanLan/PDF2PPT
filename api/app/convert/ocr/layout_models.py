@@ -150,15 +150,32 @@ class PaddleXLayoutProvider:
             else:
                 continue
 
-            # PaddleX returns {"res": {"boxes": [...]}} or similar
-            boxes = data.get("res", {}).get("boxes", []) if isinstance(data, dict) else []
+            # PaddleX returns boxes at top level or inside {"res": {"boxes": [...]}}
+            boxes = data.get("boxes", [])
+            if not boxes and isinstance(data.get("res"), dict):
+                boxes = data["res"].get("boxes", [])
             for box in boxes:
-                items.append({
+                item: dict[str, Any] = {
                     "label": box.get("label", ""),
                     "score": box.get("score", 0.0),
                     "bbox": box.get("coordinate", [0, 0, 0, 0]),
-                    "order": box.get("reading_order"),
-                })
+                    "order": box.get("reading_order") or box.get("order"),
+                }
+                # Preserve polygon_points if available (numpy array or list)
+                poly = box.get("polygon_points")
+                if poly is not None:
+                    try:
+                        if hasattr(poly, "tolist"):
+                            poly = poly.tolist()
+                        if isinstance(poly, (list, tuple)) and len(poly) >= 3:
+                            item["polygon_points"] = [
+                                [float(p[0]), float(p[1])]
+                                for p in poly
+                                if isinstance(p, (list, tuple)) and len(p) >= 2
+                            ]
+                    except Exception:
+                        pass
+                items.append(item)
         return items
 
 
