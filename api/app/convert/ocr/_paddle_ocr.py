@@ -10,6 +10,7 @@ from PIL import Image
 from app.config import get_settings
 
 from .base import _normalize_paddle_language, OcrProvider
+from .layout_models import DEFAULT_LAYOUT_MODEL_ID
 from .result_parsing import _is_image_like_layout_label, _normalize_layout_label
 from .utils import _coerce_bbox_xyxy
 
@@ -30,12 +31,14 @@ logger = logging.getLogger(__name__)
 class PaddleOcrClient(OcrProvider):
     """PaddleOCR local client implementation."""
 
-    def __init__(self, language: str = "ch"):
+    def __init__(self, language: str = "ch", *, layout_model: str | None = None):
         self.language = _normalize_paddle_language(language)
         self._engine: Any | None = None
         # PaddleOCR 3.x (PaddleX pipeline) can be memory-hungry on large page
         # renders. Downscale long-edge to keep CPU inference stable.
         self._max_side_px: int = int(get_settings().ocr_paddle_vl_docparser_max_side_px)
+        # Layout detection model ID (configurable, defaults to PP-DocLayoutV3)
+        self._layout_model_id: str = layout_model or DEFAULT_LAYOUT_MODEL_ID
         # Layout detection state (populated after ocr_image())
         self.last_image_regions_px: list[Any] = []
         self.last_layout_blocks: list[dict[str, Any]] = []
@@ -96,10 +99,10 @@ class PaddleOcrClient(OcrProvider):
         Layout blocks: list of {label, score, bbox, order, polygon_points}
         Image regions: list of image region payloads for non-text blocks
         """
-        from .layout_models import get_layout_model, DEFAULT_LAYOUT_MODEL_ID
+        from .layout_models import get_layout_model
 
         try:
-            layout_model = get_layout_model(DEFAULT_LAYOUT_MODEL_ID)
+            layout_model = get_layout_model(self._layout_model_id)
             raw_blocks = layout_model.predict(image_path)
         except Exception as e:
             logger.warning("Layout detection failed, skipping: %s", e)
@@ -509,13 +512,14 @@ class LazyPaddleOcrClient(OcrProvider):
     pay that startup cost unless fallback is actually needed.
     """
 
-    def __init__(self, *, language: str = "ch"):
+    def __init__(self, *, language: str = "ch", layout_model: str | None = None):
         self.language = _normalize_paddle_language(language)
+        self._layout_model = layout_model
         self._provider: PaddleOcrClient | None = None
 
     def _ensure_provider(self) -> PaddleOcrClient:
         if self._provider is None:
-            self._provider = PaddleOcrClient(language=self.language)
+            self._provider = PaddleOcrClient(language=self.language, layout_model=self._layout_model)
         return self._provider
 
     def ocr_image(self, image_path: str) -> List[Dict]:

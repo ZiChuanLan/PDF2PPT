@@ -271,7 +271,7 @@ class OcrManager:
             paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
             try:
                 self.paddle_local_fallback_provider = LazyPaddleOcrClient(
-                    language=paddle_lang
+                    language=paddle_lang, layout_model=ai_layout_model
                 )
                 self.providers.append(self.paddle_local_fallback_provider)
                 logger.info(
@@ -342,7 +342,7 @@ class OcrManager:
             if provider_id == "machine":
                 paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
                 try:
-                    self.paddle_provider = PaddleOcrClient(language=paddle_lang)
+                    self.paddle_provider = PaddleOcrClient(language=paddle_lang, layout_model=ai_layout_model)
                     self.providers.append(self.paddle_provider)
                     logger.info("Using local PaddleOCR as primary in machine mode (lang=%s)", paddle_lang)
                 except (ImportError, RuntimeError) as e:
@@ -365,13 +365,13 @@ class OcrManager:
                 logger.warning("Tesseract not available in machine mode: %s", e)
         if provider_id == "paddle_local":
             paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
-            self.paddle_provider = PaddleOcrClient(language=paddle_lang)
+            self.paddle_provider = PaddleOcrClient(language=paddle_lang, layout_model=ai_layout_model)
             self.providers.append(self.paddle_provider)
             logger.info("Using local PaddleOCR (explicit, lang=%s)", paddle_lang)
             _maybe_add_tesseract_fallback(reason="paddle_local")
         if provider_id == "paddleocr":
             paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
-            self.paddle_provider = PaddleOcrClient(language=paddle_lang)
+            self.paddle_provider = PaddleOcrClient(language=paddle_lang, layout_model=ai_layout_model)
             self.providers.append(self.paddle_provider)
             logger.info("Using local PaddleOCR (explicit, lang=%s)", paddle_lang)
             _maybe_add_tesseract_fallback(reason="paddleocr")

@@ -778,6 +778,50 @@ function LocalOcrSettings({
         </div>
       )}
 
+      {/* Layout model selection for PaddleOCR */}
+      {settings.ocrProvider === "paddleocr" && (
+        <div className="rounded-lg border bg-background p-3 space-y-2">
+          <FieldLabel htmlFor="localLayoutModel">
+            版面分析模型
+            <HoverHint text="用于检测图片、表格等版面区域的模型" />
+          </FieldLabel>
+          <Select
+            id="localLayoutModel"
+            value={settings.ocrAiLayoutModel}
+            onChange={(e) =>
+              onSettingsChange({
+                ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
+              })
+            }
+            options={LAYOUT_MODEL_OPTIONS.map((opt) => {
+              const isDownloaded = modelStatus?.local[opt.id]?.ready ?? false
+              return {
+                id: opt.id,
+                label: `${opt.label} (${opt.sizeMb}MB) — ${isDownloaded ? "已下载" : "未下载"}`,
+              }
+            })}
+          />
+          <div className="mt-1">
+            <DownloadProgressButton
+              modelId={settings.ocrAiLayoutModel}
+              label={
+                LAYOUT_MODEL_OPTIONS.find(
+                  (m) => m.id === settings.ocrAiLayoutModel
+                )?.label || settings.ocrAiLayoutModel
+              }
+              downloadState={getDownloadState(settings.ocrAiLayoutModel)}
+              isReady={modelStatus?.local[settings.ocrAiLayoutModel]?.ready ?? false}
+              onDownload={() => startDownload(settings.ocrAiLayoutModel)}
+              onCancel={() => cancelDownload(settings.ocrAiLayoutModel)}
+              onRefreshStatus={() => void refetchModelStatus()}
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            版面分析可识别图片、表格等区域，提升裁剪精度。关闭后仅做纯文字识别。
+          </p>
+        </div>
+      )}
+
       <div className="grid gap-2">
         <FieldLabel htmlFor="ocrRenderDpi">
           OCR 渲染 DPI

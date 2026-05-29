@@ -293,9 +293,7 @@ export function resolveRunConfig(settings: Settings): RunConfig {
   const ocrAiChainMode: OcrAiChainMode = explicitAiOcrSelected
     ? settings.ocrAiChainMode
     : "direct"
-  const ocrAiLayoutModel: OcrAiLayoutModel = explicitAiOcrSelected
-    ? settings.ocrAiLayoutModel
-    : "pp_doclayout_v3"
+  const ocrAiLayoutModel: OcrAiLayoutModel = settings.ocrAiLayoutModel || "pp_doclayout_v3"
   const explicitOcrAiPageConcurrency = Math.min(
     8,
     Math.max(1, Number(settings.ocrAiPageConcurrency) || 1)
@@ -665,6 +663,8 @@ export function buildJobConfig(
     provider: run.effectiveOcrProvider,
     render_dpi: toFinitePositiveIntOrNull(settings.ocrRenderDpi) ?? undefined,
     strict_mode: Boolean(settings.ocrStrictMode),
+    // Always send layout_model so local PaddleOCR can use the user's choice
+    ai: { layout_model: run.ocrAiLayoutModel },
   }
 
   // AI OCR config
