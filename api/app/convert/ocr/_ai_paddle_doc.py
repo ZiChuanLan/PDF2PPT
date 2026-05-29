@@ -26,12 +26,20 @@ from .base import (
     _PADDLE_OCR_VL_MODEL_V15,
     _clean_str,
     _env_flag,
-    _env_float,
     _is_probably_model_unsupported_error,
     _normalize_paddle_doc_backend,
     _normalize_paddle_doc_server_url,
     _resolve_paddle_doc_model_and_pipeline,
     _run_in_daemon_thread_with_timeout,
+)
+from ._ocr_constants import (
+    _PADDLE_VL_DOCPARSER_INIT_TIMEOUT_S,
+    _PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S,
+    _PADDLE_VL_DOCPARSER_MAX_CONCURRENCY,
+    _PADDLE_VL_DOCPARSER_PROGRESS_LOG_INTERVAL_S,
+    _PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT,
+    _PADDLE_VL_DOCPARSER_SINGLEFLIGHT,
+    _PADDLE_VL_DOCPARSER_SINGLEFLIGHT_WAIT_S,
 )
 from .result_parsing import (
     _derive_paddle_doc_predict_max_pixels,
@@ -435,10 +443,7 @@ class _PaddleDocMixin:
         )
 
     def _resolve_paddle_doc_progress_log_interval_s(self) -> float:
-        return max(
-            0.0,
-            _env_float("OCR_PADDLE_VL_DOCPARSER_PROGRESS_LOG_INTERVAL_S", 10.0),
-        )
+        return max(0.0, _PADDLE_VL_DOCPARSER_PROGRESS_LOG_INTERVAL_S)
 
     def _maybe_log_paddle_doc_progress_trace(self, *, force: bool = False) -> None:
         interval_s = self._resolve_paddle_doc_progress_log_interval_s()
@@ -609,7 +614,7 @@ class _PaddleDocMixin:
         if pipeline_version:
             kwargs["pipeline_version"] = pipeline_version
 
-        init_timeout_s = _env_float("OCR_PADDLE_VL_DOCPARSER_INIT_TIMEOUT_S", 30.0)
+        init_timeout_s = _PADDLE_VL_DOCPARSER_INIT_TIMEOUT_S
         try:
             self._paddle_doc_parser = _run_in_daemon_thread_with_timeout(
                 lambda: PaddleOCRVL(**kwargs),
@@ -677,42 +682,20 @@ class _PaddleDocMixin:
     def _resolve_paddle_doc_predict_timeout_s(self) -> float:
         default_timeout = max(
             _PADDLE_MIN_PREDICT_TIMEOUT_S,
-            _env_float("OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S", 120.0),
+            _PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S,
         )
         lowered_model = str(self.model or "").strip().lower()
         if "paddleocr-vl-1.5" in lowered_model:
             tuning = get_vendor_tuning(self.provider_id)
-            v15_default = max(default_timeout, tuning.predict_timeout_override or _get_paddle_predict_timeout())
             return max(
                 _PADDLE_MIN_PREDICT_TIMEOUT_S,
-                _env_float(
-                    "OCR_PADDLE_VL_DOCPARSER_PREDICT_TIMEOUT_S_V15",
-                    v15_default,
-                ),
+                max(default_timeout, tuning.predict_timeout_override or _get_paddle_predict_timeout()),
             )
         return default_timeout
 
     def _resolve_paddle_doc_retry_timeout_s(self, *, predict_timeout_s: float) -> float:
         default_retry_timeout_s = min(_PADDLE_RETRY_TIMEOUT_CAP_S, predict_timeout_s)
-        lowered_model = str(self.model or "").strip().lower()
-        if "paddleocr-vl-1.5" in lowered_model:
-            tuning = get_vendor_tuning(self.provider_id)
-            retry_default = tuning.retry_timeout_override
-            if retry_default is not None:
-                return max(
-                    _PADDLE_MIN_PREDICT_TIMEOUT_S,
-                    _env_float(
-                        "OCR_PADDLE_VL_DOCPARSER_RETRY_TIMEOUT_S",
-                        min(retry_default, predict_timeout_s),
-                    ),
-                )
-        return max(
-            _PADDLE_MIN_PREDICT_TIMEOUT_S,
-            _env_float(
-                "OCR_PADDLE_VL_DOCPARSER_RETRY_TIMEOUT_S",
-                default_retry_timeout_s,
-            ),
-        )
+        return max(_PADDLE_MIN_PREDICT_TIMEOUT_S, default_retry_timeout_s)
 
     def _is_vendor_paddle_doc_v15(self) -> bool:
         """Check if current model is PaddleOCR-VL-1.5 (vendor-agnostic)."""
@@ -720,28 +703,16 @@ class _PaddleDocMixin:
         return "paddleocr-vl-1.5" in lowered_model
 
     def _should_retry_paddle_doc_timeout(self) -> bool:
-        raw_generic = os.getenv("OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT")
         if self._is_vendor_paddle_doc_v15():
-            if raw_generic is not None:
-                return _env_flag(
-                    "OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT",
-                    default=False,
-                )
             tuning = get_vendor_tuning(self.provider_id)
             return tuning.retry_on_timeout
-        return _env_flag("OCR_PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT", default=True)
+        return _PADDLE_VL_DOCPARSER_RETRY_ON_TIMEOUT
 
     def _should_use_paddle_doc_singleflight(self) -> bool:
-        raw_generic = os.getenv("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT")
         if self._is_vendor_paddle_doc_v15():
-            if raw_generic is not None:
-                return _env_flag(
-                    "OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT",
-                    default=True,
-                )
             tuning = get_vendor_tuning(self.provider_id)
             return tuning.singleflight
-        return _env_flag("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT", default=False)
+        return _PADDLE_VL_DOCPARSER_SINGLEFLIGHT
 
     def _resolve_paddle_doc_singleflight_wait_s(self) -> float:
         # Vendor-specific wait time: some providers need longer singleflight
@@ -754,7 +725,7 @@ class _PaddleDocMixin:
         )
         return max(
             0.0,
-            _env_float("OCR_PADDLE_VL_DOCPARSER_SINGLEFLIGHT_WAIT_S", default_wait_s),
+            _PADDLE_VL_DOCPARSER_SINGLEFLIGHT_WAIT_S,
         )
 
     def _resolve_paddle_doc_singleflight_lock_path(self) -> Path:

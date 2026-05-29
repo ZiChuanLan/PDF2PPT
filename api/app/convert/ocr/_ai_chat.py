@@ -11,7 +11,8 @@ from typing import Any, Dict, List
 
 from PIL import Image
 
-from .base import _clean_str, _env_flag, _env_float
+from .base import _clean_str
+from ._ocr_constants import _AI_REQUEST_TIMEOUT_S, _AI_IMAGE_REGION_TIMEOUT_S
 from .deepseek_parser import _extract_deepseek_tagged_items, _is_deepseek_ocr_model, _looks_like_ocr_prompt_echo_text
 from .json_extraction import _extract_json_list, _extract_message_text, _extract_partial_json_object_list
 from .prompts import build_ai_ocr_direct_prompt, build_ai_ocr_image_region_prompt, normalize_ai_ocr_prompt_override, normalize_ai_ocr_prompt_preset, resolve_ai_ocr_prompt_preset
@@ -52,10 +53,7 @@ class _AiChatMixin:
 
         effective_model = str(self.model)
         is_deepseek_model = _is_deepseek_ocr_model(effective_model)
-        request_timeout_s = max(
-            8.0,
-            _env_float("OCR_AI_IMAGE_REGION_TIMEOUT_S", 30.0),
-        )
+        request_timeout_s = max(8.0, _AI_IMAGE_REGION_TIMEOUT_S)
         max_tokens_image_regions = self.vendor_adapter.clamp_max_tokens(
             1024, kind="ocr"
         )
@@ -504,36 +502,24 @@ class _AiChatMixin:
         return (out, debug)
 
     def _resolve_model_request_timeout_s(self, *, model_name: str | None) -> float:
-        default_timeout = max(8.0, _env_float("OCR_AI_REQUEST_TIMEOUT_S", 25.0))
+        default_timeout = max(8.0, _AI_REQUEST_TIMEOUT_S)
         lowered = str(model_name or "").strip().lower()
         provider_id = str(self.provider_id or "").strip().lower()
         if not lowered:
             return default_timeout
 
         if "qwen" in lowered and ("vl" in lowered or "omni" in lowered):
-            return max(
-                8.0,
-                _env_float("OCR_AI_REQUEST_TIMEOUT_S_QWEN", default_timeout),
-            )
+            return max(8.0, default_timeout)
 
         if "deepseek-ocr" in lowered or "deepseekocr" in lowered:
             tuning = get_vendor_tuning(self.provider_id)
             if tuning.predict_timeout_override is not None:
                 vendor_default = max(default_timeout, tuning.predict_timeout_override)
-                return max(
-                    8.0,
-                    _env_float("OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR", vendor_default),
-                )
-            return max(
-                8.0,
-                _env_float("OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR", default_timeout),
-            )
+                return max(8.0, vendor_default)
+            return max(8.0, default_timeout)
 
         if "paddleocr-vl" in lowered:
-            return max(
-                8.0,
-                _env_float("OCR_AI_REQUEST_TIMEOUT_S_PADDLE_VL", default_timeout),
-            )
+            return max(8.0, default_timeout)
 
         return default_timeout
 
