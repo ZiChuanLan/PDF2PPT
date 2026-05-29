@@ -30,8 +30,6 @@ services:
     env_file:
       - .env
     environment:
-      - OCR_PADDLE_LAYOUT_PREWARM=${OCR_PADDLE_LAYOUT_PREWARM:-1}
-      - OCR_PADDLE_LAYOUT_PREWARM_TARGET=${OCR_PADDLE_LAYOUT_PREWARM_TARGET:-worker}
       - APP_SERVICE_ROLE=api
     depends_on:
       - redis
@@ -56,8 +54,6 @@ services:
     env_file:
       - .env
     environment:
-      - OCR_PADDLE_LAYOUT_PREWARM=${OCR_PADDLE_LAYOUT_PREWARM:-1}
-      - OCR_PADDLE_LAYOUT_PREWARM_TARGET=${OCR_PADDLE_LAYOUT_PREWARM_TARGET:-worker}
       - APP_SERVICE_ROLE=worker
     depends_on:
       - redis

@@ -8,8 +8,6 @@ fi
 
 export APP_SERVICE_ROLE="${APP_SERVICE_ROLE:-worker}"
 
-python -m app.services.paddle_prewarm
-
 workers="${WORKER_CONCURRENCY:-1}"
 i=1
 while [ "${i}" -le "${workers}" ]; do
