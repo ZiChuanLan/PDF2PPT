@@ -16,7 +16,8 @@ from typing import Any, Dict, List
 import numpy as np
 from PIL import Image
 
-from .base import _clean_str, _env_flag, _env_float, _run_in_daemon_thread_with_timeout
+from .base import _clean_str, _run_in_daemon_thread_with_timeout
+from ._ocr_constants import _LAYOUT_MODEL_INIT_TIMEOUT_S, _LAYOUT_MODEL_PREDICT_TIMEOUT_S, _LAYOUT_BLOCK_MAX_CONCURRENCY, _LAYOUT_BLOCK_PROGRESS_LOG_INTERVAL_S, _LAYOUT_BLOCK_REQUEST_TIMEOUT_S, _LAYOUT_BLOCK_RETRY_ON_TIMEOUT, _LAYOUT_BLOCK_LOW_COVERAGE_THRESHOLD
 from .deepseek_parser import _extract_deepseek_tagged_items, _is_deepseek_ocr_model, _looks_like_ocr_prompt_echo_text
 from .json_extraction import _extract_json_list, _extract_message_text, _extract_partial_json_object_list
 from .prompts import build_ai_ocr_layout_block_prompt, normalize_ai_ocr_prompt_override, resolve_ai_ocr_prompt_preset
@@ -154,7 +155,7 @@ class _LayoutBlockMixin:
 
             init_timeout_s = max(
                 _LAYOUT_MODEL_INIT_TIMEOUT_MIN_S,
-                _env_float("OCR_AI_LAYOUT_MODEL_INIT_TIMEOUT_S", 30.0),
+                _LAYOUT_MODEL_INIT_TIMEOUT_S,
             )
             model = _run_in_daemon_thread_with_timeout(
                 lambda: paddlex.create_model(paddlex_model_name),
@@ -351,7 +352,7 @@ class _LayoutBlockMixin:
         layout_model = self._get_local_layout_model()
         predict_timeout_s = max(
             _LAYOUT_BLOCK_PREDICT_TIMEOUT_MIN_S,
-            _env_float("OCR_AI_LAYOUT_MODEL_PREDICT_TIMEOUT_S", 45.0),
+            _LAYOUT_MODEL_PREDICT_TIMEOUT_S,
         )
 
         def _predict_and_extract_once() -> tuple[list[dict[str, Any]], list[Any]]:
@@ -754,13 +755,7 @@ class _LayoutBlockMixin:
     def _resolve_local_layout_block_max_workers(self, *, effective_model: str) -> int:
         if self._layout_block_max_concurrency_override is not None:
             return int(self._layout_block_max_concurrency_override)
-        raw_override = _clean_str(os.getenv("OCR_AI_LAYOUT_BLOCK_MAX_CONCURRENCY"))
-        if raw_override is not None:
-            try:
-                parsed = int(raw_override)
-            except Exception:
-                parsed = 0
-            return max(1, min(8, parsed or 4))
+        return _LAYOUT_BLOCK_MAX_CONCURRENCY
 
         provider_id = str(self.provider_id or "").strip().lower()
         lowered_model = str(effective_model or "").strip().lower()
@@ -771,34 +766,19 @@ class _LayoutBlockMixin:
         return 4
 
     def _resolve_local_layout_block_progress_log_interval_s(self) -> float:
-        return max(
-            0.0,
-            _env_float("OCR_AI_LAYOUT_BLOCK_PROGRESS_LOG_INTERVAL_S", 10.0),
-        )
+        return max(0.0, _LAYOUT_BLOCK_PROGRESS_LOG_INTERVAL_S)
 
     def _resolve_layout_block_request_timeout_s(self, *, effective_model: str) -> float:
         base_timeout = self._resolve_model_request_timeout_s(model_name=effective_model)
         default_timeout = max(
             float(base_timeout),
-            _env_float("OCR_AI_LAYOUT_BLOCK_REQUEST_TIMEOUT_S", 40.0),
+            _LAYOUT_BLOCK_REQUEST_TIMEOUT_S,
         )
         lowered = str(effective_model or "").strip().lower()
         if "qwen" in lowered and ("vl" in lowered or "omni" in lowered):
-            return max(
-                float(base_timeout),
-                _env_float(
-                    "OCR_AI_LAYOUT_BLOCK_REQUEST_TIMEOUT_S_QWEN",
-                    default_timeout,
-                ),
-            )
+            return max(float(base_timeout), default_timeout)
         if "deepseek-ocr" in lowered or "deepseekocr" in lowered:
-            return max(
-                float(base_timeout),
-                _env_float(
-                    "OCR_AI_LAYOUT_BLOCK_REQUEST_TIMEOUT_S_DEEPSEEK_OCR",
-                    default_timeout,
-                ),
-            )
+            return max(float(base_timeout), default_timeout)
         return default_timeout
 
     def _resolve_layout_block_retry_timeout_s(
@@ -812,33 +792,13 @@ class _LayoutBlockMixin:
             float(request_timeout_s) * _REQUEST_TIMEOUT_MULTIPLIER,
             _REQUEST_TIMEOUT_CAP_S,
         )
-        lowered = str(effective_model or "").strip().lower()
-        if "qwen" in lowered and ("vl" in lowered or "omni" in lowered):
-            return max(
-                float(request_timeout_s) + _RETRY_TIMEOUT_BUFFER_S,
-                _env_float(
-                    "OCR_AI_LAYOUT_BLOCK_RETRY_TIMEOUT_S_QWEN",
-                    default_retry_timeout,
-                ),
-            )
         return max(
             float(request_timeout_s) + _RETRY_TIMEOUT_BUFFER_S,
-            _env_float(
-                "OCR_AI_LAYOUT_BLOCK_RETRY_TIMEOUT_S",
-                default_retry_timeout,
-            ),
+            default_retry_timeout,
         )
 
     def _should_retry_layout_block_timeout(self, *, effective_model: str) -> bool:
-        lowered = str(effective_model or "").strip().lower()
-        if "qwen" in lowered and ("vl" in lowered or "omni" in lowered):
-            raw_specific = os.getenv("OCR_AI_LAYOUT_BLOCK_RETRY_ON_TIMEOUT_QWEN")
-            if raw_specific is not None:
-                return _env_flag(
-                    "OCR_AI_LAYOUT_BLOCK_RETRY_ON_TIMEOUT_QWEN",
-                    default=True,
-                )
-        return _env_flag("OCR_AI_LAYOUT_BLOCK_RETRY_ON_TIMEOUT", default=True)
+        return _LAYOUT_BLOCK_RETRY_ON_TIMEOUT
 
     def _is_timeout_like_error(self, exc: Exception) -> bool:
         if isinstance(exc, TimeoutError):
@@ -1057,9 +1017,7 @@ class _LayoutBlockMixin:
             return None
         return "wide_flat_layout_blocks"
 
-    _LOW_COVERAGE_THRESHOLD = _env_float(
-        "OCR_AI_LAYOUT_COVERAGE_BYPASS_THRESHOLD", 0.30
-    )
+    _LOW_COVERAGE_THRESHOLD = _LAYOUT_BLOCK_LOW_COVERAGE_THRESHOLD
 
     # ------------------------------------------------------------------
     # Post-OCR quality validation
