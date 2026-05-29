@@ -1,6 +1,7 @@
 """Local PaddleOCR client providers."""
 
 import logging
+import os
 from typing import Any, Dict, List
 
 import numpy as np
@@ -140,6 +141,29 @@ class PaddleOcrClient(OcrProvider):
             len(image_regions),
             image_path,
         )
+
+        # Optional: refine image regions with SAM polygon masks
+        if image_regions and os.environ.get("ENABLE_SAM", "").strip().lower() in ("1", "true", "yes"):
+            try:
+                from ._sam_provider import refine_image_regions
+
+                refined = refine_image_regions(image_path, image_regions)
+                if len(refined) == len(image_regions):
+                    for r in refined:
+                        if isinstance(r, dict) and r.get("geometry_kind") == "polygon":
+                            # Update layout_block with SAM polygon
+                            for block in layout_blocks:
+                                if _is_image_like_layout_label(block.get("label")):
+                                    block_bbox = block.get("bbox", [])
+                                    region_bbox = r.get("bbox", [])
+                                    if block_bbox and region_bbox and block_bbox == region_bbox:
+                                        block["polygon_points"] = r["geometry_points"]
+                                        block["geometry_source"] = "sam"
+                    image_regions = refined
+                    logger.info("SAM refined %d image regions", len(refined))
+            except Exception as e:
+                logger.warning("SAM refinement skipped: %s", e)
+
         return layout_blocks, image_regions
 
     def ocr_image(self, image_path: str) -> List[Dict]:
