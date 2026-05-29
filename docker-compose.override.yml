@@ -1,14 +1,14 @@
 services:
   api:
-    image: pdf2ppt-api:latest
+    image: pdf2ppt-api:${DOCKER_TAG:-latest}
     build: null
     volumes:
       - api-data:/app/data
   worker:
-    image: pdf2ppt-worker:latest
+    image: pdf2ppt-worker:${DOCKER_TAG:-latest}
     build: null
     volumes:
       - api-data:/app/data
   web:
-    image: pdf2ppt-web:latest
+    image: pdf2ppt-web:${DOCKER_TAG:-latest}
     build: null

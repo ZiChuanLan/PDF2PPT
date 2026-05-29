@@ -1,14 +1,42 @@
+# Version control
 .git
 .gitignore
+
+# IDE
 .vscode
 .idea
 .DS_Store
 
+# Node
 node_modules/
 web/node_modules/
 web/.next/
-docs/.vitepress/cache/
-docs/.vitepress/dist/
+
+# Docs
+docs/
+
+# Data & runtime
 api/data/
 test/
+.omc/
+.trellis/
 *.log
+
+# Docker files (don't need in context)
+docker-compose*.yml
+Dockerfile*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# SAM model (downloaded at runtime)
+*.pt
+*.pdparams
+
+# Secrets
+.env
+.env.*
+!.env.example
