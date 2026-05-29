@@ -212,12 +212,37 @@ def run_paddle_doc_prewarm(*, service_role: str | None = None) -> bool:
         return False
 
 
+def run_sam_prewarm() -> bool:
+    """Download SAM checkpoint if ENABLE_SAM is set."""
+
+    if not _env_flag("ENABLE_SAM", default=False):
+        logger.info("Skipping SAM prewarm (ENABLE_SAM not set)")
+        return False
+
+    started_at = time.perf_counter()
+    try:
+        from app.convert.ocr._sam_provider import _ensure_model
+
+        _ensure_model()
+        elapsed_s = time.perf_counter() - started_at
+        logger.info("SAM prewarm finished in %.2fs", elapsed_s)
+        return True
+    except Exception:
+        elapsed_s = time.perf_counter() - started_at
+        logger.exception(
+            "SAM prewarm failed after %.2fs; continuing without SAM",
+            elapsed_s,
+        )
+        return False
+
+
 def main() -> int:
     """CLI entrypoint used by container startup scripts."""
 
     setup_logging(os.getenv("LOG_LEVEL", "INFO"))
     run_local_paddle_layout_prewarm()
     run_paddle_doc_prewarm()
+    run_sam_prewarm()
     return 0
 
 
