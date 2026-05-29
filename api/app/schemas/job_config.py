@@ -204,6 +204,10 @@ class OcrConfig(BaseModel):
         True,
         description="Strict OCR quality mode: disable implicit fallbacks/downgrades",
     )
+    enable_sam: bool | None = Field(
+        False,
+        description="Enable SAM polygon refinement for image regions",
+    )
 
 
 class MineruConfig(BaseModel):
@@ -433,6 +437,7 @@ class JobConfig(BaseModel):
             "ocr_geometry_mode": "auto",  # deprecated
             "ocr_ai_linebreak_assist": ocr_ai.linebreak_assist,
             "ocr_strict_mode": self.ocr.strict_mode,
+            "enable_sam": self.ocr.enable_sam or False,
             # PPT config
             "text_erase_mode": self.ppt.text_erase_mode,
             "scanned_page_mode": self.ppt.scanned_page_mode,
