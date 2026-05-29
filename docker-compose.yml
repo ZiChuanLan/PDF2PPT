@@ -1,6 +1,5 @@
 services:
   web:
-    image: pdf2ppt-web:${DOCKER_TAG:-latest}
     build:
       context: ./web
       dockerfile: Dockerfile.prod
@@ -34,7 +33,6 @@ services:
       - app-network
 
   api:
-    image: pdf2ppt-api:${DOCKER_TAG:-latest}
     build:
       context: ./api
       dockerfile: Dockerfile
@@ -66,7 +64,6 @@ services:
       - app-network
 
   worker:
-    image: pdf2ppt-worker:${DOCKER_TAG:-latest}
     build:
       context: ./api
       dockerfile: Dockerfile

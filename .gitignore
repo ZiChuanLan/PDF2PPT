@@ -36,6 +36,9 @@ Thumbs.db
 # Trellis & OpenCode
 .opencode/
 .trellis/
+.omo/
+.github/
+.claude/
 
 # Browser testing
 .playwright-mcp/
