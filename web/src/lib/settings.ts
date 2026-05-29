@@ -82,6 +82,7 @@ export type Settings = {
   ocrAiRequestsPerMinute: string
   ocrAiTokensPerMinute: string
   ocrAiMaxRetries: string
+  enableSam: boolean
 }
 
 export const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
@@ -181,6 +182,7 @@ export const defaultSettings: Settings = {
   ocrAiRequestsPerMinute: "",
   ocrAiTokensPerMinute: "",
   ocrAiMaxRetries: "0",
+  enableSam: false,
 }
 
 export function safeParseSettings(value: string | null): Partial<Settings> | null {
