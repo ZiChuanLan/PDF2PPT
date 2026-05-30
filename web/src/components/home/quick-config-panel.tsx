@@ -7,6 +7,7 @@ import {
   ArrowRightIcon,
   CheckIcon,
   DownloadIcon,
+  InfoIcon,
 } from "lucide-react"
 
 import { HoverHint } from "@/components/ui/hover-hint"
@@ -127,8 +128,8 @@ export function QuickConfigPanel({
         </div>
         <div className="grid gap-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>解析引擎</span>
-            <HoverHint text="传统OCR用本地识别；AIOCR用远程模型；百度/MinerU自带解析。" />
+            <span>文档解析</span>
+            <HoverHint text="选择文档解析方式。传统OCR用本地识别；AIOCR用远程模型；百度/MinerU自带完整解析。" />
           </div>
           <div className="flex items-center gap-2">
             <Select
@@ -158,6 +159,18 @@ export function QuickConfigPanel({
             />
           </div>
         </div>
+        {settingsSnapshot.parseEngineMode === "mineru_cloud" && (
+          <div className="flex items-center gap-1.5 text-xs text-blue-700">
+            <InfoIcon className="size-3 shrink-0" />
+            <span>MinerU 自带完整解析能力</span>
+          </div>
+        )}
+        {settingsSnapshot.parseEngineMode === "baidu_doc" && (
+          <div className="flex items-center gap-1.5 text-xs text-blue-700">
+            <InfoIcon className="size-3 shrink-0" />
+            <span>百度解析自带完整解析能力</span>
+          </div>
+        )}
         {settingsSnapshot.parseEngineMode === "local_ocr" && (
           <div className="grid gap-1">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -228,7 +241,7 @@ export function QuickConfigPanel({
           <div className="grid gap-1">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>识别链路</span>
-              <HoverHint text="版面切块：先切块再逐块识别，推荐默认。文档解析：调用内置文档解析器。直出：整页直接送模型识别。" />
+              <HoverHint text="版面切块：先切块再逐块识别，推荐默认。直出：整页直接送模型识别。" />
             </div>
             <Select
               value={settingsSnapshot.ocrAiChainMode}

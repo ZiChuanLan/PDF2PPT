@@ -23,7 +23,7 @@ export interface DownloadStatusResponse {
 // ---------------------------------------------------------------------------
 // Singleton: global shared download state & single poller
 //
-// Multiple components (ocr-strategy-section, model-status-badge) call
+// Multiple components (ocr-config-v3-section, model-status-badge) call
 // useModelDownload(). The singleton ensures only one polling timer runs
 // and all callers observe the same download state.
 // ---------------------------------------------------------------------------

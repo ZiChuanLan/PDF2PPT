@@ -9,7 +9,7 @@
  * This aligns with the backend's true architecture in job_config.py.
  */
 
-import type { Settings } from "./settings"
+import type { Settings, MineruModelVersion, OcrAiProvider, OcrAiPromptPreset } from "./settings"
 
 // ============================================================================
 // Layer 1: Document Parsing (Optional)
@@ -82,217 +82,8 @@ export type OcrConfigV3 = {
 }
 
 // ============================================================================
-// Mapping to Backend JobConfig
+// Migration from Settings to V3
 // ============================================================================
-
-/**
- * Map frontend three-layer config to backend nested structure.
- *
- * Backend structure:
- * - parse.provider: "local" | "mineru" | "baidu_doc"
- * - parse.mineru.*: MinerU settings
- * - parse.baidu_doc.*: Baidu doc settings
- * - ocr.provider: "paddleocr" | "tesseract" | "aiocr" | "baidu"
- * - ocr.ai.layout_model: layout model selection
- * - ocr.ai.chain_mode: "direct" | "layout_block"
- * - ocr.baidu.*: Baidu OCR credentials
- * - ocr.enable_sam: SAM polygon refinement
- */
-export function mapOcrConfigV3ToBackend(config: OcrConfigV3): any {
-  const { parsing, layout, recognition, renderDpi, strictMode } = config
-
-  // Layer 1: Document Parsing
-  const parseConfig: any = {
-    provider: parsing.provider,
-  }
-
-  if (parsing.provider === "mineru") {
-    parseConfig.mineru = {
-      api_token: parsing.mineruApiToken,
-      base_url: parsing.mineruBaseUrl,
-      model_version: parsing.mineruModelVersion || "vlm",
-      enable_formula: parsing.enableFormula ?? true,
-      enable_table: parsing.enableTable ?? true,
-      language: parsing.mineruLanguage,
-      is_ocr: parsing.mineruIsOcr,
-    }
-  } else if (parsing.provider === "baidu_doc") {
-    parseConfig.baidu_doc = {
-      parse_type: parsing.baiduDocParseType || "paddle_vl",
-    }
-  }
-
-  // Layer 2 & 3: OCR Configuration
-  const ocrConfig: any = {
-    render_dpi: renderDpi,
-    strict_mode: strictMode,
-    enable_sam: layout.enableSam,
-  }
-
-  // Map recognition provider
-  if (recognition.provider === "paddleocr") {
-    ocrConfig.provider = "paddleocr"
-    // PaddleOCR always uses layout detection internally
-    ocrConfig.ai = {
-      layout_model: layout.model,
-    }
-  } else if (recognition.provider === "tesseract") {
-    ocrConfig.provider = "tesseract"
-    // Tesseract can optionally use layout detection
-    if (layout.enabled) {
-      ocrConfig.ai = {
-        layout_model: layout.model,
-      }
-    }
-    if (recognition.language || recognition.minConfidence !== undefined) {
-      ocrConfig.tesseract = {
-        language: recognition.language,
-        min_confidence: recognition.minConfidence,
-      }
-    }
-  } else if (recognition.provider === "aiocr") {
-    ocrConfig.provider = "aiocr"
-    ocrConfig.ai = {
-      provider: recognition.aiProvider || "auto",
-      api_key: recognition.apiKey || "",
-      base_url: recognition.baseUrl,
-      model: recognition.model,
-      chain_mode: layout.enabled ? "layout_block" : "direct",
-      layout_model: layout.model,
-      prompt_preset: recognition.promptPreset || "auto",
-      page_concurrency: recognition.pageConcurrency ?? 1,
-      block_concurrency: recognition.blockConcurrency,
-      max_retries: recognition.maxRetries ?? 0,
-      requests_per_minute: recognition.requestsPerMinute,
-      tokens_per_minute: recognition.tokensPerMinute,
-    }
-  } else if (recognition.provider === "baidu") {
-    ocrConfig.provider = "baidu"
-    ocrConfig.baidu = {
-      app_id: recognition.baiduAppId,
-      api_key: recognition.baiduApiKey,
-      secret_key: recognition.baiduSecretKey,
-    }
-    // Baidu OCR can optionally use layout detection
-    if (layout.enabled) {
-      ocrConfig.ai = {
-        layout_model: layout.model,
-      }
-    }
-  }
-
-  return {
-    parse: parseConfig,
-    ocr: ocrConfig,
-  }
-}
-
-/**
- * Map backend JobConfig to frontend three-layer config.
- */
-export function mapBackendToOcrConfigV3(backend: any): OcrConfigV3 {
-  // Layer 1: Document Parsing
-  const parseProvider = backend.parse?.provider || "local"
-  const parsing: DocumentParsingConfig = {
-    provider: parseProvider as DocumentParsingProvider,
-  }
-
-  if (parseProvider === "mineru") {
-    parsing.mineruApiToken = backend.parse?.mineru?.api_token
-    parsing.mineruBaseUrl = backend.parse?.mineru?.base_url
-    parsing.mineruModelVersion = backend.parse?.mineru?.model_version
-    parsing.enableFormula = backend.parse?.mineru?.enable_formula
-    parsing.enableTable = backend.parse?.mineru?.enable_table
-    parsing.mineruLanguage = backend.parse?.mineru?.language
-    parsing.mineruIsOcr = backend.parse?.mineru?.is_ocr
-  } else if (parseProvider === "baidu_doc") {
-    parsing.baiduDocParseType = backend.parse?.baidu_doc?.parse_type
-  }
-
-  // Layer 2: Layout Detection
-  const ocrProvider = backend.ocr?.provider || "paddleocr"
-  const chainMode = backend.ocr?.ai?.chain_mode || "direct"
-  const layoutModel = backend.ocr?.ai?.layout_model || "pp_doclayout_v3"
-  const enableSam = backend.ocr?.enable_sam ?? false
-
-  let layoutEnabled = false
-  if (ocrProvider === "paddleocr") {
-    layoutEnabled = true  // PaddleOCR always uses layout
-  } else if (ocrProvider === "aiocr") {
-    layoutEnabled = chainMode === "layout_block"
-  } else if (ocrProvider === "tesseract" || ocrProvider === "baidu") {
-    layoutEnabled = !!backend.ocr?.ai?.layout_model
-  }
-
-  const layout: LayoutDetectionConfig = {
-    enabled: layoutEnabled,
-    model: layoutModel as LayoutDetectionConfig["model"],
-    enableSam,
-  }
-
-  // Layer 3: Text Recognition
-  let recognition: TextRecognitionConfig
-  if (ocrProvider === "paddleocr") {
-    recognition = { provider: "paddleocr" }
-  } else if (ocrProvider === "tesseract") {
-    recognition = {
-      provider: "tesseract",
-      language: backend.ocr?.tesseract?.language,
-      minConfidence: backend.ocr?.tesseract?.min_confidence,
-    }
-  } else if (ocrProvider === "aiocr") {
-    recognition = {
-      provider: "aiocr",
-      aiProvider: backend.ocr?.ai?.provider || "auto",
-      apiKey: backend.ocr?.ai?.api_key || "",
-      baseUrl: backend.ocr?.ai?.base_url,
-      model: backend.ocr?.ai?.model,
-      promptPreset: backend.ocr?.ai?.prompt_preset,
-      pageConcurrency: backend.ocr?.ai?.page_concurrency,
-      blockConcurrency: backend.ocr?.ai?.block_concurrency,
-      maxRetries: backend.ocr?.ai?.max_retries,
-      requestsPerMinute: backend.ocr?.ai?.requests_per_minute,
-      tokensPerMinute: backend.ocr?.ai?.tokens_per_minute,
-    }
-  } else if (ocrProvider === "baidu") {
-    recognition = {
-      provider: "baidu",
-      baiduAppId: backend.ocr?.baidu?.app_id,
-      baiduApiKey: backend.ocr?.baidu?.api_key,
-      baiduSecretKey: backend.ocr?.baidu?.secret_key,
-    }
-  } else {
-    recognition = { provider: "paddleocr" }  // Default fallback
-  }
-
-  return {
-    parsing,
-    layout,
-    recognition,
-    renderDpi: backend.ocr?.render_dpi ?? 200,
-    strictMode: backend.ocr?.strict_mode ?? true,
-  }
-}
-
-// ============================================================================
-// Migration from V2 to V3
-// ============================================================================
-
-/**
- * Migrate OcrConfigV2 to OcrConfigV3.
- * V2 only had layout + recognition, V3 adds document parsing layer.
- */
-export function migrateV2ToV3(v2Config: any): OcrConfigV3 {
-  return {
-    parsing: {
-      provider: "local",  // V2 didn't have parsing layer
-    },
-    layout: v2Config.layout,
-    recognition: v2Config.recognition,
-    renderDpi: v2Config.renderDpi,
-    strictMode: v2Config.strictMode,
-  }
-}
 
 /**
  * Migrate old Settings format to new OcrConfigV3.
@@ -385,7 +176,7 @@ export function migrateSettingsToOcrConfigV3(settings: Settings): OcrConfigV3 {
 /**
  * Apply OcrConfigV3 changes back to Settings format (for backward compatibility).
  */
-export function applyOcrConfigV3ToSettings(config: OcrConfigV3, currentSettings: Settings): Partial<Settings> {
+export function applyOcrConfigV3ToSettings(config: OcrConfigV3, _currentSettings: Settings): Partial<Settings> {
   const updates: Partial<Settings> = {
     ocrRenderDpi: String(config.renderDpi),
     ocrStrictMode: config.strictMode,
@@ -400,39 +191,28 @@ export function applyOcrConfigV3ToSettings(config: OcrConfigV3, currentSettings:
     updates.provider = "mineru"
     updates.mineruApiToken = config.parsing.mineruApiToken || ""
     updates.mineruBaseUrl = config.parsing.mineruBaseUrl || ""
-    updates.mineruModelVersion = (config.parsing.mineruModelVersion as any) || "vlm"
+    updates.mineruModelVersion = (config.parsing.mineruModelVersion as MineruModelVersion) || "vlm"
     updates.mineruEnableFormula = config.parsing.enableFormula ?? true
     updates.mineruEnableTable = config.parsing.enableTable ?? true
     updates.mineruLanguage = config.parsing.mineruLanguage || ""
     updates.mineruIsOcr = config.parsing.mineruIsOcr ?? false
+    // MinerU handles everything — clear OCR-specific state
+    updates.enableSam = false
   } else if (config.parsing.provider === "baidu_doc") {
     updates.parseEngineMode = "baidu_doc"
     updates.baiduDocParseType = config.parsing.baiduDocParseType || "paddle_vl"
+    // Baidu Doc handles everything — clear OCR-specific state
+    updates.enableSam = false
   } else {
-    // parsing.provider === "local"
-    // parseEngineMode will be determined by recognition provider below
-  }
+    // ============================================================================
+    // Local parsing — Layer 2 + Layer 3 are relevant
+    // ============================================================================
 
-  // ============================================================================
-  // Layer 2: Layout Detection
-  // ============================================================================
-
-  if (config.layout.enabled) {
+    // Layer 2: Layout Detection
     updates.ocrAiLayoutModel = config.layout.model
     updates.enableSam = config.layout.enableSam
-  } else {
-    // When layout is disabled, clear layout-related settings
-    // (but keep the model selection for when it's re-enabled)
-    updates.ocrAiLayoutModel = config.layout.model
-    updates.enableSam = false
-  }
 
-  // ============================================================================
-  // Layer 3: Text Recognition
-  // ============================================================================
-
-  // Only set parseEngineMode if not already set by parsing layer
-  if (config.parsing.provider === "local") {
+    // Layer 3: Text Recognition
     if (config.recognition.provider === "paddleocr") {
       updates.parseEngineMode = "local_ocr"
       updates.ocrProvider = "paddleocr"
@@ -449,11 +229,11 @@ export function applyOcrConfigV3ToSettings(config: OcrConfigV3, currentSettings:
       updates.parseEngineMode = "remote_ocr"
       updates.ocrProvider = "aiocr"
       updates.ocrAiChainMode = config.layout.enabled ? "layout_block" : "direct"
-      updates.ocrAiProvider = config.recognition.aiProvider as any
+      updates.ocrAiProvider = config.recognition.aiProvider as OcrAiProvider
       updates.ocrAiApiKey = config.recognition.apiKey || ""
       updates.ocrAiBaseUrl = config.recognition.baseUrl || ""
       updates.ocrAiModel = config.recognition.model || ""
-      updates.ocrAiPromptPreset = config.recognition.promptPreset as any || "auto"
+      updates.ocrAiPromptPreset = config.recognition.promptPreset as OcrAiPromptPreset || "auto"
       updates.ocrAiPageConcurrency = String(config.recognition.pageConcurrency ?? 1)
       updates.ocrAiBlockConcurrency = config.recognition.blockConcurrency ? String(config.recognition.blockConcurrency) : ""
       updates.ocrAiMaxRetries = String(config.recognition.maxRetries ?? 0)
