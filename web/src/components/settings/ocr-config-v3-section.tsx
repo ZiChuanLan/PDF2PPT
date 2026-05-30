@@ -72,8 +72,18 @@ export function OcrConfigV3Section({ settings, onSettingsChange }: OcrConfigV3Se
 
   // Update settings when config changes
   const updateConfig = (updates: Partial<OcrConfigV3>) => {
-    const newConfig = { ...config, ...updates }
+    console.log('[OcrConfigV3] updateConfig called with:', updates)
+    const newConfig = {
+      ...config,
+      ...updates,
+      // Deep merge nested objects to preserve existing properties
+      parsing: { ...config.parsing, ...(updates.parsing || {}) },
+      layout: { ...config.layout, ...(updates.layout || {}) },
+      recognition: { ...config.recognition, ...(updates.recognition || {}) },
+    }
+    console.log('[OcrConfigV3] newConfig:', newConfig)
     const settingsUpdates = applyOcrConfigV3ToSettings(newConfig, settings)
+    console.log('[OcrConfigV3] settingsUpdates:', settingsUpdates)
     onSettingsChange(settingsUpdates)
   }
 
