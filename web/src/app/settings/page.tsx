@@ -12,7 +12,7 @@ import { useSettings } from "@/hooks/use-settings"
 import { clearStoredApiOrigin } from "@/lib/api"
 
 import { QuickPresets } from "@/components/settings/quick-presets"
-import { OcrConfigV2Section } from "@/components/settings/ocr-config-v2-section"
+import { OcrConfigV3Section } from "@/components/settings/ocr-config-v3-section"
 import { OutputQualitySection } from "@/components/settings/output-quality-section"
 import { AdminSettings } from "@/components/settings/admin-settings"
 import { ModelManagement } from "@/components/settings/model-management"
@@ -175,7 +175,7 @@ export default function SettingsPage() {
         <div className="border border-t-0 p-6">
           {activeTab === "recognition" && (
             <div role="tabpanel" id="tabpanel-recognition">
-              <OcrConfigV2Section
+              <OcrConfigV3Section
                 settings={settings}
                 onSettingsChange={handleSettingsChange}
               />
