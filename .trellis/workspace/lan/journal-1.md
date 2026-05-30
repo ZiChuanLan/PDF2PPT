@@ -514,3 +514,36 @@ Fixed OCR runtime NameErrors, repaired PPTX font import and same-origin artifact
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: 前端 OCR 三层架构 UI 重构
+
+**Date**: 2026-05-30
+**Task**: 前端 OCR 三层架构 UI 重构
+**Branch**: `beta`
+
+### Summary
+
+重构 OCR 配置前端：修复选择 MinerU/百度时 Layer 2/3 仍显示的逻辑 Bug，删除 5 个死代码文件和 3 个未使用函数（净减 3000 行），修正数值输入约束对齐后端，首页 quick-config-panel 同步适配三层架构。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf3662f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -15,16 +15,19 @@ import { Select } from "@/components/ui/select"
 import { ModelStatusBadge } from "@/components/model-status-badge"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
-  AIOCR_CHAIN_MODE_LABELS,
-  PARSE_ENGINE_MODE_LABELS,
   PPT_GENERATION_MODE_LABELS,
   type OcrAiLayoutModel,
-  type ParseEngineMode,
   type Settings,
 } from "@/lib/settings"
+import {
+  type OcrConfigV3,
+  type DocumentParsingProvider,
+  type TextRecognitionProvider,
+  migrateSettingsToOcrConfigV3,
+  applyOcrConfigV3ToSettings,
+} from "@/lib/ocr-config-v3"
 import type { ModelStatusResponse } from "@/hooks/use-model-status"
 import { useModelDownload } from "@/hooks/use-model-download"
-import { resolveParseEngineOcrProvider } from "@/lib/run-config"
 import { fetchModels } from "@/lib/api"
 
 interface QuickConfigPanelProps {
@@ -38,6 +41,19 @@ interface QuickConfigPanelProps {
   setRetainProcessArtifacts: (value: boolean) => void
   downloadedLayoutModels: Set<string>
 }
+
+const PARSING_OPTIONS: { id: DocumentParsingProvider; label: string }[] = [
+  { id: "local", label: "本地解析" },
+  { id: "mineru", label: "MinerU" },
+  { id: "baidu_doc", label: "百度解析" },
+]
+
+const RECOGNITION_OPTIONS: { id: TextRecognitionProvider; label: string }[] = [
+  { id: "paddleocr", label: "PaddleOCR" },
+  { id: "tesseract", label: "Tesseract" },
+  { id: "aiocr", label: "AI OCR" },
+  { id: "baidu", label: "百度 OCR" },
+]
 
 export function QuickConfigPanel({
   settingsSnapshot,
@@ -54,12 +70,18 @@ export function QuickConfigPanel({
     onDownloadComplete: () => void refetchModelStatus(),
   })
 
-  // Fetch real OCR model list from backend (like Settings page does)
+  // Derive three-layer config from flat settings
+  const config = React.useMemo(
+    () => migrateSettingsToOcrConfigV3(settingsSnapshot),
+    [settingsSnapshot],
+  )
+
+  // Fetch real OCR model list from backend (for AI OCR model selector)
   const [availableOcrModels, setAvailableOcrModels] = React.useState<string[]>([])
   const [fetchingOcrModels, setFetchingOcrModels] = React.useState(false)
 
   React.useEffect(() => {
-    if (settingsSnapshot.parseEngineMode !== "remote_ocr") {
+    if (config.recognition.provider !== "aiocr") {
       setAvailableOcrModels([])
       return
     }
@@ -86,7 +108,7 @@ export function QuickConfigPanel({
       })
     return () => { cancelled = true }
   }, [
-    settingsSnapshot.parseEngineMode,
+    config.recognition.provider,
     settingsSnapshot.ocrAiProvider,
     settingsSnapshot.ocrAiApiKey,
     settingsSnapshot.ocrAiBaseUrl,
@@ -103,9 +125,56 @@ export function QuickConfigPanel({
       }
     }
   }, [downloadedLayoutModels, settingsSnapshot.ocrAiLayoutModel, updateSettingsSnapshot])
+
+  // Helper: apply a config change back to flat settings
+  const applyConfigChange = React.useCallback(
+    (newConfig: OcrConfigV3) => {
+      const updates = applyOcrConfigV3ToSettings(newConfig, settingsSnapshot)
+      updateSettingsSnapshot((prev) => ({ ...prev, ...updates }))
+    },
+    [settingsSnapshot, updateSettingsSnapshot],
+  )
+
+  // Handler: change parsing provider
+  const handleParsingChange = React.useCallback(
+    (provider: DocumentParsingProvider) => {
+      const newConfig: OcrConfigV3 = {
+        ...config,
+        parsing: { ...config.parsing, provider },
+      }
+      applyConfigChange(newConfig)
+    },
+    [config, applyConfigChange],
+  )
+
+  // Handler: change recognition provider
+  const handleRecognitionChange = React.useCallback(
+    (provider: TextRecognitionProvider) => {
+      const newConfig: OcrConfigV3 = {
+        ...config,
+        recognition: { ...config.recognition, provider },
+      }
+      applyConfigChange(newConfig)
+    },
+    [config, applyConfigChange],
+  )
+
+  // Handler: toggle layout detection (for tesseract/baidu, not paddleocr which is always on)
+  const handleLayoutToggle = React.useCallback(
+    (enabled: boolean) => {
+      const newConfig: OcrConfigV3 = {
+        ...config,
+        layout: { ...config.layout, enabled },
+      }
+      applyConfigChange(newConfig)
+    },
+    [config, applyConfigChange],
+  )
+
   return (
     <div className="home-inline-panel px-4 py-3">
       <div className="grid gap-3">
+        {/* PPT Generation Mode — unchanged */}
         <div className="grid gap-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>PPT 生成模式</span>
@@ -126,29 +195,18 @@ export function QuickConfigPanel({
             ]}
           />
         </div>
+
+        {/* Layer 1: Document Parsing */}
         <div className="grid gap-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>文档解析</span>
-            <HoverHint text="选择文档解析方式。传统OCR用本地识别；AIOCR用远程模型；百度/MinerU自带完整解析。" />
+            <span>解析模式</span>
+            <HoverHint text="本地解析适合大多数文档；MinerU/百度自带完整解析能力。" />
           </div>
           <div className="flex items-center gap-2">
             <Select
-              value={settingsSnapshot.parseEngineMode}
-              onChange={(e) => {
-                const mode = e.target.value as ParseEngineMode
-                const ocrProvider = resolveParseEngineOcrProvider(mode)
-                updateSettingsSnapshot((prev) => ({
-                  ...prev,
-                  parseEngineMode: mode,
-                  ocrProvider,
-                }))
-              }}
-              options={[
-                { id: "local_ocr", label: PARSE_ENGINE_MODE_LABELS.local_ocr },
-                { id: "remote_ocr", label: PARSE_ENGINE_MODE_LABELS.remote_ocr },
-                { id: "baidu_doc", label: PARSE_ENGINE_MODE_LABELS.baidu_doc },
-                { id: "mineru_cloud", label: PARSE_ENGINE_MODE_LABELS.mineru_cloud },
-              ]}
+              value={config.parsing.provider}
+              onChange={(e) => handleParsingChange(e.target.value as DocumentParsingProvider)}
+              options={PARSING_OPTIONS}
             />
             <ModelStatusBadge
               status={modelStatus}
@@ -159,29 +217,39 @@ export function QuickConfigPanel({
             />
           </div>
         </div>
-        {settingsSnapshot.parseEngineMode === "mineru_cloud" && (
+
+        {/* Info for MinerU */}
+        {config.parsing.provider === "mineru" && (
           <div className="flex items-center gap-1.5 text-xs text-blue-700">
             <InfoIcon className="size-3 shrink-0" />
             <span>MinerU 自带完整解析能力</span>
           </div>
         )}
-        {settingsSnapshot.parseEngineMode === "baidu_doc" && (
+
+        {/* Info for Baidu Doc */}
+        {config.parsing.provider === "baidu_doc" && (
           <div className="flex items-center gap-1.5 text-xs text-blue-700">
             <InfoIcon className="size-3 shrink-0" />
             <span>百度解析自带完整解析能力</span>
           </div>
         )}
-        {settingsSnapshot.parseEngineMode === "local_ocr" && (
+
+        {/* Layer 3: Text Recognition (only when local parsing) */}
+        {config.parsing.provider === "local" && (
           <div className="grid gap-1">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>OCR 提供方</span>
-              <HoverHint text="PaddleOCR 识别精度更高；Tesseract 兼容性更好。" />
+              <span>文字识别</span>
+              <HoverHint text="PaddleOCR 中文效果好；Tesseract 兼容性好；AI OCR 精度最高；百度 OCR 速度快。" />
             </div>
             <div className="grid gap-1.5">
-              {(["paddleocr", "tesseract"] as const).map((providerId) => {
-                const isReady = modelStatus?.local?.[providerId]?.ready ?? false
-                const isSelected = settingsSnapshot.ocrProvider === providerId
-                const label = providerId === "paddleocr" ? "PaddleOCR" : "Tesseract"
+              {RECOGNITION_OPTIONS.map((opt) => {
+                const providerId = opt.id
+                const isSelected = config.recognition.provider === providerId
+                // For local providers, show readiness from modelStatus
+                const isLocalProvider = providerId === "paddleocr" || providerId === "tesseract"
+                const isReady = isLocalProvider
+                  ? (modelStatus?.local?.[providerId]?.ready ?? false)
+                  : true
                 return (
                   <div
                     key={providerId}
@@ -192,26 +260,21 @@ export function QuickConfigPanel({
                     }`}
                   >
                     <label
-                      htmlFor={`home-ocr-provider-${providerId}`}
+                      htmlFor={`home-recognition-${providerId}`}
                       className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
                     >
                       <input
                         type="radio"
-                        id={`home-ocr-provider-${providerId}`}
-                        name="home-ocr-provider"
+                        id={`home-recognition-${providerId}`}
+                        name="home-recognition"
                         value={providerId}
                         checked={isSelected}
-                        onChange={(e) =>
-                          updateSettingsSnapshot((prev) => ({
-                            ...prev,
-                            ocrProvider: e.target.value as Settings["ocrProvider"],
-                          }))
-                        }
-                        disabled={!!modelStatus && !isReady}
+                        onChange={() => handleRecognitionChange(providerId)}
+                        disabled={isLocalProvider && !!modelStatus && !isReady}
                         className="h-3.5 w-3.5 accent-foreground"
                       />
-                      <span className="text-xs font-medium">{label}</span>
-                      {modelStatus && (
+                      <span className="text-xs font-medium">{opt.label}</span>
+                      {isLocalProvider && modelStatus && (
                         isReady ? (
                           <span className="flex items-center gap-0.5 text-[10px] text-emerald-600">
                             <CheckIcon className="size-2.5" />
@@ -228,7 +291,7 @@ export function QuickConfigPanel({
                 )
               })}
             </div>
-            {/* Hint when no OCR provider is ready */}
+            {/* Hint when no local OCR provider is ready */}
             {modelStatus && !modelStatus.local.paddleocr?.ready && !modelStatus.local.tesseract?.ready && (
               <div className="flex items-center gap-1.5 text-xs text-amber-600 mt-1">
                 <AlertCircleIcon className="size-3.5" />
@@ -237,7 +300,9 @@ export function QuickConfigPanel({
             )}
           </div>
         )}
-        {settingsSnapshot.parseEngineMode === "remote_ocr" && (
+
+        {/* AI OCR: API Key / Model info when selected */}
+        {config.parsing.provider === "local" && config.recognition.provider === "aiocr" && (
           <div className="grid gap-1">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>识别链路</span>
@@ -252,109 +317,160 @@ export function QuickConfigPanel({
                 }))
               }
               options={[
-                { id: "layout_block", label: AIOCR_CHAIN_MODE_LABELS.layout_block },
-                { id: "direct", label: AIOCR_CHAIN_MODE_LABELS.direct },
+                { id: "layout_block", label: "版面切块" },
+                { id: "direct", label: "直出" },
               ]}
             />
-          </div>
-        )}
-        {settingsSnapshot.parseEngineMode === "remote_ocr" && settingsSnapshot.ocrAiChainMode === "layout_block" && (
-          <div className="grid gap-1">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>版面模型</span>
-              <HoverHint text="版面分析模型，用于检测文档中的标题、段落、表格等区域。" />
-            </div>
-            <Select
-              value={settingsSnapshot.ocrAiLayoutModel}
-              onChange={(e) =>
-                updateSettingsSnapshot((prev) => ({
-                  ...prev,
-                  ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
-                }))
-              }
-              options={Object.values(LAYOUT_MODELS)
-                .filter((m) => downloadedLayoutModels.has(m.modelId))
-                .map((m) => ({
-                  id: m.modelId,
-                  label: `${m.displayName} — ${m.speedLabel}`,
-                }))}
-            />
-            {downloadedLayoutModels.size === 0 && (() => {
-              const currentModel = settingsSnapshot.ocrAiLayoutModel
-              const modelInfo = LAYOUT_MODELS[currentModel]
-              const displayName = modelInfo?.displayName ?? currentModel
-              const busy = isDownloading(currentModel)
-              const dlState = downloads[currentModel]
-
-              return (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>暂无已下载的版面模型</span>
-                  {busy ? (
-                    <span className="text-[10px] text-amber-600">
-                      下载中... {dlState?.progress != null ? `${Math.round(dlState.progress * 100)}%` : ""}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] text-foreground hover:bg-muted transition-colors"
-                      onClick={() => void startDownload(currentModel)}
-                    >
-                      <DownloadIcon className="size-2.5" />
-                      下载 {displayName}
-                    </button>
-                  )}
-                  <Link href="/settings" className="underline">设置</Link>
+            {settingsSnapshot.ocrAiChainMode === "layout_block" && (
+              <div className="grid gap-1 mt-1">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span>版面模型</span>
                 </div>
-              )
-            })()}
-          </div>
-        )}
-        {settingsSnapshot.parseEngineMode === "remote_ocr" && (
-          <div className="grid gap-1">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>OCR 模型</span>
-              <HoverHint text="选择用于文字识别的 AI 模型。" />
-            </div>
-            {settingsSnapshot.ocrAiApiKey.trim() && settingsSnapshot.ocrAiBaseUrl.trim() ? (
-              availableOcrModels.length > 0 ? (
                 <Select
-                  value={
-                    availableOcrModels.includes(settingsSnapshot.ocrAiModel)
-                      ? settingsSnapshot.ocrAiModel
-                      : "__custom__"
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value
+                  value={settingsSnapshot.ocrAiLayoutModel}
+                  onChange={(e) =>
                     updateSettingsSnapshot((prev) => ({
                       ...prev,
-                      ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
+                      ocrAiLayoutModel: e.target.value as Settings["ocrAiLayoutModel"],
                     }))
-                  }}
-                  options={[
-                    ...availableOcrModels.map((id) => ({ id, label: id })),
-                    ...(!availableOcrModels.includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()
-                      ? [{ id: "__custom__", label: settingsSnapshot.ocrAiModel }]
-                      : []),
-                  ]}
+                  }
+                  options={Object.values(LAYOUT_MODELS)
+                    .filter((m) => downloadedLayoutModels.has(m.modelId))
+                    .map((m) => ({
+                      id: m.modelId,
+                      label: `${m.displayName} — ${m.speedLabel}`,
+                    }))}
                 />
-              ) : fetchingOcrModels ? (
-                <div className="text-xs text-muted-foreground">正在查询可用模型…</div>
+                {downloadedLayoutModels.size === 0 && (() => {
+                  const currentModel = settingsSnapshot.ocrAiLayoutModel
+                  const modelInfo = LAYOUT_MODELS[currentModel]
+                  const displayName = modelInfo?.displayName ?? currentModel
+                  const busy = isDownloading(currentModel)
+                  const dlState = downloads[currentModel]
+
+                  return (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>暂无已下载的版面模型</span>
+                      {busy ? (
+                        <span className="text-[10px] text-amber-600">
+                          下载中... {dlState?.progress != null ? `${Math.round(dlState.progress * 100)}%` : ""}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] text-foreground hover:bg-muted transition-colors"
+                          onClick={() => void startDownload(currentModel)}
+                        >
+                          <DownloadIcon className="size-2.5" />
+                          下载 {displayName}
+                        </button>
+                      )}
+                      <Link href="/settings" className="underline">设置</Link>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+            <div className="grid gap-1 mt-1">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>OCR 模型</span>
+                <HoverHint text="选择用于文字识别的 AI 模型。" />
+              </div>
+              {settingsSnapshot.ocrAiApiKey.trim() && settingsSnapshot.ocrAiBaseUrl.trim() ? (
+                availableOcrModels.length > 0 ? (
+                  <Select
+                    value={
+                      availableOcrModels.includes(settingsSnapshot.ocrAiModel)
+                        ? settingsSnapshot.ocrAiModel
+                        : "__custom__"
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value
+                      updateSettingsSnapshot((prev) => ({
+                        ...prev,
+                        ocrAiModel: val === "__custom__" ? prev.ocrAiModel : val,
+                      }))
+                    }}
+                    options={[
+                      ...availableOcrModels.map((id) => ({ id, label: id })),
+                      ...(!availableOcrModels.includes(settingsSnapshot.ocrAiModel) && settingsSnapshot.ocrAiModel.trim()
+                        ? [{ id: "__custom__", label: settingsSnapshot.ocrAiModel }]
+                        : []),
+                    ]}
+                  />
+                ) : fetchingOcrModels ? (
+                  <div className="text-xs text-muted-foreground">正在查询可用模型…</div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                    <AlertCircleIcon className="size-3.5" />
+                    <span>未获取到可用模型，请检查 API Key 和 Base URL</span>
+                    <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
+                  </div>
+                )
               ) : (
-                <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                <div className="flex items-center gap-2 text-xs text-amber-600">
                   <AlertCircleIcon className="size-3.5" />
-                  <span>未获取到可用模型，请检查 API Key 和 Base URL</span>
+                  <span>请先配置 API Key 和 Base URL</span>
                   <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Baidu OCR: credentials info when selected */}
+        {config.parsing.provider === "local" && config.recognition.provider === "baidu" && (
+          <div className="grid gap-1">
+            {!settingsSnapshot.ocrBaiduAppId.trim() || !settingsSnapshot.ocrBaiduApiKey.trim() || !settingsSnapshot.ocrBaiduSecretKey.trim() ? (
+              <div className="flex items-center gap-2 text-xs text-amber-600">
+                <AlertCircleIcon className="size-3.5" />
+                <span>请先配置百度 OCR 凭证</span>
+                <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {/* Layer 2: Layout Detection (only when local parsing) */}
+        {config.parsing.provider === "local" && (
+          <div className="grid gap-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>版面检测</span>
+              <HoverHint text="检测文档中的标题、段落、表格等区域，提升排版质量。" />
+            </div>
+            {config.recognition.provider === "paddleocr" ? (
+              <div className="flex items-center gap-1.5 text-xs text-blue-700">
+                <InfoIcon className="size-3 shrink-0" />
+                <span>PaddleOCR 自动启用版面检测</span>
+              </div>
+            ) : config.recognition.provider === "aiocr" ? (
+              config.layout.enabled ? (
+                <div className="flex items-center gap-1.5 text-xs text-blue-700">
+                  <InfoIcon className="size-3 shrink-0" />
+                  <span>版面切块模式自动启用版面检测</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <InfoIcon className="size-3 shrink-0" />
+                  <span>直出模式不使用版面检测</span>
                 </div>
               )
             ) : (
-              <div className="flex items-center gap-2 text-xs text-amber-600">
-                <AlertCircleIcon className="size-3.5" />
-                <span>请先配置 API Key 和 Base URL</span>
-                <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
-              </div>
+              /* tesseract or baidu: optional toggle */
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-foreground"
+                  checked={config.layout.enabled}
+                  onChange={(e) => handleLayoutToggle(e.target.checked)}
+                />
+                <span>启用版面检测</span>
+              </label>
             )}
           </div>
         )}
+
+        {/* Retain process artifacts — unchanged */}
         <label className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"
