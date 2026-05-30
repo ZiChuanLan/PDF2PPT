@@ -39,7 +39,6 @@ const LOCAL_OCR_OPTIONS: Array<{ id: OcrProvider; label: string; description: st
 
 const REMOTE_OCR_OPTIONS: Array<{ id: OcrAiChainMode; label: string; description: string }> = [
   { id: "direct", label: "直接识别", description: "模型直接输出文字和位置" },
-  { id: "doc_parser", label: "文档解析模式", description: "使用PaddleOCR-VL解析" },
   { id: "layout_block", label: "布局分块模式", description: "本地切块后识别（推荐）" },
 ]
 
@@ -597,24 +596,6 @@ export function OcrStrategySection({ settings, onSettingsChange }: OcrStrategySe
                   placeholder="留空不限制"
                 />
               </div>
-
-              {/* PaddleOCR-VL max side px — only for doc_parser */}
-              {settings.ocrAiChainMode === "doc_parser" && (
-              <div className="grid gap-2">
-                <FieldLabel htmlFor="ocrPaddleVlDocparserMaxSidePx">
-                  PaddleOCR-VL 最大边长
-                  <HoverHint text="文档解析模式下图片最大边长像素" />
-                </FieldLabel>
-                <Input
-                  id="ocrPaddleVlDocparserMaxSidePx"
-                  type="number"
-                  min="1"
-                  value={settings.ocrPaddleVlDocparserMaxSidePx}
-                  onChange={(e) => onSettingsChange({ ocrPaddleVlDocparserMaxSidePx: e.target.value })}
-                  placeholder="2200"
-                />
-              </div>
-              )}
             </div>
           </CollapsibleSection>
         </div>

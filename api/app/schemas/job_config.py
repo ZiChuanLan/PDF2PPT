@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AiProviderConfig(BaseModel):
@@ -173,6 +173,46 @@ class OcrAiConfig(BaseModel):
         description="AI OCR line-break post-process for OCR blocks",
     )
 
+    @field_validator("layout_model")
+    @classmethod
+    def validate_layout_model(cls, v: str, info) -> str:
+        """Validate that layout model is available when using layout_block mode."""
+        # Only validate when chain_mode is layout_block
+        chain_mode = info.data.get("chain_mode")
+        if chain_mode != "layout_block":
+            return v
+
+        # Check if the model is downloaded
+        try:
+            from app.convert.ocr.layout_models import is_model_downloaded, LAYOUT_MODELS
+
+            # Normalize model ID
+            model_id = v.lower().strip()
+
+            # Check if model exists in registry
+            if model_id not in LAYOUT_MODELS:
+                available_models = ", ".join(LAYOUT_MODELS.keys())
+                raise ValueError(
+                    f"Unknown layout model '{v}'. "
+                    f"Available models: {available_models}"
+                )
+
+            # Check if model is downloaded
+            if not is_model_downloaded(model_id):
+                raise ValueError(
+                    f"Layout model '{v}' is not downloaded. "
+                    f"Please download it first via the settings page or use a different OCR mode."
+                )
+
+        except ImportError:
+            # If import fails, skip validation (development/test environment)
+            pass
+        except ValueError:
+            # Re-raise validation errors
+            raise
+
+        return v
+
 
 class OcrConfig(BaseModel):
     """OCR provider and settings configuration."""
@@ -208,6 +248,33 @@ class OcrConfig(BaseModel):
         False,
         description="Enable SAM polygon refinement for image regions",
     )
+
+    @field_validator("enable_sam")
+    @classmethod
+    def validate_enable_sam(cls, v: bool | None, info) -> bool | None:
+        """Validate that SAM is available when enabled."""
+        if not v:
+            # SAM is disabled, no validation needed
+            return v
+
+        # Check if SAM is available
+        try:
+            from app.convert.ocr._sam_provider import is_sam_available
+
+            if not is_sam_available():
+                raise ValueError(
+                    "SAM (Segment Anything Model) is not available. "
+                    "The mobile_sam package is not installed. "
+                    "Please install it or disable SAM polygon refinement."
+                )
+        except ImportError:
+            # If import fails, skip validation (development/test environment)
+            pass
+        except ValueError:
+            # Re-raise validation errors
+            raise
+
+        return v
 
 
 class MineruConfig(BaseModel):

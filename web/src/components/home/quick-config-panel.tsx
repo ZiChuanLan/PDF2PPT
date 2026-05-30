@@ -240,7 +240,6 @@ export function QuickConfigPanel({
               }
               options={[
                 { id: "layout_block", label: AIOCR_CHAIN_MODE_LABELS.layout_block },
-                { id: "doc_parser", label: AIOCR_CHAIN_MODE_LABELS.doc_parser },
                 { id: "direct", label: AIOCR_CHAIN_MODE_LABELS.direct },
               ]}
             />

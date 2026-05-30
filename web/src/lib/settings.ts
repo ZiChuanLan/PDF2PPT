@@ -10,7 +10,7 @@ export type OcrProvider =
   | "tesseract"
   | "paddleocr"
 export type OcrAiProvider = "auto" | "openai" | "siliconflow" | "deepseek" | "ppio" | "novita"
-export type OcrAiChainMode = "direct" | "doc_parser" | "layout_block"
+export type OcrAiChainMode = "direct" | "layout_block"
 export type OcrAiLayoutModel =
   | "pp_doclayout_v3"
   | "pp_doclayout_s"
@@ -115,7 +115,6 @@ export const PARSE_ENGINE_MODE_LABELS: Record<ParseEngineMode, string> = {
 
 export const AIOCR_CHAIN_MODE_LABELS: Record<OcrAiChainMode, string> = {
   layout_block: "版面切块",
-  doc_parser: "文档解析",
   direct: "直出",
 }
 
@@ -554,9 +553,13 @@ export function loadStoredSettings(): Settings {
   if (!validOcrAiProviders.includes(merged.ocrAiProvider)) {
     merged.ocrAiProvider = DEFAULT_AIOCR_PROVIDER
   }
-  const validOcrAiChainModes: OcrAiChainMode[] = ["direct", "doc_parser", "layout_block"]
+  const validOcrAiChainModes: OcrAiChainMode[] = ["direct", "layout_block"]
   if (!validOcrAiChainModes.includes(merged.ocrAiChainMode)) {
     merged.ocrAiChainMode = DEFAULT_AIOCR_CHAIN_MODE
+  }
+  // Migrate deprecated doc_parser to layout_block
+  if ((merged.ocrAiChainMode as string) === "doc_parser") {
+    merged.ocrAiChainMode = "layout_block"
   }
   const validOcrAiLayoutModels: OcrAiLayoutModel[] = [
     "pp_doclayout_v3",

@@ -420,7 +420,7 @@ export function resolveOcrSettingsState(settings: Settings): OcrSettingsState {
     ocrModelsApiKey,
     ocrModelsBaseUrl,
     isOcrAiChainDirect: runConfig.ocrAiChainMode === "direct",
-    isOcrAiChainDocParser: runConfig.ocrAiChainMode === "doc_parser",
+    isOcrAiChainDocParser: false, // deprecated, kept for backward compatibility
     isOcrAiChainLayoutBlock: runConfig.ocrAiChainMode === "layout_block",
     runConfig,
   }
@@ -505,17 +505,12 @@ export function validateRunConfig(settings: Settings): ValidationResult {
     if (!settings.ocrAiModel.trim()) {
       return { ok: false, message: "当前链路为 AIOCR，请先在设置页选择 OCR 模型。" }
     }
-    if (
-      run.ocrAiChainMode === "doc_parser" &&
-      !settings.ocrAiModel.trim().toLowerCase().includes("paddleocr-vl")
-    ) {
-      return { ok: false, message: "内置文档解析链路仅支持 PaddleOCR-VL 模型。" }
-    }
+    // doc_parser mode has been removed
     if (
       run.ocrAiChainMode === "direct" &&
       isPaddleOcrVlModelName(settings.ocrAiModel)
     ) {
-      return { ok: false, message: "模型直出链路不支持 PaddleOCR-VL，请切换到内置文档解析。" }
+      return { ok: false, message: "模型直出链路不支持 PaddleOCR-VL，请切换到版面切块模式。" }
     }
   }
 
@@ -559,6 +554,7 @@ export type JobConfig = {
     }
     render_dpi?: number
     strict_mode?: boolean
+    enable_sam?: boolean
   }
   parse?: {
     provider?: string

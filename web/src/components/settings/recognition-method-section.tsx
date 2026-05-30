@@ -536,23 +536,6 @@ function AiOcrApiConfig({
               placeholder="留空不限制"
             />
           </div>
-
-          {settings.ocrAiChainMode === "doc_parser" && (
-            <div className="grid gap-2">
-              <FieldLabel htmlFor="ocrPaddleVlDocparserMaxSidePx">
-                PaddleOCR-VL 最大边长
-                <HoverHint text="文档解析模式下图片最大边长像素" />
-              </FieldLabel>
-              <Input
-                id="ocrPaddleVlDocparserMaxSidePx"
-                type="number"
-                min="1"
-                value={settings.ocrPaddleVlDocparserMaxSidePx}
-                onChange={(e) => onSettingsChange({ ocrPaddleVlDocparserMaxSidePx: e.target.value })}
-                placeholder="2200"
-              />
-            </div>
-          )}
         </div>
       </CollapsibleSection>
     </div>

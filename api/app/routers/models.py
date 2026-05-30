@@ -211,6 +211,26 @@ def _check_local_providers() -> dict[str, ModelProviderStatus]:
             ready=False, issues=[f"probe_failed:{e}"]
         )
 
+    # SAM (Segment Anything Model) for polygon refinement
+    try:
+        from app.convert.ocr._sam_provider import is_sam_available
+
+        sam_available = is_sam_available()
+        sam_issues: list[str] = []
+        if not sam_available:
+            sam_issues.append("mobile_sam_not_installed")
+        providers["sam"] = ModelProviderStatus(
+            ready=sam_available,
+            issues=sam_issues,
+            provider="mobilesam",
+        )
+    except Exception as e:
+        providers["sam"] = ModelProviderStatus(
+            ready=False,
+            issues=[f"probe_failed:{e}"],
+            provider="mobilesam",
+        )
+
     # Per-model layout model status — report each model individually
     for model_id, model_info in LAYOUT_MODELS.items():
         model_issues: list[str] = []
