@@ -362,40 +362,83 @@ export function applyOcrConfigV3ToSettings(config: OcrConfigV3, currentSettings:
   const updates: Partial<Settings> = {
     ocrRenderDpi: String(config.renderDpi),
     ocrStrictMode: config.strictMode,
-    enableSam: config.layout.enableSam,
-    ocrAiLayoutModel: config.layout.model,
   }
 
-  // Map recognition provider
-  if (config.recognition.provider === "paddleocr") {
-    updates.parseEngineMode = "local_ocr"
-    updates.ocrProvider = "paddleocr"
-  } else if (config.recognition.provider === "tesseract") {
-    updates.parseEngineMode = "local_ocr"
-    updates.ocrProvider = "tesseract"
-    if (config.recognition.language) {
-      updates.ocrTesseractLanguage = config.recognition.language
+  // ============================================================================
+  // Layer 1: Document Parsing
+  // ============================================================================
+
+  if (config.parsing.provider === "mineru") {
+    updates.parseEngineMode = "mineru_cloud"
+    updates.provider = "mineru"
+    updates.mineruApiToken = config.parsing.mineruApiToken || ""
+    updates.mineruBaseUrl = config.parsing.mineruBaseUrl || ""
+    updates.mineruModelVersion = (config.parsing.mineruModelVersion as any) || "vlm"
+    updates.mineruEnableFormula = config.parsing.enableFormula ?? true
+    updates.mineruEnableTable = config.parsing.enableTable ?? true
+    updates.mineruLanguage = config.parsing.mineruLanguage || ""
+    updates.mineruIsOcr = config.parsing.mineruIsOcr ?? false
+  } else if (config.parsing.provider === "baidu_doc") {
+    updates.parseEngineMode = "baidu_doc"
+    updates.baiduDocParseType = config.parsing.baiduDocParseType || "paddle_vl"
+  } else {
+    // parsing.provider === "local"
+    // parseEngineMode will be determined by recognition provider below
+  }
+
+  // ============================================================================
+  // Layer 2: Layout Detection
+  // ============================================================================
+
+  if (config.layout.enabled) {
+    updates.ocrAiLayoutModel = config.layout.model
+    updates.enableSam = config.layout.enableSam
+  } else {
+    // When layout is disabled, clear layout-related settings
+    // (but keep the model selection for when it's re-enabled)
+    updates.ocrAiLayoutModel = config.layout.model
+    updates.enableSam = false
+  }
+
+  // ============================================================================
+  // Layer 3: Text Recognition
+  // ============================================================================
+
+  // Only set parseEngineMode if not already set by parsing layer
+  if (config.parsing.provider === "local") {
+    if (config.recognition.provider === "paddleocr") {
+      updates.parseEngineMode = "local_ocr"
+      updates.ocrProvider = "paddleocr"
+    } else if (config.recognition.provider === "tesseract") {
+      updates.parseEngineMode = "local_ocr"
+      updates.ocrProvider = "tesseract"
+      if (config.recognition.language) {
+        updates.ocrTesseractLanguage = config.recognition.language
+      }
+      if (config.recognition.minConfidence !== undefined) {
+        updates.ocrTesseractMinConfidence = String(config.recognition.minConfidence)
+      }
+    } else if (config.recognition.provider === "aiocr") {
+      updates.parseEngineMode = "remote_ocr"
+      updates.ocrProvider = "aiocr"
+      updates.ocrAiChainMode = config.layout.enabled ? "layout_block" : "direct"
+      updates.ocrAiProvider = config.recognition.aiProvider as any
+      updates.ocrAiApiKey = config.recognition.apiKey || ""
+      updates.ocrAiBaseUrl = config.recognition.baseUrl || ""
+      updates.ocrAiModel = config.recognition.model || ""
+      updates.ocrAiPromptPreset = config.recognition.promptPreset as any || "auto"
+      updates.ocrAiPageConcurrency = String(config.recognition.pageConcurrency ?? 1)
+      updates.ocrAiBlockConcurrency = config.recognition.blockConcurrency ? String(config.recognition.blockConcurrency) : ""
+      updates.ocrAiMaxRetries = String(config.recognition.maxRetries ?? 0)
+      updates.ocrAiRequestsPerMinute = config.recognition.requestsPerMinute ? String(config.recognition.requestsPerMinute) : ""
+      updates.ocrAiTokensPerMinute = config.recognition.tokensPerMinute ? String(config.recognition.tokensPerMinute) : ""
+    } else if (config.recognition.provider === "baidu") {
+      updates.parseEngineMode = "local_ocr"
+      updates.ocrProvider = "baidu"
+      updates.ocrBaiduAppId = config.recognition.baiduAppId || ""
+      updates.ocrBaiduApiKey = config.recognition.baiduApiKey || ""
+      updates.ocrBaiduSecretKey = config.recognition.baiduSecretKey || ""
     }
-    if (config.recognition.minConfidence !== undefined) {
-      updates.ocrTesseractMinConfidence = String(config.recognition.minConfidence)
-    }
-  } else if (config.recognition.provider === "aiocr") {
-    updates.parseEngineMode = "remote_ocr"
-    updates.ocrProvider = "aiocr"
-    updates.ocrAiChainMode = config.layout.enabled ? "layout_block" : "direct"
-    updates.ocrAiProvider = config.recognition.aiProvider as any
-    updates.ocrAiApiKey = config.recognition.apiKey
-    updates.ocrAiBaseUrl = config.recognition.baseUrl || ""
-    updates.ocrAiModel = config.recognition.model || ""
-    updates.ocrAiPromptPreset = config.recognition.promptPreset as any || "auto"
-    updates.ocrAiPageConcurrency = String(config.recognition.pageConcurrency ?? 1)
-    updates.ocrAiBlockConcurrency = config.recognition.blockConcurrency ? String(config.recognition.blockConcurrency) : ""
-    updates.ocrAiMaxRetries = String(config.recognition.maxRetries ?? 0)
-    updates.ocrAiRequestsPerMinute = config.recognition.requestsPerMinute ? String(config.recognition.requestsPerMinute) : ""
-    updates.ocrAiTokensPerMinute = config.recognition.tokensPerMinute ? String(config.recognition.tokensPerMinute) : ""
-  } else if (config.recognition.provider === "baidu") {
-    updates.parseEngineMode = "local_ocr"
-    updates.ocrProvider = "baidu"
   }
 
   return updates
