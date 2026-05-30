@@ -306,12 +306,32 @@ export function migrateSettingsToOcrConfigV3(settings: Settings): OcrConfigV3 {
     provider: "local",  // Default to local parsing
   }
 
+  // Read MinerU configuration
+  if (parseMode === "mineru_cloud") {
+    parsing.provider = "mineru"
+    parsing.mineruApiToken = settings.mineruApiToken
+    parsing.mineruBaseUrl = settings.mineruBaseUrl
+    parsing.mineruModelVersion = settings.mineruModelVersion
+    parsing.enableFormula = settings.mineruEnableFormula
+    parsing.enableTable = settings.mineruEnableTable
+    parsing.mineruLanguage = settings.mineruLanguage
+    parsing.mineruIsOcr = settings.mineruIsOcr
+  }
+  // Read Baidu Doc configuration
+  else if (parseMode === "baidu_doc") {
+    parsing.provider = "baidu_doc"
+    parsing.baiduDocParseType = settings.baiduDocParseType
+  }
+
   // Layer 2: Layout Detection
   let layoutEnabled = false
   if (parseMode === "remote_ocr" && settings.ocrAiChainMode === "layout_block") {
     layoutEnabled = true
   } else if (ocrProvider === "paddleocr") {
-    layoutEnabled = true
+    layoutEnabled = true  // PaddleOCR always uses layout detection
+  } else if (ocrProvider === "tesseract" || ocrProvider === "baidu") {
+    // Tesseract and Baidu OCR can optionally use layout detection
+    layoutEnabled = !!settings.ocrAiLayoutModel
   }
 
   const layout: LayoutDetectionConfig = {
@@ -341,6 +361,13 @@ export function migrateSettingsToOcrConfigV3(settings: Settings): OcrConfigV3 {
       provider: "tesseract",
       language: settings.ocrTesseractLanguage,
       minConfidence: parseInt(settings.ocrTesseractMinConfidence) || 35,
+    }
+  } else if (ocrProvider === "baidu") {
+    recognition = {
+      provider: "baidu",
+      baiduAppId: settings.ocrBaiduAppId,
+      baiduApiKey: settings.ocrBaiduApiKey,
+      baiduSecretKey: settings.ocrBaiduSecretKey,
     }
   } else {
     recognition = { provider: "paddleocr" }
