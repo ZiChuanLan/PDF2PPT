@@ -547,3 +547,36 @@ Fixed OCR runtime NameErrors, repaired PPTX font import and same-origin artifact
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: 首页 quick-config-panel 三层架构对齐
+
+**Date**: 2026-05-30
+**Task**: 首页 quick-config-panel 三层架构对齐
+**Branch**: `beta`
+
+### Summary
+
+重构首页 quick-config-panel 为三层架构：解析模式（本地/MinerU/百度）、文字识别（4选项）、版面检测（智能显示）。复用设置页映射逻辑。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5d09fb9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-05-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~549 | Active |
+| `journal-1.md` | ~582 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-05-30 | 首页 quick-config-panel 三层架构对齐 | `5d09fb9` | `beta` |
 | 16 | 2026-05-30 | 前端 OCR 三层架构 UI 重构 | `bf3662f` | `beta` |
 | 15 | 2026-05-17 | Stabilize OCR and artifact flows | `3317a1b`, `a524126`, `11c1409`, `bf2aa69`, `32d7920`, `2c7e2c9` | `main` |
 | 14 | 2026-05-16 | Runtime rebuild for OCR fix activation | - | `main` |

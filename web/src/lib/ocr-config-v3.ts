@@ -208,9 +208,15 @@ export function applyOcrConfigV3ToSettings(config: OcrConfigV3, _currentSettings
     // Local parsing — Layer 2 + Layer 3 are relevant
     // ============================================================================
 
-    // Layer 2: Layout Detection
-    updates.ocrAiLayoutModel = config.layout.model
-    updates.enableSam = config.layout.enableSam
+    // Layer 2: Layout Detection — only write layout model when enabled,
+    // otherwise migrateSettingsToOcrConfigV3 will re-derive enabled=true
+    if (config.layout.enabled) {
+      updates.ocrAiLayoutModel = config.layout.model
+      updates.enableSam = config.layout.enableSam
+    } else {
+      updates.ocrAiLayoutModel = undefined
+      updates.enableSam = false
+    }
 
     // Layer 3: Text Recognition
     if (config.recognition.provider === "paddleocr") {
