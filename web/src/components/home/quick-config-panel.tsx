@@ -52,6 +52,7 @@ const RECOGNITION_OPTIONS: { id: TextRecognitionProvider; label: string }[] = [
   { id: "paddleocr", label: "PaddleOCR" },
   { id: "tesseract", label: "Tesseract" },
   { id: "aiocr", label: "AI OCR" },
+  { id: "baidu", label: "百度 OCR" },
 ]
 
 export function QuickConfigPanel({
@@ -417,6 +418,19 @@ export function QuickConfigPanel({
           </div>
         )}
 
+        {/* Baidu OCR: credentials info when selected */}
+        {config.parsing.provider === "local" && config.recognition.provider === "baidu" && (
+          <div className="grid gap-1">
+            {!settingsSnapshot.ocrBaiduAppId.trim() || !settingsSnapshot.ocrBaiduApiKey.trim() || !settingsSnapshot.ocrBaiduSecretKey.trim() ? (
+              <div className="flex items-center gap-2 text-xs text-amber-600">
+                <AlertCircleIcon className="size-3.5" />
+                <span>请先配置百度 OCR 凭证</span>
+                <Link href="/settings" className="underline hover:text-amber-800">去设置</Link>
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* Layer 2: Layout Detection (only when local parsing) */}
         {config.parsing.provider === "local" && (
           <div className="grid gap-1">
@@ -442,7 +456,7 @@ export function QuickConfigPanel({
                 </div>
               )
             ) : (
-              /* tesseract: optional toggle */
+              /* tesseract or baidu: optional toggle */
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <input
                   type="checkbox"
