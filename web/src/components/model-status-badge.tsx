@@ -32,6 +32,7 @@ interface ProviderDisplay {
 const PROVIDER_DISPLAY: ProviderDisplay[] = [
   { key: "tesseract", kind: "local", label: "Tesseract" },
   { key: "paddleocr", kind: "local", label: "PaddleOCR" },
+  { key: "sam", kind: "local" as const, label: "SAM" },
   // Layout models are now shown as a group
   ...Object.values(LAYOUT_MODELS).map((m) => ({
     key: m.modelId,
@@ -63,6 +64,7 @@ function getProvidersForEngine(mode?: ParseEngineMode): ProviderDisplay[] {
 const DOWNLOADABLE_MODELS = new Set([
   ...Object.keys(LAYOUT_MODELS),
   "paddleocr",
+  "sam",
 ])
 
 // ---------------------------------------------------------------------------

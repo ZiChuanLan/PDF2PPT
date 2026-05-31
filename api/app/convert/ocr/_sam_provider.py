@@ -52,7 +52,9 @@ def _ensure_model() -> Any:
 
     ckpt_path = _get_checkpoint_path()
     if not ckpt_path.exists():
-        _download_checkpoint(ckpt_path)
+        raise RuntimeError(
+            "SAM checkpoint not found. Please download it from the Settings page first."
+        )
 
     logger.info("Loading MobileSAM model...")
     sam = sam_model_registry["vit_t"](checkpoint=str(ckpt_path))
@@ -193,10 +195,15 @@ def refine_image_regions(
     return refined
 
 
+def is_sam_checkpoint_downloaded() -> bool:
+    """Check if the SAM checkpoint file exists on disk."""
+    return _get_checkpoint_path().exists()
+
+
 def is_sam_available() -> bool:
-    """Check if SAM can be loaded (package installed + checkpoint accessible)."""
+    """Check if SAM can be loaded (package installed AND checkpoint downloaded)."""
     try:
-        import mobile_sam  # noqa: F401 - needed to check availability
-        return True
+        import mobile_sam  # noqa: F401
     except ImportError:
         return False
+    return is_sam_checkpoint_downloaded()

@@ -23,7 +23,9 @@ export function ModelManagement() {
       const label =
         modelId === "paddleocr"
           ? "PaddleOCR"
-          : LAYOUT_MODELS[modelId]?.displayName ?? modelId
+          : modelId === "sam"
+            ? "MobileSAM"
+            : LAYOUT_MODELS[modelId]?.displayName ?? modelId
       if (!window.confirm(`确定删除 ${label} 的缓存文件？`)) return
 
       setDeleting(modelId)
@@ -51,39 +53,62 @@ export function ModelManagement() {
   const localStatus = modelStatus?.local
 
   return (
-    <div className="space-y-3">
-      {/* PaddleOCR */}
-      <ModelRow
-        modelId="paddleocr"
-        label="PaddleOCR"
-        description="百度开源 OCR 引擎，本地运行"
-        isReady={localStatus?.paddleocr?.ready ?? false}
-        downloadState={getDownloadState("paddleocr")}
-        deleting={deleting === "paddleocr"}
-        onDownload={() => startDownload("paddleocr")}
-        onCancel={() => cancelDownload("paddleocr")}
-        onDelete={() => handleDelete("paddleocr")}
-        onRefreshStatus={() => void refetchModelStatus()}
-      />
-
-      {/* Layout models */}
-      {Object.values(LAYOUT_MODELS).map((model) => (
+    <div className="space-y-4">
+      {/* OCR Models */}
+      <div className="space-y-2">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">OCR Models</h4>
         <ModelRow
-          key={model.modelId}
-          modelId={model.modelId}
-          label={model.displayName}
-          description={`${model.description} · ${model.speedLabel} · ${model.accuracy}`}
-          sizeMb={model.sizeMb}
-          recommended={model.recommended}
-          isReady={localStatus?.[model.modelId]?.ready ?? false}
-          downloadState={getDownloadState(model.modelId)}
-          deleting={deleting === model.modelId}
-          onDownload={() => startDownload(model.modelId)}
-          onCancel={() => cancelDownload(model.modelId)}
-          onDelete={() => handleDelete(model.modelId)}
+          modelId="paddleocr"
+          label="PaddleOCR"
+          description="百度开源 OCR 引擎，本地运行"
+          isReady={localStatus?.paddleocr?.ready ?? false}
+          downloadState={getDownloadState("paddleocr")}
+          deleting={deleting === "paddleocr"}
+          onDownload={() => startDownload("paddleocr")}
+          onCancel={() => cancelDownload("paddleocr")}
+          onDelete={() => handleDelete("paddleocr")}
           onRefreshStatus={() => void refetchModelStatus()}
         />
-      ))}
+      </div>
+
+      {/* Layout Analysis Models */}
+      <div className="space-y-2">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Layout Analysis Models</h4>
+        {Object.values(LAYOUT_MODELS).map((model) => (
+          <ModelRow
+            key={model.modelId}
+            modelId={model.modelId}
+            label={model.displayName}
+            description={`${model.description} · ${model.speedLabel} · ${model.accuracy}`}
+            sizeMb={model.sizeMb}
+            recommended={model.recommended}
+            isReady={localStatus?.[model.modelId]?.ready ?? false}
+            downloadState={getDownloadState(model.modelId)}
+            deleting={deleting === model.modelId}
+            onDownload={() => startDownload(model.modelId)}
+            onCancel={() => cancelDownload(model.modelId)}
+            onDelete={() => handleDelete(model.modelId)}
+            onRefreshStatus={() => void refetchModelStatus()}
+          />
+        ))}
+      </div>
+
+      {/* SAM Models */}
+      <div className="space-y-2">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">SAM Models</h4>
+        <ModelRow
+          modelId="sam"
+          label="MobileSAM"
+          description="多边形细化 (35MB)"
+          isReady={localStatus?.sam?.ready ?? false}
+          downloadState={getDownloadState("sam")}
+          deleting={deleting === "sam"}
+          onDownload={() => startDownload("sam")}
+          onCancel={() => cancelDownload("sam")}
+          onDelete={() => handleDelete("sam")}
+          onRefreshStatus={() => void refetchModelStatus()}
+        />
+      </div>
     </div>
   )
 }

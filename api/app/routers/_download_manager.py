@@ -346,6 +346,66 @@ def _background_download_paddleocr(model_id: str = "paddleocr"):
         _save_download_tasks()
 
 
+def _background_download_sam(model_id: str = "sam"):
+    """Background thread function to download SAM (MobileSAM) checkpoint."""
+    import urllib.request
+
+    try:
+        cancel_check = _get_cancel_checker(model_id)
+
+        from app.convert.ocr._sam_provider import _SAM_CHECKPOINT_URL, _get_checkpoint_path
+
+        ckpt_path = _get_checkpoint_path()
+        ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+
+        _update_download_progress(model_id, 0.0, "正在下载 SAM 模型…")
+
+        last_update = [0.0]
+
+        def reporthook(block_num: int, block_size: int, total_size: int) -> None:
+            if cancel_check():
+                raise InterruptedError("Download cancelled")
+            if total_size > 0:
+                progress = min(block_num * block_size / total_size, 1.0)
+                now = time.time()
+                if now - last_update[0] >= 0.5 or progress >= 1.0:
+                    last_update[0] = now
+                    pct = int(progress * 100)
+                    _update_download_progress(
+                        model_id, progress, f"正在下载 SAM 模型… {pct}%"
+                    )
+
+        try:
+            urllib.request.urlretrieve(_SAM_CHECKPOINT_URL, str(ckpt_path), reporthook)
+        except InterruptedError:
+            # Cancelled via reporthook
+            if ckpt_path.exists():
+                ckpt_path.unlink(missing_ok=True)
+            with _download_tasks_lock:
+                task = _download_tasks.get(model_id)
+                if task:
+                    task.status = "cancelled"
+                    task.message = "下载已取消"
+            _save_download_tasks()
+            return
+
+        with _download_tasks_lock:
+            task = _download_tasks.get(model_id)
+            if task:
+                task.status = "completed"
+                task.progress = 1.0
+                task.message = "下载完成"
+        _save_download_tasks()
+    except Exception as e:
+        logger.exception("Background SAM download failed: %s", e)
+        with _download_tasks_lock:
+            task = _download_tasks.get(model_id)
+            if task:
+                task.status = "failed"
+                task.message = f"下载失败: {e}"
+        _save_download_tasks()
+
+
 def resolve_layout_model_alias(model: str) -> str | None:
     """Resolve a model name/alias to a canonical layout model ID."""
     layout_model_aliases = {
@@ -462,7 +522,38 @@ async def download_model(
             status="downloading",
         )
 
-    supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr"
+    if model in {"sam", "mobilesam", "mobile_sam"}:
+        sam_id = "sam"
+        with _download_tasks_lock:
+            existing = _download_tasks.get(sam_id)
+            if existing and existing.status == "downloading":
+                return ModelDownloadResponse(
+                    ok=True,
+                    model=sam_id,
+                    message="下载已在进行中",
+                    status="downloading",
+                )
+
+        with _download_tasks_lock:
+            _download_tasks[sam_id] = DownloadTask(model_id=sam_id)
+
+        _save_download_tasks()
+
+        thread = threading.Thread(
+            target=_background_download_sam,
+            args=(sam_id,),
+            daemon=True,
+        )
+        thread.start()
+
+        return ModelDownloadResponse(
+            ok=True,
+            model=sam_id,
+            message="SAM 模型开始下载",
+            status="downloading",
+        )
+
+    supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr, sam"
     raise AppException(
         code=ErrorCode.VALIDATION_ERROR,
         message=f"Unsupported model for download: {payload.model}. Supported: {supported}",
@@ -521,6 +612,8 @@ async def cancel_download(
     target_id = resolve_layout_model_alias(model)
     if not target_id and model in {"paddleocr", "paddle", "paddle_ocr"}:
         target_id = "paddleocr"
+    if not target_id and model in {"sam", "mobilesam", "mobile_sam"}:
+        target_id = "sam"
 
     if not target_id:
         raise AppException(
@@ -705,7 +798,38 @@ async def delete_model(
             message="已删除 PaddleOCR 缓存" if deleted else "PaddleOCR 缓存不存在",
         )
 
-    supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr"
+    if model in {"sam", "mobilesam", "mobile_sam"}:
+        with _download_tasks_lock:
+            task = _download_tasks.get("sam")
+            if task and task.status == "downloading":
+                raise AppException(
+                    code=ErrorCode.VALIDATION_ERROR,
+                    message="SAM 模型正在下载中，无法删除",
+                    status_code=400,
+                )
+
+        sam_dir = Path(os.getenv("APP_DATA_DIR", "/app/data")) / "models" / "sam"
+        deleted = False
+        if sam_dir.exists():
+            try:
+                _shutil.rmtree(sam_dir)
+                logger.info("Deleted SAM model cache: %s", sam_dir)
+                deleted = True
+            except Exception as e:
+                logger.warning("Failed to delete SAM cache %s: %s", sam_dir, e)
+                raise AppException(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message=f"Failed to delete SAM cache: {e}",
+                    status_code=500,
+                )
+
+        return ModelDeleteResponse(
+            success=True,
+            model=model_name,
+            message="已删除 SAM 模型缓存" if deleted else "SAM 模型缓存不存在",
+        )
+
+    supported = ", ".join(sorted(LAYOUT_MODELS.keys())) + ", paddleocr, sam"
     raise AppException(
         code=ErrorCode.VALIDATION_ERROR,
         message=f"Unsupported model for deletion: {payload.model}. Supported: {supported}",

@@ -288,6 +288,21 @@ def _resolve_paddle_model_roots() -> list[Path]:
     local_default = Path.home() / ".paddleocr"
     roots.extend([local_default / "whl", local_default])
 
+    # Add PaddleX cache directory
+    paddlex_cache = Path.home() / ".paddlex" / "official_models"
+    if paddlex_cache.is_dir():
+        roots.append(paddlex_cache)
+
+    # Also try to get the PaddleX CACHE_DIR dynamically
+    try:
+        from paddlex.utils.cache import CACHE_DIR as PADDLEX_CACHE_DIR
+
+        paddlex_official = Path(PADDLEX_CACHE_DIR) / "official_models"
+        if paddlex_official.is_dir():
+            roots.append(paddlex_official)
+    except Exception:
+        pass
+
     uniq: list[Path] = []
     seen: set[str] = set()
     for root in roots:

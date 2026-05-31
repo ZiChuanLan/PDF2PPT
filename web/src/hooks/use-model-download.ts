@@ -267,6 +267,9 @@ function getModelLabel(modelId: string): string {
     pp_doclayout_v3: "PP-DocLayoutV3",
     doclayout_yolo: "DocLayout-YOLO",
     paddleocr: "PaddleOCR",
+    sam: "MobileSAM",
+    mobilesam: "MobileSAM",
+    mobile_sam: "MobileSAM",
   }
   return labels[modelId] ?? modelId
 }
