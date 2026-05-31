@@ -71,6 +71,8 @@ class JobOptions:
     # OCR rendering
     ocr_render_dpi: int | None = None
     ocr_geometry_mode: str | None = None
+    ocr_strict_mode: bool | None = True
+    enable_sam: bool | None = None
 
     # PPT generation
     scanned_page_mode: str | None = None
@@ -88,5 +90,4 @@ class JobOptions:
 
     # Misc
     ocr_ai_linebreak_assist: bool | None = None
-    ocr_strict_mode: bool | None = True
     job_timeout: str | None = None

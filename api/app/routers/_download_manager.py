@@ -322,6 +322,7 @@ def _background_download_paddleocr(model_id: str = "paddleocr"):
             _save_download_tasks()
             return
 
+        _update_download_progress(model_id, None, "正在下载 PaddleOCR 模型…")
         _download_paddleocr_models()
 
         with _download_tasks_lock:

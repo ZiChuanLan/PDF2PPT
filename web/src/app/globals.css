@@ -413,20 +413,39 @@
 }
 
 .home-inline-panel {
-  border: 1px solid rgba(17, 17, 17, 0.12);
-  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(17, 17, 17, 0.1);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.65) 0%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 2px 1px -1px rgba(0, 0, 0, 0.06),
+    0 4px 16px -4px rgba(17, 17, 17, 0.1),
+    0 12px 40px -12px rgba(17, 17, 17, 0.08);
   position: relative;
   overflow: hidden;
   transition:
-    transform var(--duration-quick) var(--ease-standard),
-    box-shadow var(--duration-quick) var(--ease-standard),
-    background-color var(--duration-quick) var(--ease-standard);
+    transform var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard),
+    background var(--duration-base) var(--ease-standard);
 }
 
 .home-inline-panel:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 28px -28px rgba(17, 17, 17, 0.35);
-  background: rgba(255, 255, 255, 0.62);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 2px 1px -1px rgba(0, 0, 0, 0.06),
+    0 6px 24px -8px rgba(17, 17, 17, 0.12),
+    0 16px 48px -16px rgba(17, 17, 17, 0.1);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.55) 100%
+  );
 }
 
 .home-stat-cell {

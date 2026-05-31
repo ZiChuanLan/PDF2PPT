@@ -8,6 +8,7 @@ import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/a
 import { downloadJobOutput } from "@/lib/download-utils"
 import { buildJobConfig, validateRunConfig } from "@/lib/run-config"
 import { TERMINAL_JOB_STATUSES } from "@/lib/job-status"
+import { LAYOUT_MODELS } from "@/lib/layout-models"
 
 type FileEntry = { file: File }
 
@@ -117,6 +118,17 @@ export function useJobSubmission(params: UseJobSubmissionParams): UseJobSubmissi
         const names = notReady.map((p) => p.label).join("、")
         setPreflightWarning(`${names} 未就绪，任务可能在运行时失败。是否继续？`)
         return
+      }
+
+      // Pre-flight check: warn if selected layout model is not downloaded
+      const selectedLayoutModel = settingsSnapshot.ocrAiLayoutModel || "pp_doclayout_v3"
+      const layoutModelInfo = LAYOUT_MODELS[selectedLayoutModel]
+      if (layoutModelInfo) {
+        const localEntry = status.local[selectedLayoutModel]
+        if (!localEntry || !localEntry.ready) {
+          setPreflightWarning(`版面模型 ${layoutModelInfo.displayName} 未下载，任务可能在运行时失败。是否继续？`)
+          return
+        }
       }
     }
     setPreflightAcknowledged(false)

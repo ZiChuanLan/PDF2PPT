@@ -659,6 +659,7 @@ export function buildJobConfig(
     provider: run.effectiveOcrProvider,
     render_dpi: toFinitePositiveIntOrNull(settings.ocrRenderDpi) ?? undefined,
     strict_mode: Boolean(settings.ocrStrictMode),
+    enable_sam: Boolean(settings.enableSam),
     // Always send layout_model so local PaddleOCR can use the user's choice
     ai: { layout_model: run.ocrAiLayoutModel },
   }

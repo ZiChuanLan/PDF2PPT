@@ -2,11 +2,9 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { CheckIcon, SettingsIcon, SparklesIcon } from "lucide-react"
+import { CheckIcon, SettingsIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import {
   getAllPresets,
   getDefaultPreset,
@@ -54,65 +52,67 @@ export function PresetPicker({
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <SparklesIcon className="size-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">快速预设</h3>
+        <div className="flex items-center gap-1.5">
+          <span className="home-stat-label">快速预设</span>
         </div>
         <Link
           href="/presets"
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground"
         >
           <SettingsIcon className="size-3" />
           管理预设
         </Link>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {allPresets.map((preset) => {
           const isSelected = selectedPresetId === preset.id
           const isDefault = defaultPreset?.id === preset.id
 
           return (
-            <Card
+            <button
               key={preset.id}
-              className={cn(
-                "relative cursor-pointer transition-all hover:border-foreground/50",
-                isSelected && "border-foreground bg-muted/30"
-              )}
+              type="button"
               onClick={() => handleApplyPreset(preset)}
+              className={cn(
+                "relative flex items-start gap-2.5 border p-3 text-left transition-all",
+                isSelected
+                  ? "border-foreground bg-muted/30"
+                  : "border-border/60 hover:border-foreground/30 hover:bg-muted/20",
+              )}
             >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {preset.icon && (
-                      <span className="text-lg leading-none" aria-hidden="true">
-                        {preset.icon}
-                      </span>
-                    )}
-                    <CardTitle className="text-base">{preset.name}</CardTitle>
-                  </div>
-                  {isSelected && (
-                    <CheckIcon className="size-4 shrink-0 text-foreground" aria-label="已选择" />
+              {/* Selection indicator */}
+              {isSelected && (
+                <span className="absolute right-1.5 top-1.5 flex size-3.5 items-center justify-center bg-foreground text-primary-foreground">
+                  <CheckIcon className="size-2.5" />
+                </span>
+              )}
+              {preset.icon && (
+                <span className="mt-0.5 shrink-0 text-base leading-none" aria-hidden="true">
+                  {preset.icon}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className={cn(
+                    "text-xs font-medium",
+                    isSelected ? "text-foreground" : "text-muted-foreground",
+                  )}>
+                    {preset.name}
+                  </span>
+                  {isDefault && (
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+                      默认
+                    </span>
                   )}
                 </div>
-                {isDefault && (
-                  <Badge variant="outline" className="w-fit text-[10px]">
-                    默认
-                  </Badge>
-                )}
-              </CardHeader>
-              <CardContent className="pb-4">
-                <CardDescription className="text-xs leading-relaxed">
+                <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
                   {preset.description}
-                </CardDescription>
-              </CardContent>
-            </Card>
+                </span>
+              </div>
+            </button>
           )
         })}
-      </div>
-
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span>点击预设卡片即可应用配置</span>
       </div>
     </div>
   )

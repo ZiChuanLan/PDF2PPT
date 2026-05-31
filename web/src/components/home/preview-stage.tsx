@@ -113,7 +113,7 @@ export function PreviewStage({
       </div>
 
       {/* Dual-column layout — stacks on mobile */}
-      <div className="grid gap-5 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid gap-5 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px]">
         {/* Left: File list + PDF preview */}
         <div>
           {/* File list */}
@@ -255,9 +255,10 @@ export function PreviewStage({
         </div>
 
         {/* Right: Config + actions */}
-        <div className="space-y-4">
-          {/* Page range */}
-          <PageRangeSection
+        <div className="flex flex-col justify-between gap-4">
+          <div className="space-y-4">
+            {/* Page range */}
+            <PageRangeSection
             isImageInput={isImageInput}
             usePageRange={usePageRange}
             setUsePageRange={setUsePageRange}
@@ -281,8 +282,9 @@ export function PreviewStage({
             setRetainProcessArtifacts={setRetainProcessArtifacts}
             downloadedLayoutModels={downloadedLayoutModels}
           />
+          </div>
 
-          {/* Action buttons */}
+          {/* Action buttons — pinned to bottom, aligned with document preview */}
           <ActionButtons
             fileCount={fileCount}
             handleConvertAll={handleConvertAll}

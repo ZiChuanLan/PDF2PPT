@@ -246,7 +246,7 @@ export function applyOcrConfigV3ToSettings(config: OcrConfigV3, _currentSettings
       updates.ocrAiRequestsPerMinute = config.recognition.requestsPerMinute ? String(config.recognition.requestsPerMinute) : ""
       updates.ocrAiTokensPerMinute = config.recognition.tokensPerMinute ? String(config.recognition.tokensPerMinute) : ""
     } else if (config.recognition.provider === "baidu") {
-      updates.parseEngineMode = "local_ocr"
+      updates.parseEngineMode = "baidu_doc"
       updates.ocrProvider = "baidu"
       updates.ocrBaiduAppId = config.recognition.baiduAppId || ""
       updates.ocrBaiduApiKey = config.recognition.baiduApiKey || ""
