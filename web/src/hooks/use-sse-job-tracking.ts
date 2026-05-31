@@ -27,6 +27,9 @@ export function useSSEJobTracking(
   const reconnectTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const reconnectAttempts = useRef<Map<string, number>>(new Map());
   const mounted = useRef(true);
+  // Track jobs that have already received a terminal SSE event, so onerror
+  // can distinguish a deliberate server-side close from a real connection drop.
+  const terminalJobIds = useRef<Set<string>>(new Set());
 
   // SSE: subscribe to active job events
   useEffect(() => {
@@ -39,6 +42,7 @@ export function useSSEJobTracking(
     sseClosers.current = new Map();
     reconnectTimers.current = new Map();
     reconnectAttempts.current = new Map();
+    terminalJobIds.current = new Set();
 
     const MAX_BACKOFF_MS = 30_000;
 
@@ -91,6 +95,9 @@ export function useSSEJobTracking(
 
           // On terminal state, fetch full response (includes debug_events)
           if (TERMINAL_JOB_STATUSES.has(status)) {
+            // Mark as terminal immediately so onerror won't show a spurious
+            // "connection interrupted" message when the server closes the SSE.
+            terminalJobIds.current.add(jid);
             try {
               const full = await fetchJobStatusFn(jid);
               if (mounted.current) {
@@ -120,6 +127,12 @@ export function useSSEJobTracking(
         if (!mounted.current) return;
         es.close();
         sseClosers.current.delete(jid);
+
+        // If the job already reached a terminal state, the server closed the
+        // connection intentionally — no need to show an error or reconnect.
+        if (terminalJobIds.current.has(jid)) {
+          return;
+        }
 
         setFileJobs((prev) =>
           prev.map((j) =>
