@@ -384,7 +384,7 @@ export function OcrConfigV3Section({ settings, onSettingsChange }: OcrConfigV3Se
                 />
                 <span className="text-sm">
                   启用 SAM 多边形细化
-                  <HoverHint text="使用 MobileSAM 将图像区域的矩形框细化为精确多边形（仅对图像块生效）" />
+                  <HoverHint text="使用 MobileSAM 将图像区域的矩形框细化为精确多边形（仅对图像块生效）。模型会在首次使用时自动下载。" />
                 </span>
               </label>
             </div>

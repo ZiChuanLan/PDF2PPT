@@ -283,7 +283,7 @@ export function QuickConfigPanel({
                 const isReady = isLocalProvider
                   ? (modelStatus?.local?.[opt.id]?.ready ?? false)
                   : true
-                const isDisabled = isLocalProvider && !!modelStatus && !isReady
+                const isDisabled = isLocalProvider && !!modelStatus && !isReady && opt.id !== "paddleocr"
 
                 return (
                   <button
@@ -328,6 +328,23 @@ export function QuickConfigPanel({
                             <span className="font-mono text-[9px] uppercase tracking-widest text-emerald-600">
                               就绪
                             </span>
+                          ) : opt.id === "paddleocr" ? (
+                            isDownloading("paddleocr") ? (
+                              <span className="font-mono text-[9px] uppercase tracking-widest text-amber-600">
+                                下载中{downloads["paddleocr"]?.progress != null ? ` ${Math.round(downloads["paddleocr"]!.progress! * 100)}%` : "..."}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="font-mono text-[9px] uppercase tracking-widest text-foreground underline underline-offset-2 hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  void startDownload("paddleocr")
+                                }}
+                              >
+                                下载
+                              </button>
+                            )
                           ) : (
                             <span className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
                               未就绪
