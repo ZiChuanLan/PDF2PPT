@@ -153,7 +153,7 @@ def get_all_download_tasks() -> dict[str, DownloadTask]:
 class ModelDownloadRequest(BaseModel):
     """Request to download a local model."""
 
-    model: str = Field(..., description="Model identifier: pp_doclayout, paddleocr")
+    model: str = Field(..., description="Model identifier: pp_doclayout, paddleocr, sam")
 
 
 class ModelDownloadResponse(BaseModel):
@@ -301,6 +301,8 @@ def _format_sam_download_error(exc: BaseException) -> str:
         "请检查 Docker/系统 DNS 或代理配置；也可以设置 "
         "MOBILE_SAM_CHECKPOINT_URL 或 SAM_CHECKPOINT_URL 为可访问的镜像地址，"
         "或设置 MOBILE_SAM_CHECKPOINT_PATH 或 SAM_CHECKPOINT_PATH 指向已下载的 mobile_sam.pt。"
+        "如果运行依赖下载失败，可设置 MOBILE_SAM_PACKAGE_URL 或 PYTORCH_CPU_INDEX_URL "
+        "为可访问的镜像地址。"
     )
 
     if isinstance(exc, urllib.error.URLError) and any(
@@ -393,7 +395,7 @@ def _background_download_paddleocr(model_id: str = "paddleocr"):
 
 
 def _background_download_sam(model_id: str = "sam"):
-    """Background thread function to download SAM (MobileSAM) checkpoint."""
+    """Background thread function to download and verify SAM (MobileSAM)."""
     ckpt_path: Path | None = None
     had_existing_checkpoint = False
 
@@ -402,8 +404,10 @@ def _background_download_sam(model_id: str = "sam"):
 
         from app.convert.ocr._sam_provider import (
             _download_checkpoint,
+            _ensure_model,
             _get_checkpoint_path,
             get_sam_checkpoint_source_path,
+            install_sam_runtime_dependencies,
         )
 
         ckpt_path = _get_checkpoint_path()
@@ -419,11 +423,16 @@ def _background_download_sam(model_id: str = "sam"):
             _save_download_tasks()
             return
 
+        def runtime_progress(progress: float | None, message: str | None = None) -> None:
+            _update_download_progress(model_id, progress, message)
+
+        install_sam_runtime_dependencies(progress_callback=runtime_progress)
+
         using_local_checkpoint = get_sam_checkpoint_source_path() is not None
         progress_action = (
             "安装本地 SAM 模型" if using_local_checkpoint else "下载 SAM 模型"
         )
-        _update_download_progress(model_id, 0.0, f"正在{progress_action}…")
+        _update_download_progress(model_id, 0.2, f"正在{progress_action}…")
 
         last_update = [0.0]
 
@@ -435,9 +444,10 @@ def _background_download_sam(model_id: str = "sam"):
                 now = time.time()
                 if now - last_update[0] >= 0.5 or progress >= 1.0:
                     last_update[0] = now
-                    pct = int(progress * 100)
+                    combined_progress = 0.2 + progress * 0.75
+                    pct = int(combined_progress * 100)
                     _update_download_progress(
-                        model_id, progress, f"正在{progress_action}… {pct}%"
+                        model_id, combined_progress, f"正在{progress_action}… {pct}%"
                     )
 
         try:
@@ -454,12 +464,15 @@ def _background_download_sam(model_id: str = "sam"):
             _save_download_tasks()
             return
 
+        _update_download_progress(model_id, 1.0, "正在验证 SAM 运行环境…")
+        _ensure_model()
+
         with _download_tasks_lock:
             task = _download_tasks.get(model_id)
             if task:
                 task.status = "completed"
                 task.progress = 1.0
-                task.message = "下载完成"
+                task.message = "下载并验证完成"
         _save_download_tasks()
     except Exception as e:
         logger.exception("Background SAM download failed: %s", e)
@@ -526,6 +539,7 @@ async def download_model(
     - pp_doclayout_s / pp_doclayout_m / pp_doclayout_l / pp_doclayout_v3: specific variants
     - doclayout_yolo: DocLayout-YOLO model
     - paddleocr: PaddleOCR det/rec/cls models
+    - sam: MobileSAM checkpoint for polygon refinement
     """
     model = payload.model.strip().lower()
 
@@ -803,6 +817,7 @@ async def delete_model(
     - pp_doclayout_s / pp_doclayout_m / pp_doclayout_l / pp_doclayout_v3
     - doclayout_yolo
     - paddleocr (deletes PaddleOCR det/rec/cls model cache)
+    - sam (deletes MobileSAM checkpoint cache)
     """
     import shutil as _shutil  # G3b-G3: local import to avoid top-level dependency
     model = payload.model.strip().lower()
@@ -887,6 +902,12 @@ async def delete_model(
                 )
 
         sam_dir = Path(os.getenv("APP_DATA_DIR", "/app/data")) / "models" / "sam"
+        try:
+            from app.convert.ocr._sam_provider import get_sam_runtime_target_path
+
+            sam_runtime_dir = get_sam_runtime_target_path()
+        except Exception:
+            sam_runtime_dir = None
         deleted = False
         if sam_dir.exists():
             try:
@@ -898,6 +919,18 @@ async def delete_model(
                 raise AppException(
                     code=ErrorCode.INTERNAL_ERROR,
                     message=f"Failed to delete SAM cache: {e}",
+                    status_code=500,
+                )
+        if sam_runtime_dir is not None and sam_runtime_dir.exists():
+            try:
+                _shutil.rmtree(sam_runtime_dir)
+                logger.info("Deleted SAM runtime cache: %s", sam_runtime_dir)
+                deleted = True
+            except Exception as e:
+                logger.warning("Failed to delete SAM runtime cache %s: %s", sam_runtime_dir, e)
+                raise AppException(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message=f"Failed to delete SAM runtime cache: {e}",
                     status_code=500,
                 )
 

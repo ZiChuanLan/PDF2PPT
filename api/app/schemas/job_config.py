@@ -267,16 +267,20 @@ class OcrConfig(BaseModel):
         if enable_layout is False:
             return False
 
-        # Job submission only needs the package. The checkpoint is reported by
-        # model status/download APIs and runtime refinement falls back safely.
+        # Job submission only needs the runtime packages. The checkpoint is
+        # reported by model status/download APIs and runtime refinement falls
+        # back safely.
         try:
-            from app.convert.ocr._sam_provider import is_sam_package_available
+            from app.convert.ocr._sam_provider import (
+                format_sam_runtime_error,
+                get_sam_runtime_issues,
+            )
 
-            if not is_sam_package_available():
+            runtime_issues = get_sam_runtime_issues()
+            if runtime_issues:
                 raise ValueError(
                     "SAM (Segment Anything Model) is not available. "
-                    "The mobile_sam package is not installed. "
-                    "Please install it or disable SAM polygon refinement."
+                    f"{format_sam_runtime_error(runtime_issues)}"
                 )
         except ImportError:
             # If import fails, skip validation (development/test environment)

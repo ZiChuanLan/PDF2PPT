@@ -99,7 +99,7 @@ export function ModelManagement() {
         <ModelRow
           modelId="sam"
           label="MobileSAM"
-          description="多边形细化 (35MB)"
+          description="多边形细化，首次下载会安装运行依赖 (35MB checkpoint)"
           isReady={localStatus?.sam?.ready ?? false}
           downloadState={getDownloadState("sam")}
           deleting={deleting === "sam"}

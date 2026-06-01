@@ -218,18 +218,18 @@ def _check_local_providers() -> dict[str, ModelProviderStatus]:
 
     # SAM (Segment Anything Model) for polygon refinement
     try:
-        from app.convert.ocr._sam_provider import is_sam_checkpoint_downloaded
+        from app.convert.ocr._sam_provider import (
+            get_sam_runtime_issues,
+            is_sam_checkpoint_downloaded,
+        )
 
-        sam_package_available = _module_available("mobile_sam")
+        sam_runtime_issues = get_sam_runtime_issues()
         sam_checkpoint_downloaded = is_sam_checkpoint_downloaded()
-        sam_available = sam_package_available and sam_checkpoint_downloaded
-        sam_issues: list[str] = []
-        if not sam_package_available:
-            sam_issues.append("mobile_sam_not_installed")
+        sam_issues = list(sam_runtime_issues)
         if not sam_checkpoint_downloaded:
             sam_issues.append("not_downloaded")
         providers["sam"] = ModelProviderStatus(
-            ready=sam_available,
+            ready=not sam_issues,
             issues=sam_issues,
             provider="mobilesam",
         )

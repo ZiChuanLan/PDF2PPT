@@ -17,6 +17,7 @@ This directory contains guidelines for backend development. The backend is a Fas
 | [Auth Pattern](./auth-pattern.md) | OAuth + JWT + user isolation | Active |
 | [Job Config Contracts](./job-config-contracts.md) | Structured job config → worker kwargs boundary rules and tests | Active |
 | [OCR Layout Block Contracts](./ocr-layout-block-contracts.md) | Dual-path OCR/image-overlay contract, under-segmentation fallback rules, and polygon-safe crop padding | Active |
+| [Model Download Contracts](./model-download-contracts.md) | Persistent optional runtime/model download rules for local providers | Active |
 
 ---
 

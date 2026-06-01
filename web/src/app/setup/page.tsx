@@ -463,6 +463,53 @@ export default function SetupPage() {
                     })}
                   </div>
 
+                  {/* SAM model */}
+                  <div className="space-y-2">
+                    <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                      图像区域细化模型
+                    </div>
+                    {(() => {
+                      const isDownloaded = modelStatus?.local?.sam?.ready ?? false
+                      return (
+                        <div className="flex items-center justify-between rounded border border-border px-3 py-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`inline-block size-2 rounded-full ${
+                                  isDownloaded ? "bg-emerald-500" : "bg-muted-foreground/40"
+                                }`}
+                              />
+                              <span className="text-sm font-medium">MobileSAM</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                35 MB checkpoint
+                              </span>
+                            </div>
+                            <div className="mt-0.5 pl-4 text-[11px] text-muted-foreground">
+                              本地图片区域多边形细化，首次下载会安装运行依赖
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {isDownloaded ? (
+                              <span className="flex items-center gap-1 text-xs text-emerald-600">
+                                <CheckIcon className="size-3" />
+                                已下载
+                              </span>
+                            ) : (
+                              <DownloadProgressButton
+                                modelId="sam"
+                                downloadState={getDownloadState("sam")}
+                                isReady={isDownloaded}
+                                onDownload={(id) => void handleDownloadModel(id)}
+                                onCancel={cancelDownload}
+                                onRefreshStatus={() => void refetchModelStatus()}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+
                   <div className="rounded-lg border border-border bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">提示：</span>

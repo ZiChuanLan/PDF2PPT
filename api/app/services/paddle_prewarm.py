@@ -213,7 +213,7 @@ def run_paddle_doc_prewarm(*, service_role: str | None = None) -> bool:
 
 
 def run_sam_prewarm() -> bool:
-    """Download SAM checkpoint if ENABLE_SAM is set."""
+    """Download/install SAM runtime if ENABLE_SAM is set."""
 
     if not _env_flag("ENABLE_SAM", default=False):
         logger.info("Skipping SAM prewarm (ENABLE_SAM not set)")
@@ -221,8 +221,12 @@ def run_sam_prewarm() -> bool:
 
     started_at = time.perf_counter()
     try:
-        from app.convert.ocr._sam_provider import _ensure_model
+        from app.convert.ocr._sam_provider import (
+            _ensure_model,
+            install_sam_runtime_dependencies,
+        )
 
+        install_sam_runtime_dependencies()
         _ensure_model()
         elapsed_s = time.perf_counter() - started_at
         logger.info("SAM prewarm finished in %.2fs", elapsed_s)
