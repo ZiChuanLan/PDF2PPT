@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 import { useDropzone } from "react-dropzone"
 
-import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
 import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import { LAYOUT_MODELS } from "@/lib/layout-models"
@@ -51,7 +51,7 @@ type JobStatusFetchError = Error & {
 }
 
 export default function Home() {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [settingsSnapshot, setSettingsSnapshot] = React.useState<Settings>(defaultSettings)
   const {
     files: uploadFiles,
@@ -108,9 +108,18 @@ export default function Home() {
 
   // Job fetching + polling
   const fetchJobs = React.useCallback(async (silent = true) => {
+    if (isAuthLoading) return
+    if (!user) {
+      setJobs([])
+      setQueueSize(0)
+      return
+    }
+
     try {
       const response = await apiFetch(`/jobs?limit=${HOME_JOB_LIMIT}`)
-      if (!response.ok) throw new Error("加载任务列表失败")
+      if (!response.ok) {
+        throw new Error(await readResponseErrorMessage(response, "加载任务列表失败"))
+      }
       const body = (await response.json().catch(() => null)) as JobListResponse | null
       const normalized = normalizeJobListResponse(body)
       setJobs(normalized.jobs)
@@ -121,7 +130,7 @@ export default function Home() {
         setActionError(normalizeFetchError(e, "加载任务列表失败"))
       }
     }
-  }, [])
+  }, [isAuthLoading, user])
 
   const fetchJobStatus = React.useCallback(async (targetJobId: string) => {
     const response = await apiFetch(`/jobs/${targetJobId}`)
@@ -230,7 +239,10 @@ export default function Home() {
   // Job polling + initial setup
   React.useEffect(() => {
     refreshSettingsSnapshot()
+    if (isAuthLoading) return
+
     void fetchJobs(false)
+    if (!user) return
 
     const onFocus = () => {
       refreshSettingsSnapshot()
@@ -246,7 +258,7 @@ export default function Home() {
       window.removeEventListener("focus", onFocus)
       window.clearInterval(timer)
     }
-  }, [fetchJobs, refreshSettingsSnapshot])
+  }, [fetchJobs, isAuthLoading, refreshSettingsSnapshot, user])
 
   // SSE: subscribe to active job events
   useSSEJobTracking(fileJobs, setFileJobs, fetchJobStatus)

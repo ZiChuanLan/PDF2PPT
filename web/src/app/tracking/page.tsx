@@ -24,7 +24,8 @@ import {
   resolveActiveArtifactPage,
 } from "@/lib/tracking-artifacts"
 import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
+import { useAuth } from "@/components/auth-provider"
 import { downloadJobOutput } from "@/lib/download-utils"
 import { JOB_POLL_INTERVAL_MS, TRACKING_JOB_LIMIT } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -95,6 +96,7 @@ function getStatusBadgeClass(status: JobStatusValue) {
 }
 
 function TrackingPageContent() {
+  const { user, isLoading: isAuthLoading } = useAuth()
   const searchParams = useSearchParams()
   const requestedJobId = (searchParams.get("job") || "").trim()
 
@@ -172,11 +174,20 @@ function TrackingPageContent() {
   }, [trackedJobId])
 
   const fetchJobs = React.useCallback(async (silent = true) => {
+    if (isAuthLoading) return
+    if (!user) {
+      setJobRecords([])
+      setQueueSize(0)
+      setJobsError(null)
+      if (!silent) setIsJobsLoading(false)
+      return
+    }
+
     if (!silent) setIsJobsLoading(true)
     try {
       const response = await apiFetch(`/jobs?limit=${TRACKING_JOB_LIMIT}`)
       if (!response.ok) {
-        throw new Error("加载任务记录失败")
+        throw new Error(await readResponseErrorMessage(response, "加载任务记录失败"))
       }
       const body = (await response.json().catch(() => null)) as JobListResponse | null
       const normalized = normalizeJobListResponse(body)
@@ -184,13 +195,14 @@ function TrackingPageContent() {
       setQueueSize(normalized.queueSize)
       setJobsError(null)
     } catch (e) {
+      console.error("Failed to fetch job records:", e)
       if (!silent) {
         setJobsError(normalizeFetchError(e, "加载任务记录失败"))
       }
     } finally {
       if (!silent) setIsJobsLoading(false)
     }
-  }, [])
+  }, [isAuthLoading, user])
 
   const fetchJobArtifacts = React.useCallback(async (targetJobId: string) => {
     setTrackedJobId(targetJobId)
@@ -289,12 +301,15 @@ function TrackingPageContent() {
   )
 
   React.useEffect(() => {
+    if (isAuthLoading) return
     void fetchJobs(false)
+    if (!user) return
+
     const timer = window.setInterval(() => {
       void fetchJobs(true)
     }, JOB_POLL_INTERVAL_MS)
     return () => window.clearInterval(timer)
-  }, [fetchJobs])
+  }, [fetchJobs, isAuthLoading, user])
 
   React.useEffect(() => {
     if (!requestedJobId) return

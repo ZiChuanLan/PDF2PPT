@@ -12,7 +12,8 @@ import {
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { apiFetch, normalizeFetchError } from "@/lib/api"
+import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
+import { useAuth } from "@/components/auth-provider"
 import { downloadJobOutput } from "@/lib/download-utils"
 import { JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
 import {
@@ -22,7 +23,6 @@ import {
   TERMINAL_JOB_STATUSES,
   type JobListItem,
   type JobListResponse,
-  type JobStatusValue,
 } from "@/lib/job-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -62,6 +62,7 @@ function formatDate(isoString: string): string {
 }
 
 export default function JobsPage() {
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [jobs, setJobs] = React.useState<JobListItem[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -70,27 +71,38 @@ export default function JobsPage() {
   const [isDeleting, setIsDeleting] = React.useState(false)
 
   const fetchJobs = React.useCallback(async (silent = false) => {
+    if (isAuthLoading) return
+    if (!user) {
+      setJobs([])
+      setError(null)
+      setIsLoading(false)
+      return
+    }
+
     try {
       if (!silent) setIsLoading(true)
       setError(null)
 
       const response = await apiFetch("/jobs?limit=50")
       if (!response.ok) {
-        throw new Error("加载任务列表失败")
+        throw new Error(await readResponseErrorMessage(response, "加载任务列表失败"))
       }
 
       const body = (await response.json().catch(() => null)) as JobListResponse | null
       const normalized = normalizeJobListResponse(body)
       setJobs(normalized.jobs)
     } catch (e) {
+      console.error("Failed to fetch jobs:", e)
       setError(normalizeFetchError(e, "加载任务列表失败"))
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [isAuthLoading, user])
 
   React.useEffect(() => {
+    if (isAuthLoading) return
     void fetchJobs(false)
+    if (!user) return
 
     const onFocus = () => void fetchJobs(true)
     window.addEventListener("focus", onFocus)
@@ -100,7 +112,7 @@ export default function JobsPage() {
       window.removeEventListener("focus", onFocus)
       window.clearInterval(timer)
     }
-  }, [fetchJobs])
+  }, [fetchJobs, isAuthLoading, user])
 
   const filteredJobs = React.useMemo(
     () => jobs.filter((job) => matchesFilter(job, activeFilter)),
