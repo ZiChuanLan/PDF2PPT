@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
 import { isAdmin } from "@/lib/auth"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -209,6 +208,43 @@ export default function SiteSettingsPage() {
                 适合团队或公开部署。支持多用户注册、邀请码和配额管理。
               </div>
             </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4 border-border">
+        <CardHeader>
+          <CardTitle>公开模式限流</CardTitle>
+          <CardDescription>
+            仅在公开模式生效。自用模式不限制普通 API 请求；模型状态查询不会计入限流。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <label className="text-muted-foreground text-xs" htmlFor="site-rate-limit-requests">
+              每窗口最大请求数
+            </label>
+            <Input
+              id="site-rate-limit-requests"
+              type="number"
+              min={1}
+              max={100000}
+              value={settings["rate_limit_requests"] || "60"}
+              onChange={(e) => handleChange("rate_limit_requests", e.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-muted-foreground text-xs" htmlFor="site-rate-limit-window">
+              计数窗口（秒）
+            </label>
+            <Input
+              id="site-rate-limit-window"
+              type="number"
+              min={1}
+              max={86400}
+              value={settings["rate_limit_window_seconds"] || "60"}
+              onChange={(e) => handleChange("rate_limit_window_seconds", e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>

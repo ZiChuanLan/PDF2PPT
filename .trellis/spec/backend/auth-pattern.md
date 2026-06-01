@@ -83,6 +83,15 @@ GET  /api/v1/admin/stats         → Dashboard statistics
 | `JWT_SECRET` | Yes | Secret for signing JWTs |
 | `SQLITE_PATH` | No | SQLite DB path (default: `/app/data/pdf2ppt.db`) |
 
+### Deploy-Mode Rate Limiting
+
+- Global IP-based API rate limiting is a public-deployment protection only.
+- `deploy_mode=self` must not throttle normal API usage; self-use deployments are expected to run behind a trusted user boundary.
+- `deploy_mode=public` may throttle normal `/api/*` traffic using admin-configured `rate_limit_requests` and `rate_limit_window_seconds` site settings, falling back to env defaults.
+- Lightweight model-readiness polling endpoints must not consume the global API quota:
+  - `GET /api/v1/models/status`
+  - `GET /api/v1/models/download/status`
+
 ## 4. Validation & Error Matrix
 
 | Condition | Error Code | HTTP Status |
@@ -92,6 +101,7 @@ GET  /api/v1/admin/stats         → Dashboard statistics
 | User disabled | `AUTH_FAILED` | 401 |
 | Non-admin accessing admin route | `FORBIDDEN` | 403 |
 | Quota exceeded | `QUOTA_EXCEEDED` | 429 |
+| Public-mode IP request rate exceeded | `rate_limit_exceeded` | 429 |
 | Job not owned by user | `JOB_NOT_FOUND` | 404 |
 
 ## 5. Good/Base/Bad Cases

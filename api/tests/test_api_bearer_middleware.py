@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import anyio
 import httpx
@@ -98,6 +99,7 @@ def test_model_status_polling_is_not_rate_limited(monkeypatch) -> None:
             return False, 0
 
     monkeypatch.setattr(main.settings, "api_bearer_token", None)
+    monkeypatch.setattr(main, "_resolve_public_rate_limit", lambda: (True, 60, 60))
     monkeypatch.setattr(redis_service, "get_redis_service", lambda: _DenyingRedisService())
 
     response = _get("/api/v1/models/status")
@@ -110,3 +112,53 @@ def test_model_status_polling_is_not_rate_limited(monkeypatch) -> None:
     assert download_response.json() == {"ok": True}
     assert regular_response.status_code == 429
     assert regular_response.json()["code"] == "rate_limit_exceeded"
+
+
+def test_self_deploy_mode_skips_global_rate_limit(monkeypatch) -> None:
+    class _DenyingRedisService:
+        def check_rate_limit(self, client_ip: str, max_requests: int, window_seconds: int):
+            _ = client_ip
+            _ = max_requests
+            _ = window_seconds
+            return False, 0
+
+    monkeypatch.setattr(main.settings, "api_bearer_token", None)
+    monkeypatch.setattr(main, "_resolve_public_rate_limit", lambda: (False, 60, 60))
+    monkeypatch.setattr(redis_service, "get_redis_service", lambda: _DenyingRedisService())
+
+    response = _get("/api/ping")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_public_rate_limit_uses_site_setting_values(monkeypatch) -> None:
+    class _FakeQuery:
+        def filter(self, *args, **kwargs):
+            _ = args
+            _ = kwargs
+            return self
+
+        def all(self):
+            return [
+                SimpleNamespace(key="deploy_mode", value="public"),
+                SimpleNamespace(key="rate_limit_requests", value="7"),
+                SimpleNamespace(key="rate_limit_window_seconds", value="11"),
+            ]
+
+    class _FakeSession:
+        def query(self, model):
+            _ = model
+            return _FakeQuery()
+
+        def close(self):
+            return None
+
+    from app import database
+
+    monkeypatch.setattr(main.settings, "deploy_mode", "self")
+    monkeypatch.setattr(main.settings, "rate_limit_requests", 60)
+    monkeypatch.setattr(main.settings, "rate_limit_window_seconds", 60)
+    monkeypatch.setattr(database, "get_session_factory", lambda: lambda: _FakeSession())
+
+    assert main._resolve_public_rate_limit() == (True, 7, 11)

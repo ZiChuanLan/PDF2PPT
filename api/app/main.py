@@ -38,6 +38,64 @@ def _is_rate_limit_exempt_path(path: str) -> bool:
     }
 
 
+def _coerce_rate_limit_int(value: object, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(str(value or "").strip())
+    except Exception:
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+def _resolve_public_rate_limit() -> tuple[bool, int, int]:
+    """Return (enabled, max_requests, window_seconds) for global API throttling."""
+    settings = get_settings()
+    deploy_mode = settings.deploy_mode
+    max_requests = settings.rate_limit_requests
+    window_seconds = settings.rate_limit_window_seconds
+
+    try:
+        from app.database import get_session_factory
+        from app.models.user import SiteSettingsORM
+
+        session = get_session_factory()()
+        try:
+            rows = (
+                session.query(SiteSettingsORM)
+                .filter(
+                    SiteSettingsORM.key.in_(
+                        ["deploy_mode", "rate_limit_requests", "rate_limit_window_seconds"]
+                    )
+                )
+                .all()
+            )
+            values = {row.key: row.value for row in rows}
+        finally:
+            session.close()
+
+        if values.get("deploy_mode") in {"self", "public"}:
+            deploy_mode = str(values["deploy_mode"])
+        if values.get("rate_limit_requests") not in {None, ""}:
+            max_requests = _coerce_rate_limit_int(
+                values["rate_limit_requests"],
+                default=max_requests,
+                minimum=1,
+                maximum=100_000,
+            )
+        if values.get("rate_limit_window_seconds") not in {None, ""}:
+            window_seconds = _coerce_rate_limit_int(
+                values["rate_limit_window_seconds"],
+                default=window_seconds,
+                minimum=1,
+                maximum=86_400,
+            )
+    except Exception:
+        logger.warning("Failed to load deploy/rate-limit settings; falling back to env", exc_info=True)
+
+    if deploy_mode != "public":
+        return False, max_requests, window_seconds
+    return True, max_requests, window_seconds
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
@@ -177,23 +235,24 @@ async def request_id_middleware(request: Request, call_next):
     # Rate limiting (skip health checks and lightweight model status polling)
     if request.url.path.startswith("/api/") and not _is_rate_limit_exempt_path(request.url.path):
         from app.services.redis_service import get_redis_service
-        from app.config import get_settings as _gs
-        _rs = _gs()
-        client_ip = request.client.host if request.client else "unknown"
-        allowed, remaining = get_redis_service().check_rate_limit(
-            client_ip, _rs.rate_limit_requests, _rs.rate_limit_window_seconds
-        )
-        if not allowed:
-            response = JSONResponse(
-                status_code=429,
-                content={
-                    "code": "rate_limit_exceeded",
-                    "message": "请求过于频繁，请稍后再试",
-                },
+
+        rate_limit_enabled, max_requests, window_seconds = _resolve_public_rate_limit()
+        if rate_limit_enabled:
+            client_ip = request.client.host if request.client else "unknown"
+            allowed, remaining = get_redis_service().check_rate_limit(
+                client_ip, max_requests, window_seconds
             )
-            response.headers["X-Request-ID"] = request_id
-            response.headers["Retry-After"] = str(_rs.rate_limit_window_seconds)
-            return response
+            if not allowed:
+                response = JSONResponse(
+                    status_code=429,
+                    content={
+                        "code": "rate_limit_exceeded",
+                        "message": "请求过于频繁，请稍后再试",
+                    },
+                )
+                response.headers["X-Request-ID"] = request_id
+                response.headers["Retry-After"] = str(window_seconds)
+                return response
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id

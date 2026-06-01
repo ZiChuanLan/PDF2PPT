@@ -533,6 +533,42 @@ SENSITIVE_SETTING_KEYS = {
     "ocr_ai_api_key",
 }
 
+RATE_LIMIT_SETTING_LIMITS = {
+    "rate_limit_requests": (1, 100_000),
+    "rate_limit_window_seconds": (1, 86_400),
+}
+
+
+def _validate_site_setting(key: str, value: Optional[str]) -> None:
+    if key == "deploy_mode" and value not in {"self", "public"}:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Invalid deploy mode",
+            details={"key": key, "allowed": ["self", "public"]},
+            status_code=400,
+        )
+
+    if key not in RATE_LIMIT_SETTING_LIMITS or value in {None, ""}:
+        return
+
+    minimum, maximum = RATE_LIMIT_SETTING_LIMITS[key]
+    try:
+        parsed = int(str(value).strip())
+    except Exception as e:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Invalid rate limit value",
+            details={"key": key, "value": value},
+            status_code=400,
+        ) from e
+    if not minimum <= parsed <= maximum:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Invalid rate limit value",
+            details={"key": key, "min": minimum, "max": maximum},
+            status_code=400,
+        )
+
 
 @router.get("/site-settings", response_model=dict[str, Optional[str]])
 async def get_site_settings(
@@ -547,6 +583,15 @@ async def get_site_settings(
             settings[row.key] = "••••••••"
         else:
             settings[row.key] = row.value
+    from app.config import get_deploy_mode, get_settings
+
+    runtime_settings = get_settings()
+    settings.setdefault("deploy_mode", get_deploy_mode(db))
+    settings.setdefault("rate_limit_requests", str(runtime_settings.rate_limit_requests))
+    settings.setdefault(
+        "rate_limit_window_seconds",
+        str(runtime_settings.rate_limit_window_seconds),
+    )
     return settings
 
 
@@ -562,6 +607,7 @@ async def update_site_settings(
         # Skip masked sensitive values
         if key in SENSITIVE_SETTING_KEYS and value == "••••••••":
             continue
+        _validate_site_setting(key, value)
         existing = db.query(SiteSettingsORM).filter(SiteSettingsORM.key == key).first()
         if existing:
             existing.value = value
