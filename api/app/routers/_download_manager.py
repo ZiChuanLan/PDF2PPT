@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import threading
 import time
 from dataclasses import dataclass, field
@@ -51,16 +52,21 @@ _download_tasks_lock = threading.Lock()
 # Download task persistence
 # ---------------------------------------------------------------------------
 
-_DOWNLOADS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "downloads"
-)
-_DOWNLOAD_TASKS_FILE = os.path.join(_DOWNLOADS_DIR, "tasks.json")
+def _get_downloads_dir() -> Path:
+    """Return the runtime data directory for persisted download tasks."""
+    return Path(os.getenv("APP_DATA_DIR", "/app/data")) / "downloads"
+
+
+def _get_download_tasks_file() -> Path:
+    """Return the persisted download task JSON path."""
+    return _get_downloads_dir() / "tasks.json"
 
 
 def _save_download_tasks():
     """Persist current download tasks to disk (thread-safe snapshot)."""
     try:
-        os.makedirs(_DOWNLOADS_DIR, exist_ok=True)
+        downloads_dir = _get_downloads_dir()
+        downloads_dir.mkdir(parents=True, exist_ok=True)
         with _download_tasks_lock:
             data = {
                 mid: {
@@ -75,7 +81,7 @@ def _save_download_tasks():
                 # Only persist active/significant tasks
                 if t.status == "downloading" or t.status == "failed"
             }
-        with open(_DOWNLOAD_TASKS_FILE, "w", encoding="utf-8") as f:
+        with _get_download_tasks_file().open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:
         logger.exception("Failed to persist download tasks")
@@ -84,10 +90,11 @@ def _save_download_tasks():
 def _load_download_tasks():
     """Restore download tasks from disk on server startup."""
     try:
-        if not os.path.exists(_DOWNLOAD_TASKS_FILE):
+        tasks_file = _get_download_tasks_file()
+        if not tasks_file.exists():
             return
 
-        with open(_DOWNLOAD_TASKS_FILE, "r", encoding="utf-8") as f:
+        with tasks_file.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
         now = time.time()
@@ -258,7 +265,9 @@ def _get_cancel_checker(model_id: str):
     return _check_cancel
 
 
-def _update_download_progress(model_id: str, progress: float | None, message: str | None = None):
+def _update_download_progress(
+    model_id: str, progress: float | None, message: str | None = None
+):
     """Update the progress of a download task."""
     with _download_tasks_lock:
         task = _download_tasks.get(model_id)
@@ -266,6 +275,43 @@ def _update_download_progress(model_id: str, progress: float | None, message: st
             task.progress = progress
             if message:
                 task.message = message
+
+
+def _format_sam_download_error(exc: BaseException) -> str:
+    """Return an actionable user-facing message for MobileSAM download failures."""
+    import urllib.error
+
+    reason = getattr(exc, "reason", None)
+    error_text = " ".join(
+        part for part in (str(exc), str(reason) if reason is not None else "") if part
+    )
+    normalized = error_text.lower()
+    dns_or_proxy_markers = (
+        "errno -5",
+        "no address associated with hostname",
+        "name or service not known",
+        "temporary failure in name resolution",
+        "nodename nor servname",
+        "getaddrinfo failed",
+        "proxy",
+        "timed out",
+        "network is unreachable",
+    )
+    workaround = (
+        "请检查 Docker/系统 DNS 或代理配置；也可以设置 "
+        "MOBILE_SAM_CHECKPOINT_URL 或 SAM_CHECKPOINT_URL 为可访问的镜像地址，"
+        "或设置 MOBILE_SAM_CHECKPOINT_PATH 或 SAM_CHECKPOINT_PATH 指向已下载的 mobile_sam.pt。"
+    )
+
+    if isinstance(exc, urllib.error.URLError) and any(
+        marker in normalized for marker in dns_or_proxy_markers
+    ):
+        return (
+            "下载失败: 无法访问 MobileSAM 下载地址（DNS/网络/代理不可用）。"
+            f"{workaround} 原始错误: {exc}"
+        )
+
+    return f"下载失败: {exc}。{workaround}"
 
 
 def _background_download_layout_model(model_id: str):
@@ -348,17 +394,36 @@ def _background_download_paddleocr(model_id: str = "paddleocr"):
 
 def _background_download_sam(model_id: str = "sam"):
     """Background thread function to download SAM (MobileSAM) checkpoint."""
-    import urllib.request
+    ckpt_path: Path | None = None
+    had_existing_checkpoint = False
 
     try:
         cancel_check = _get_cancel_checker(model_id)
 
-        from app.convert.ocr._sam_provider import _SAM_CHECKPOINT_URL, _get_checkpoint_path
+        from app.convert.ocr._sam_provider import (
+            _download_checkpoint,
+            _get_checkpoint_path,
+            get_sam_checkpoint_source_path,
+        )
 
         ckpt_path = _get_checkpoint_path()
         ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+        had_existing_checkpoint = ckpt_path.exists()
 
-        _update_download_progress(model_id, 0.0, "正在下载 SAM 模型…")
+        if cancel_check():
+            with _download_tasks_lock:
+                task = _download_tasks.get(model_id)
+                if task:
+                    task.status = "cancelled"
+                    task.message = "下载已取消"
+            _save_download_tasks()
+            return
+
+        using_local_checkpoint = get_sam_checkpoint_source_path() is not None
+        progress_action = (
+            "安装本地 SAM 模型" if using_local_checkpoint else "下载 SAM 模型"
+        )
+        _update_download_progress(model_id, 0.0, f"正在{progress_action}…")
 
         last_update = [0.0]
 
@@ -372,14 +437,14 @@ def _background_download_sam(model_id: str = "sam"):
                     last_update[0] = now
                     pct = int(progress * 100)
                     _update_download_progress(
-                        model_id, progress, f"正在下载 SAM 模型… {pct}%"
+                        model_id, progress, f"正在{progress_action}… {pct}%"
                     )
 
         try:
-            urllib.request.urlretrieve(_SAM_CHECKPOINT_URL, str(ckpt_path), reporthook)
+            _download_checkpoint(ckpt_path, reporthook=reporthook)
         except InterruptedError:
             # Cancelled via reporthook
-            if ckpt_path.exists():
+            if not had_existing_checkpoint and ckpt_path.exists():
                 ckpt_path.unlink(missing_ok=True)
             with _download_tasks_lock:
                 task = _download_tasks.get(model_id)
@@ -398,11 +463,20 @@ def _background_download_sam(model_id: str = "sam"):
         _save_download_tasks()
     except Exception as e:
         logger.exception("Background SAM download failed: %s", e)
+        try:
+            if (
+                ckpt_path is not None
+                and not had_existing_checkpoint
+                and ckpt_path.exists()
+            ):
+                ckpt_path.unlink(missing_ok=True)
+        except Exception:
+            logger.warning("Failed to remove partial SAM checkpoint %s", ckpt_path)
         with _download_tasks_lock:
             task = _download_tasks.get(model_id)
             if task:
                 task.status = "failed"
-                task.message = f"下载失败: {e}"
+                task.message = _format_sam_download_error(e)
         _save_download_tasks()
 
 
@@ -571,6 +645,7 @@ async def get_download_status():
     """
     now = time.time()
     items: dict[str, DownloadStatusItem] = {}
+    should_persist_cleanup = False
 
     with _download_tasks_lock:
         # Clean up old completed/failed/cancelled tasks (older than 5 minutes)
@@ -582,7 +657,7 @@ async def get_download_status():
             del _download_tasks[mid]
 
         if expired_ids:
-            _save_download_tasks()
+            should_persist_cleanup = True
 
         for mid, task in _download_tasks.items():
             items[mid] = DownloadStatusItem(
@@ -592,6 +667,9 @@ async def get_download_status():
                 message=task.message,
                 started_at=task.started_at,
             )
+
+    if should_persist_cleanup:
+        _save_download_tasks()
 
     return DownloadStatusResponse(downloads=items)
 

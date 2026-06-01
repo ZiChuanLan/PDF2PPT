@@ -3,7 +3,9 @@
 Uses MobileSAM ViT-T to refine rectangular bboxes into precise polygon masks.
 """
 
+import importlib.util
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +17,34 @@ logger = logging.getLogger(__name__)
 _SAM_CHECKPOINT_URL = (
     "https://github.com/ChaoningZhang/MobileSAM/raw/master/weights/mobile_sam.pt"
 )
+_SAM_CHECKPOINT_URL_ENV_VARS = ("MOBILE_SAM_CHECKPOINT_URL", "SAM_CHECKPOINT_URL")
+_SAM_CHECKPOINT_PATH_ENV_VARS = ("MOBILE_SAM_CHECKPOINT_PATH", "SAM_CHECKPOINT_PATH")
 
 _predictor: Any = None
 _model_loaded = False
+
+
+def _first_non_empty_env(names: tuple[str, ...]) -> str | None:
+    import os
+
+    for name in names:
+        value = os.environ.get(name)
+        if value and value.strip():
+            return value.strip()
+    return None
+
+
+def get_sam_checkpoint_url() -> str:
+    """Return the configured MobileSAM checkpoint URL."""
+    return _first_non_empty_env(_SAM_CHECKPOINT_URL_ENV_VARS) or _SAM_CHECKPOINT_URL
+
+
+def get_sam_checkpoint_source_path() -> Path | None:
+    """Return a configured local MobileSAM checkpoint source path, if any."""
+    configured = _first_non_empty_env(_SAM_CHECKPOINT_PATH_ENV_VARS)
+    if not configured:
+        return None
+    return Path(configured).expanduser()
 
 
 def _get_checkpoint_path() -> Path:
@@ -27,12 +54,39 @@ def _get_checkpoint_path() -> Path:
     return data_dir / "models" / "sam" / "mobile_sam.pt"
 
 
-def _download_checkpoint(path: Path) -> None:
+def _download_checkpoint(path: Path, reporthook: Any | None = None) -> None:
     import urllib.request
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info("Downloading MobileSAM checkpoint from %s ...", _SAM_CHECKPOINT_URL)
-    urllib.request.urlretrieve(_SAM_CHECKPOINT_URL, str(path))
+
+    source_path = get_sam_checkpoint_source_path()
+    if source_path is not None:
+        if not source_path.exists() or not source_path.is_file():
+            raise RuntimeError(
+                "Configured MobileSAM checkpoint file does not exist: "
+                f"{source_path}. Set MOBILE_SAM_CHECKPOINT_PATH or "
+                "SAM_CHECKPOINT_PATH to an existing mobile_sam.pt file."
+            )
+
+        try:
+            if source_path.resolve() == path.resolve():
+                logger.info("MobileSAM checkpoint already installed at %s", path)
+                if reporthook is not None:
+                    reporthook(1, 1, 1)
+                return
+        except OSError:
+            pass
+
+        logger.info("Installing MobileSAM checkpoint from local file %s", source_path)
+        shutil.copy2(source_path, path)
+        if reporthook is not None:
+            reporthook(1, 1, 1)
+        logger.info("Installed MobileSAM checkpoint to %s", path)
+        return
+
+    checkpoint_url = get_sam_checkpoint_url()
+    logger.info("Downloading MobileSAM checkpoint from %s ...", checkpoint_url)
+    urllib.request.urlretrieve(checkpoint_url, str(path), reporthook)
     logger.info("Downloaded to %s", path)
 
 
@@ -200,10 +254,11 @@ def is_sam_checkpoint_downloaded() -> bool:
     return _get_checkpoint_path().exists()
 
 
+def is_sam_package_available() -> bool:
+    """Check if the MobileSAM Python package is importable."""
+    return importlib.util.find_spec("mobile_sam") is not None
+
+
 def is_sam_available() -> bool:
     """Check if SAM can be loaded (package installed AND checkpoint downloaded)."""
-    try:
-        import mobile_sam  # noqa: F401
-    except ImportError:
-        return False
-    return is_sam_checkpoint_downloaded()
+    return is_sam_package_available() and is_sam_checkpoint_downloaded()

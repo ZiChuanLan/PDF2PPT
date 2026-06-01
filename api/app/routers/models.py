@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 from typing import Optional
 
@@ -132,6 +133,10 @@ async def list_models(payload: ModelListRequest):
 logger = logging.getLogger(__name__)
 
 
+def _module_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
 class ModelProviderStatus(BaseModel):
     """Readiness status for a single model/API provider."""
 
@@ -213,12 +218,16 @@ def _check_local_providers() -> dict[str, ModelProviderStatus]:
 
     # SAM (Segment Anything Model) for polygon refinement
     try:
-        from app.convert.ocr._sam_provider import is_sam_available
+        from app.convert.ocr._sam_provider import is_sam_checkpoint_downloaded
 
-        sam_available = is_sam_available()
+        sam_package_available = _module_available("mobile_sam")
+        sam_checkpoint_downloaded = is_sam_checkpoint_downloaded()
+        sam_available = sam_package_available and sam_checkpoint_downloaded
         sam_issues: list[str] = []
-        if not sam_available:
+        if not sam_package_available:
             sam_issues.append("mobile_sam_not_installed")
+        if not sam_checkpoint_downloaded:
+            sam_issues.append("not_downloaded")
         providers["sam"] = ModelProviderStatus(
             ready=sam_available,
             issues=sam_issues,
@@ -234,16 +243,23 @@ def _check_local_providers() -> dict[str, ModelProviderStatus]:
     # Per-model layout model status — report each model individually
     for model_id, model_info in LAYOUT_MODELS.items():
         model_issues: list[str] = []
+        runtime_available = True
         try:
             downloaded = is_model_downloaded(model_id)
             if not downloaded:
                 model_issues.append("not_downloaded")
+            if model_info.provider == "doclayout_yolo":
+                if not _module_available("doclayout_yolo"):
+                    model_issues.append("doclayout_yolo_not_installed")
+                    runtime_available = False
+                if not downloaded and not _module_available("huggingface_hub"):
+                    model_issues.append("huggingface_hub_not_installed")
         except Exception as e:
             downloaded = False
             model_issues.append(f"check_failed:{e}")
 
         providers[model_id] = ModelProviderStatus(
-            ready=downloaded,
+            ready=downloaded and runtime_available,
             issues=model_issues,
             provider=model_info.provider,
         )
