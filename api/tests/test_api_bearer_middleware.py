@@ -3,8 +3,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import anyio
+import httpx
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -32,11 +33,22 @@ def _build_test_app() -> FastAPI:
     return app
 
 
+def _get(path: str, *, headers: dict[str, str] | None = None) -> httpx.Response:
+    async def _request() -> httpx.Response:
+        transport = httpx.ASGITransport(app=_build_test_app())
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            return await client.get(path, headers=headers)
+
+    return anyio.run(_request)
+
+
 def test_api_requests_require_configured_bearer_token(monkeypatch) -> None:
     monkeypatch.setattr(main.settings, "api_bearer_token", "secret-token")
 
-    client = TestClient(_build_test_app())
-    response = client.get("/api/ping")
+    response = _get("/api/ping")
 
     assert response.status_code == 401
     assert response.json() == {
@@ -49,8 +61,7 @@ def test_api_requests_require_configured_bearer_token(monkeypatch) -> None:
 def test_api_requests_accept_matching_bearer_token(monkeypatch) -> None:
     monkeypatch.setattr(main.settings, "api_bearer_token", "secret-token")
 
-    client = TestClient(_build_test_app())
-    response = client.get(
+    response = _get(
         "/api/ping",
         headers={"Authorization": "Bearer secret-token"},
     )
@@ -63,8 +74,7 @@ def test_api_requests_accept_matching_bearer_token(monkeypatch) -> None:
 def test_api_requests_do_not_require_token_when_auth_is_disabled(monkeypatch) -> None:
     monkeypatch.setattr(main.settings, "api_bearer_token", None)
 
-    client = TestClient(_build_test_app())
-    response = client.get("/api/ping")
+    response = _get("/api/ping")
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}

@@ -39,6 +39,7 @@ class _InMemoryRedis:
     - setex
     - incr
     - ttl
+    - exists
     - delete
     - keys (prefix*)
     - pipeline
@@ -95,6 +96,16 @@ class _InMemoryRedis:
                 return -1
             remaining = int(exp - time.time())
             return remaining if remaining > 0 else -2
+
+    def exists(self, *keys: str) -> int:
+        with self._lock:
+            count = 0
+            for key in keys:
+                normalized = str(key)
+                self._purge_if_expired(normalized)
+                if normalized in self._data:
+                    count += 1
+            return count
 
     def delete(self, *keys: str) -> None:
         with self._lock:

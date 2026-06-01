@@ -108,6 +108,24 @@ def _submit_job(job_id: str, kwargs: dict[str, Any]) -> None:
         )
 
 
+def _require_job_access(job, current_user) -> None:
+    """Enforce owner-based access for job metadata and on-disk artifacts."""
+    if not job or not job.user_id:
+        return
+    if not current_user:
+        raise AppException(
+            code=ErrorCode.AUTH_REQUIRED,
+            message="Authentication required to access this job",
+            status_code=401,
+        )
+    if job.user_id != current_user.id:
+        raise AppException(
+            code=ErrorCode.FORBIDDEN,
+            message="You can only access your own jobs",
+            status_code=403,
+        )
+
+
 def _sync_rq_cancel_state(*, job_id: str, status: JobStatus) -> None:
     """Mirror API-level cancellation into RQ so queued/running jobs unblock quickly."""
     redis_service = get_redis_service()
@@ -926,13 +944,7 @@ async def get_job_status(
             status_code=404,
         )
 
-    # Check ownership: users can only view their own jobs
-    if current_user and job.user_id and job.user_id != current_user.id:
-        raise AppException(
-            code=ErrorCode.FORBIDDEN,
-            message="You can only view your own jobs",
-            status_code=403,
-        )
+    _require_job_access(job, current_user)
 
     return JobStatusResponse(
         job_id=job.job_id,
@@ -1031,18 +1043,7 @@ async def stream_job_events(
     redis_service = get_redis_service()
     job = redis_service.get_job(job_id)
     if job:
-        if current_user and job.user_id and job.user_id != current_user.id:
-            raise AppException(
-                code=ErrorCode.FORBIDDEN,
-                message="You can only access your own jobs",
-                status_code=403,
-            )
-        if not current_user and job.user_id:
-            raise AppException(
-                code=ErrorCode.AUTH_REQUIRED,
-                message="Authentication required to access this job",
-                status_code=401,
-            )
+        _require_job_access(job, current_user)
 
     return StreamingResponse(
         job_event_generator(job_id),
@@ -1076,13 +1077,7 @@ async def cancel_job(
             status_code=404,
         )
 
-    # Check ownership: users can only cancel their own jobs
-    if current_user and job.user_id and job.user_id != current_user.id:
-        raise AppException(
-            code=ErrorCode.FORBIDDEN,
-            message="You can only cancel your own jobs",
-            status_code=403,
-        )
+    _require_job_access(job, current_user)
 
     # Can only cancel pending or processing jobs
     if job.status not in [JobStatus.pending, JobStatus.processing]:
@@ -1132,13 +1127,7 @@ async def delete_job(
             status_code=404,
         )
 
-    # Check ownership: users can only delete their own jobs
-    if current_user and job and job.user_id and job.user_id != current_user.id:
-        raise AppException(
-            code=ErrorCode.FORBIDDEN,
-            message="You can only delete your own jobs",
-            status_code=403,
-        )
+    _require_job_access(job, current_user)
 
     if job and job.status in [JobStatus.pending, JobStatus.processing]:
         raise AppException(
@@ -1178,7 +1167,10 @@ async def delete_job(
 
 
 @router.get("/{job_id}/download")
-async def download_result(job_id: str):
+async def download_result(
+    job_id: str,
+    current_user=Depends(get_current_user_optional),
+):
     """
     Download the converted PowerPoint file.
 
@@ -1192,6 +1184,8 @@ async def download_result(job_id: str):
             message=f"Job {job_id} not found",
             status_code=404,
         )
+
+    _require_job_access(job, current_user)
 
     if job.status != JobStatus.completed:
         raise AppException(
@@ -1217,7 +1211,10 @@ async def download_result(job_id: str):
 
 
 @router.get("/{job_id}/artifacts", response_model=JobArtifactsResponse)
-async def get_job_artifacts(job_id: str):
+async def get_job_artifacts(
+    job_id: str,
+    current_user=Depends(get_current_user_optional),
+):
     """Return artifact image manifest for tracking/debug UI."""
     redis_service = get_redis_service()
     job = redis_service.get_job(job_id)
@@ -1228,6 +1225,7 @@ async def get_job_artifacts(job_id: str):
             message=f"Job {job_id} not found",
             status_code=404,
         )
+    _require_job_access(job, current_user)
 
     prefix = f"/api/v1/jobs/{job_id}/artifacts"
     artifacts_root = job_dir / "artifacts"
@@ -1288,8 +1286,13 @@ async def get_job_artifacts(job_id: str):
 
 @router.get("/{job_id}/artifacts/file")
 async def get_job_artifact_file(
-    job_id: str, path: str = Query(..., description="Artifact path relative to job dir")
+    job_id: str,
+    path: str = Query(..., description="Artifact path relative to job dir"),
+    current_user=Depends(get_current_user_optional),
 ):
     """Read a single artifact file by relative path."""
+    redis_service = get_redis_service()
+    job = redis_service.get_job(job_id)
+    _require_job_access(job, current_user)
     target = _safe_artifact_path(job_id, path)
     return FileResponse(path=target)

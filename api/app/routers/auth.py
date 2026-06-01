@@ -433,22 +433,24 @@ def _set_auth_cookies(
 ) -> None:
     """Set authentication cookies."""
     from app.config import get_settings
-    secure = get_settings().cookie_secure
-    # Access token cookie - 1 hour
+
+    settings = get_settings()
+    secure = settings.cookie_secure
+    access_max_age = max(1, int(settings.jwt_access_expire_minutes) * 60)
+    refresh_max_age = max(1, int(settings.jwt_refresh_expire_days) * 24 * 3600)
     response.set_cookie(
         key="access_token",
         value=access_token,
-        max_age=3600,
+        max_age=access_max_age,
         httponly=True,
         secure=secure,
         samesite="strict",
         path="/",
     )
-    # Refresh token cookie - 30 days
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
-        max_age=30 * 24 * 3600,
+        max_age=refresh_max_age,
         httponly=True,
         secure=secure,
         samesite="strict",

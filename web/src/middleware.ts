@@ -21,8 +21,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/setup") ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/api/v1/auth/") ||
-    pathname.startsWith("/api/v1/setup/") ||
-    pathname.startsWith("/api/v1/config/")
+    pathname.startsWith("/api/v1/setup/")
   ) {
     return NextResponse.next()
   }
@@ -33,12 +32,13 @@ export async function middleware(request: NextRequest) {
     // API routes: allow through if user has auth cookie or bearer token
     const apiBearerToken = process.env.API_BEARER_TOKEN
     const hasAuthorizationHeader = request.headers.has("authorization")
+    const isPublicDeployModeApi = pathname === "/api/v1/config/deploy-mode"
 
     if (hasAuthorizationHeader && apiBearerToken) {
       return NextResponse.next()
     }
 
-    if (!hasAuthToken) {
+    if (!hasAuthToken && !isPublicDeployModeApi) {
       return NextResponse.json(
         {
           code: "auth_required",
@@ -48,7 +48,7 @@ export async function middleware(request: NextRequest) {
       )
     }
 
-    if (!apiBearerToken || hasAuthorizationHeader) {
+    if (!apiBearerToken) {
       return NextResponse.next()
     }
 
