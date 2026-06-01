@@ -13,6 +13,19 @@ from app import worker
 from app.worker_helpers._job_options import JobOptions
 
 
+def test_resolve_enable_layout_defaults_missing_legacy_option() -> None:
+    assert worker._resolve_enable_layout(SimpleNamespace()) is True
+    assert worker._resolve_enable_layout(SimpleNamespace(enable_layout=None)) is True
+    assert worker._resolve_enable_layout(SimpleNamespace(enable_layout=True)) is True
+    assert worker._resolve_enable_layout(SimpleNamespace(enable_layout=False)) is False
+
+
+def test_resolve_enable_sam_defaults_missing_legacy_option() -> None:
+    assert worker._resolve_enable_sam(SimpleNamespace()) is None
+    assert worker._resolve_enable_sam(SimpleNamespace(enable_sam=True)) is True
+    assert worker._resolve_enable_sam(SimpleNamespace(enable_sam=False)) is False
+
+
 class _FakeRedisService:
     def __init__(self) -> None:
         self.updates: list[dict] = []
@@ -59,6 +72,7 @@ def test_fast_ppt_generation_forwards_ocr_image_region_skip(
 
     redis_service = _FakeRedisService()
     captured_ocr_kwargs: dict[str, object] = {}
+    captured_setup_kwargs: list[dict[str, object]] = []
 
     monkeypatch.setattr(worker, "_job_dir", lambda job_id: job_dir)
     monkeypatch.setattr(worker, "get_settings", lambda: _FakeSettings())
@@ -81,10 +95,9 @@ def test_fast_ppt_generation_forwards_ocr_image_region_skip(
             ],
         },
     )
-    monkeypatch.setattr(
-        worker,
-        "setup_ocr_runtime",
-        lambda **kwargs: SimpleNamespace(
+    def _fake_setup_ocr_runtime(**kwargs):
+        captured_setup_kwargs.append(kwargs)
+        return SimpleNamespace(
             ocr_manager=object(),
             text_refiner=None,
             linebreak_refiner=None,
@@ -100,8 +113,9 @@ def test_fast_ppt_generation_forwards_ocr_image_region_skip(
             setup_warning=None,
             linebreak_mode="disabled",
             linebreak_unavailable_reason=None,
-        ),
-    )
+        )
+
+    monkeypatch.setattr(worker, "setup_ocr_runtime", _fake_setup_ocr_runtime)
     monkeypatch.setattr(
         worker,
         "build_ocr_debug_payload",
@@ -131,4 +145,7 @@ def test_fast_ppt_generation_forwards_ocr_image_region_skip(
     )
 
     assert captured_ocr_kwargs["skip_image_region_detection"] is True
+    assert captured_setup_kwargs[0]["enable_layout"] is True
+    captured_ocr_kwargs["ocr_runtime_factory"]()
+    assert captured_setup_kwargs[1]["enable_layout"] is True
     assert (job_dir / "output.pptx").exists()

@@ -42,6 +42,7 @@
 
 - The worker should receive effective values that reflect the validated job config.
 - If a value is intentionally forced for a provider branch, the branch must be explicit and reviewable.
+- Worker runtime reads for newly introduced option fields must be backward-compatible with old queued or serialized `JobOptions` objects. If a missing attribute would crash an in-flight job, resolve it through an explicit default such as `getattr(options, "field_name", <documented default>)`.
 
 ### 4. Validation & Error Matrix
 
@@ -51,6 +52,7 @@
 | Field is unsupported for a provider | Override only in a documented provider-specific branch |
 | Structured field is dropped accidentally | Treat as a contract bug and add regression test |
 | Legacy/dead worker kwarg is still emitted | Remove it or document why it remains |
+| Existing queued `JobOptions` object lacks a newly added field | Use the documented default and add a compatibility regression test |
 
 ### 5. Good / Base / Bad Cases
 
@@ -67,6 +69,7 @@
   - paired flags that must travel together
   - provider-specific override branches
   - unrelated defaults remain unchanged
+- Add worker compatibility tests when runtime code starts reading a new `JobOptions` attribute that may be absent from already queued jobs.
 
 Minimum regression pattern:
 

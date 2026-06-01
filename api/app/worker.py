@@ -64,6 +64,21 @@ logger = get_logger(__name__)
 _PROGRESS_MAX_PROCESSING = 99       # progress clamped to 0..99 during processing; 100 = done
 
 
+def _resolve_enable_layout(options: Any) -> bool:
+    """Return layout detection flag, defaulting old queued options to enabled."""
+
+    value = getattr(options, "enable_layout", True)
+    if value is None:
+        return True
+    return bool(value)
+
+
+def _resolve_enable_sam(options: Any) -> bool | None:
+    """Return optional SAM flag, preserving legacy jobs that lack the field."""
+
+    return getattr(options, "enable_sam", None)
+
+
 def _retrieve_job_secrets(job_id: str) -> dict[str, str]:
     """Retrieve sensitive keys stored separately for this job.
 
@@ -71,6 +86,7 @@ def _retrieve_job_secrets(job_id: str) -> dict[str, str]:
     Falls back to empty dict if secrets not found (e.g., legacy jobs).
     """
     try:
+        redis_service = get_redis_service()
         return redis_service.get_job_secrets(job_id)
     except Exception:
         logger.debug("Could not retrieve secrets for job %s", job_id, exc_info=True)
@@ -178,6 +194,8 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
 
     # --- Normalize all numeric parameters via extracted module ---
     normalize_job_options(options, default_ocr_render_dpi, ocr_concurrency)
+    enable_layout = _resolve_enable_layout(options)
+    enable_sam = _resolve_enable_sam(options)
 
     # --- Derived values after normalization ---
     effective_ocr_render_dpi = int(options.ocr_render_dpi)
@@ -485,6 +503,8 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
                 ocr_geometry_mode=options.ocr_geometry_mode,
                 ocr_ai_linebreak_assist=options.ocr_ai_linebreak_assist,
                 ocr_strict_mode=options.ocr_strict_mode,
+                enable_layout=enable_layout,
+                enable_sam=enable_sam,
             )
             ocr_manager = ocr_setup.ocr_manager
             text_refiner = ocr_setup.text_refiner
@@ -538,6 +558,8 @@ def process_pdf_job(job_id: str, *, options: JobOptions) -> None:
                     ocr_geometry_mode=options.ocr_geometry_mode,
                     ocr_ai_linebreak_assist=options.ocr_ai_linebreak_assist,
                     ocr_strict_mode=options.ocr_strict_mode,
+                    enable_layout=enable_layout,
+                    enable_sam=enable_sam,
                 )
 
             if ocr_setup.setup_warning:
