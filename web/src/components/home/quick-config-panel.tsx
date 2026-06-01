@@ -59,7 +59,7 @@ function ParseModeGrid({
   onChange: (mode: HomeParseMode) => void
 }) {
   return (
-    <div className="grid grid-cols-5 gap-1">
+    <div className="grid grid-cols-4 gap-1">
       {HOME_PARSE_MODE_OPTIONS.map((option) => {
         const active = option.id === value
         return (
@@ -102,9 +102,10 @@ export function QuickConfigPanel({
 
   const handleParseModeChange = React.useCallback(
     (mode: HomeParseMode) => {
+      if (mode === activeParseMode) return
       updateSettingsSnapshot((prev) => applyHomeParseMode(prev, mode))
     },
-    [updateSettingsSnapshot],
+    [activeParseMode, updateSettingsSnapshot],
   )
 
   const selectedLayoutModel = settingsSnapshot.ocrAiLayoutModel || "pp_doclayout_v3"
@@ -112,9 +113,12 @@ export function QuickConfigPanel({
   const selectedLocalOcrKey =
     settingsSnapshot.ocrProvider === "tesseract" ? "tesseract" : "paddleocr"
   const selectedLocalOcrReady = modelStatus?.local?.[selectedLocalOcrKey]?.ready ?? false
+  const isAiBlockRecognition =
+    settingsSnapshot.parseEngineMode === "remote_ocr" &&
+    settingsSnapshot.ocrAiChainMode === "layout_block"
 
   const showAiConfigWarning =
-    (activeParseMode === "ai_chunk" || activeParseMode === "ai_direct") &&
+    (activeParseMode === "ai_direct" || isAiBlockRecognition) &&
     !hasAiOcrConfig(settingsSnapshot)
   const showBaiduWarning =
     activeParseMode === "baidu_doc" && !hasBaiduDocConfig(settingsSnapshot)
@@ -122,10 +126,11 @@ export function QuickConfigPanel({
     activeParseMode === "mineru_cloud" && !settingsSnapshot.mineruApiToken.trim()
   const showLocalModelWarning =
     activeParseMode === "local_chunk" &&
+    !isAiBlockRecognition &&
     modelStatus !== null &&
     (!selectedLocalOcrReady || !selectedLayoutReady)
   const showAiChunkModelWarning =
-    activeParseMode === "ai_chunk" &&
+    isAiBlockRecognition &&
     modelStatus !== null &&
     !selectedLayoutReady
 
@@ -163,6 +168,7 @@ export function QuickConfigPanel({
               ocrAiChainMode={settingsSnapshot.ocrAiChainMode}
               ocrAiLayoutModel={settingsSnapshot.ocrAiLayoutModel}
               ocrProvider={settingsSnapshot.ocrProvider}
+              enableSam={settingsSnapshot.enableSam}
               onStatusChange={() => void refetchModelStatus()}
             />
           </div>
@@ -186,7 +192,7 @@ export function QuickConfigPanel({
 
         {showAiChunkModelWarning && (
           <Callout variant="warning" icon={<AlertCircleIcon />}>
-            AI 切块需要可用的本地版面模型，模型下载和 SAM 开关在设置页管理
+            本地切块 + AI 识别需要可用的本地版面模型，模型下载和识别引擎在设置页管理
             <Link href="/settings" className="ml-1 font-medium underline">
               去设置
             </Link>

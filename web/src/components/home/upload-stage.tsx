@@ -55,9 +55,10 @@ export function UploadStage({
 
   const handleParsingChange = React.useCallback(
     (mode: HomeParseMode) => {
+      if (mode === activeParseMode) return
       updateSettingsSnapshot((prev) => applyHomeParseMode(prev, mode))
     },
-    [updateSettingsSnapshot],
+    [activeParseMode, updateSettingsSnapshot],
   )
 
   // Preset state

@@ -63,6 +63,7 @@ function getProvidersForEngine(
   ocrAiChainMode?: OcrAiChainMode,
   ocrAiLayoutModel?: OcrAiLayoutModel,
   ocrProvider?: OcrProvider,
+  enableSam?: boolean,
 ): ProviderDisplay[] {
   if (!mode) return PROVIDER_DISPLAY
   let keys = ENGINE_PROVIDER_MAP[mode]
@@ -72,6 +73,9 @@ function getProvidersForEngine(
       ocrProvider === "tesseract"
         ? ["tesseract"]
         : ["paddleocr", selectedLayoutModel]
+    if (enableSam && ocrProvider !== "tesseract") {
+      keys = [...keys, "sam"]
+    }
   } else if (mode === "remote_ocr") {
     keys =
       ocrAiChainMode === "direct"
@@ -469,6 +473,8 @@ export interface ModelStatusBadgeProps {
   ocrAiLayoutModel?: OcrAiLayoutModel
   /** Current OCR provider — controls which local OCR dependency is required. */
   ocrProvider?: OcrProvider
+  /** Whether SAM polygon refinement is enabled for local layout detection. */
+  enableSam?: boolean
   /** Called after a successful download to refresh status. */
   onStatusChange?: () => void
   /** Additional CSS class. */
@@ -492,6 +498,7 @@ export function ModelStatusBadge({
   ocrAiChainMode,
   ocrAiLayoutModel,
   ocrProvider,
+  enableSam,
   onStatusChange,
   className,
 }: ModelStatusBadgeProps) {
@@ -501,8 +508,9 @@ export function ModelStatusBadge({
       ocrAiChainMode,
       ocrAiLayoutModel,
       ocrProvider,
+      enableSam,
     ),
-    [parseEngineMode, ocrAiChainMode, ocrAiLayoutModel, ocrProvider]
+    [parseEngineMode, ocrAiChainMode, ocrAiLayoutModel, ocrProvider, enableSam]
   )
   const [expanded, setExpanded] = React.useState(false)
   const [triggerRect, setTriggerRect] = React.useState<DOMRect | null>(null)

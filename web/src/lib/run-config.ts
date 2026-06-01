@@ -113,14 +113,13 @@ export type HomeParseMode =
 
 export const HOME_PARSE_MODE_OPTIONS: Array<{ id: HomeParseMode; label: string }> = [
   { id: "local_chunk", label: "本地切块" },
-  { id: "ai_chunk", label: "AI 切块" },
   { id: "ai_direct", label: "AI 直出" },
   { id: "mineru_cloud", label: "MinerU" },
   { id: "baidu_doc", label: "百度" },
 ]
 
 export const HOME_PARSE_MODE_DESCRIPTIONS: Record<HomeParseMode, string> = {
-  local_chunk: "本地 OCR + 版面检测，适合常规扫描文档。",
+  local_chunk: "本地版面切块，可在设置页选择 PaddleOCR 或 AI OCR 识别。",
   ai_chunk: "本地版面切块后交给 AI OCR，适合复杂版式。",
   ai_direct: "整页直接交给 AI OCR，不使用本地版面切块。",
   mineru_cloud: "使用 MinerU 云端文档解析。",
@@ -890,7 +889,7 @@ export function resolveHomeParseMode(settings: Settings): HomeParseMode {
     return "baidu_doc"
   }
   if (parseEngineMode === "remote_ocr") {
-    return settings.ocrAiChainMode === "direct" ? "ai_direct" : "ai_chunk"
+    return settings.ocrAiChainMode === "direct" ? "ai_direct" : "local_chunk"
   }
   return "local_chunk"
 }

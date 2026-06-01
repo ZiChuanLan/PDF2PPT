@@ -13,6 +13,7 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from app import main
+from app.services import redis_service
 
 
 def _build_test_app() -> FastAPI:
@@ -24,6 +25,14 @@ def _build_test_app() -> FastAPI:
 
     @app.get("/api/ping")
     async def ping():
+        return {"ok": True}
+
+    @app.get("/api/v1/models/status")
+    async def model_status():
+        return {"ok": True}
+
+    @app.get("/api/v1/models/download/status")
+    async def model_download_status():
         return {"ok": True}
 
     @app.get("/health")
@@ -78,3 +87,26 @@ def test_api_requests_do_not_require_token_when_auth_is_disabled(monkeypatch) ->
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+
+
+def test_model_status_polling_is_not_rate_limited(monkeypatch) -> None:
+    class _DenyingRedisService:
+        def check_rate_limit(self, client_ip: str, max_requests: int, window_seconds: int):
+            _ = client_ip
+            _ = max_requests
+            _ = window_seconds
+            return False, 0
+
+    monkeypatch.setattr(main.settings, "api_bearer_token", None)
+    monkeypatch.setattr(redis_service, "get_redis_service", lambda: _DenyingRedisService())
+
+    response = _get("/api/v1/models/status")
+    download_response = _get("/api/v1/models/download/status")
+    regular_response = _get("/api/ping")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert download_response.status_code == 200
+    assert download_response.json() == {"ok": True}
+    assert regular_response.status_code == 429
+    assert regular_response.json()["code"] == "rate_limit_exceeded"

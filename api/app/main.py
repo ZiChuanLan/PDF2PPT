@@ -28,6 +28,16 @@ def _is_loopback_host(value: str | None) -> bool:
     return host in {"127.0.0.1", "localhost", "::1", "[::1]"}
 
 
+def _is_rate_limit_exempt_path(path: str) -> bool:
+    """Return True for lightweight polling endpoints that should not spend user quota."""
+    if path.startswith("/health"):
+        return True
+    return path in {
+        "/api/v1/models/status",
+        "/api/v1/models/download/status",
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
@@ -164,8 +174,8 @@ async def request_id_middleware(request: Request, call_next):
                     response.headers["X-Request-ID"] = request_id
                     return response
 
-    # Rate limiting (skip health check and static assets)
-    if not request.url.path.startswith("/health") and request.url.path.startswith("/api/"):
+    # Rate limiting (skip health checks and lightweight model status polling)
+    if request.url.path.startswith("/api/") and not _is_rate_limit_exempt_path(request.url.path):
         from app.services.redis_service import get_redis_service
         from app.config import get_settings as _gs
         _rs = _gs()
