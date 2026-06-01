@@ -76,7 +76,6 @@ from ._ai_helpers import (
     _env_int,
     _layout_geometry_kind,
     _normalize_ai_layout_model_name,
-    _resolve_paddlex_layout_model_name,
     _run_chat_completion_request,
     _sanitize_debug_value,
     _utc_now_iso,
@@ -139,7 +138,6 @@ class _LayoutBlockMixin:
 
     def _get_local_layout_model(self) -> Any:
         normalized_layout_model = _normalize_ai_layout_model_name(self.layout_model)
-        paddlex_model_name = _resolve_paddlex_layout_model_name(normalized_layout_model)
         with self.__class__._local_layout_model_lock:
             cached_model = self.__class__._local_layout_model
             cached_name = self.__class__._local_layout_model_name
@@ -147,10 +145,10 @@ class _LayoutBlockMixin:
                 return cached_model
 
             try:
-                import paddlex
+                from .layout_models import get_layout_model
             except Exception as e:
                 raise RuntimeError(
-                    "Local layout_block OCR requires `paddlex` package"
+                    "Local layout_block OCR requires a supported layout model provider"
                 ) from e
 
             init_timeout_s = max(
@@ -158,16 +156,15 @@ class _LayoutBlockMixin:
                 _LAYOUT_MODEL_INIT_TIMEOUT_S,
             )
             model = _run_in_daemon_thread_with_timeout(
-                lambda: paddlex.create_model(paddlex_model_name),
+                lambda: get_layout_model(normalized_layout_model),
                 timeout_s=init_timeout_s,
                 label=f"{normalized_layout_model}:init",
             )
             self.__class__._local_layout_model = model
             self.__class__._local_layout_model_name = normalized_layout_model
             logger.info(
-                "Initialized local layout model for AI OCR (layout_model=%s, paddlex_model=%s)",
+                "Initialized local layout model for AI OCR (layout_model=%s)",
                 normalized_layout_model,
-                paddlex_model_name,
             )
             return model
 
@@ -224,7 +221,7 @@ class _LayoutBlockMixin:
                 )
                 if not isinstance(root, dict):
                     continue
-                boxes = root.get("boxes")
+                boxes = [root] if root.get("bbox") is not None else root.get("boxes")
                 if not isinstance(boxes, list):
                     continue
                 for raw_box in boxes:
@@ -755,15 +752,13 @@ class _LayoutBlockMixin:
     def _resolve_local_layout_block_max_workers(self, *, effective_model: str) -> int:
         if self._layout_block_max_concurrency_override is not None:
             return int(self._layout_block_max_concurrency_override)
-        return _LAYOUT_BLOCK_MAX_CONCURRENCY
 
-        provider_id = str(self.provider_id or "").strip().lower()
         lowered_model = str(effective_model or "").strip().lower()
         if "qwen3-vl" in lowered_model:
             tuning = get_vendor_tuning(self.provider_id)
             if tuning.layout_block_max_concurrency is not None:
                 return tuning.layout_block_max_concurrency
-        return 4
+        return _LAYOUT_BLOCK_MAX_CONCURRENCY
 
     def _resolve_local_layout_block_progress_log_interval_s(self) -> float:
         return max(0.0, _LAYOUT_BLOCK_PROGRESS_LOG_INTERVAL_S)
@@ -945,7 +940,11 @@ class _LayoutBlockMixin:
                 # High confidence → trust the model more, raise threshold
                 base_threshold *= _HIGH_CONFIDENCE_COVERAGE_MULTIPLIER
 
-        if text_blocks and coverage < base_threshold:
+        if (
+            text_blocks
+            and page_area > _BYPASS_LARGE_IMAGE_AREA
+            and coverage < base_threshold
+        ):
             logger.info(
                 "Layout text coverage %.1f%% below adaptive threshold %.0f%% — bypassing block OCR"
                 " (text_blocks=%s, avg_conf=%.2f, layout_model=%s, image=%s)",

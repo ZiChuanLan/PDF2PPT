@@ -10,7 +10,7 @@ API_ROOT = Path(__file__).resolve().parents[1]
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from app.routers import jobs
+from app.routers import _ocr_check as ocr_check
 from app.convert.ocr.routing import (
     ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
     ROUTE_KIND_REMOTE_DOC_PARSER,
@@ -42,10 +42,12 @@ def test_ai_ocr_capability_check_reports_effective_route(monkeypatch, tmp_path) 
         captured.update(kwargs)
         return _FakeRemoteClient(ROUTE_KIND_REMOTE_DOC_PARSER)
 
-    monkeypatch.setattr(jobs, "_create_ai_ocr_probe_image", lambda: probe_image)
-    monkeypatch.setattr(jobs, "create_remote_ocr_client", _fake_create_remote_ocr_client)
+    monkeypatch.setattr(ocr_check, "create_ai_ocr_probe_image", lambda: probe_image)
+    monkeypatch.setattr(
+        ocr_check, "create_remote_ocr_client", _fake_create_remote_ocr_client
+    )
 
-    response = jobs._run_ai_ocr_capability_check(
+    response = ocr_check.run_ai_ocr_capability_check(
         provider="siliconflow",
         api_key="test-key",
         base_url="https://api.siliconflow.cn/v1",
@@ -84,10 +86,12 @@ def test_ai_ocr_capability_check_passes_layout_block_route(monkeypatch, tmp_path
         captured.update(kwargs)
         return _FakeRemoteClient(ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR)
 
-    monkeypatch.setattr(jobs, "_create_ai_ocr_probe_image", lambda: probe_image)
-    monkeypatch.setattr(jobs, "create_remote_ocr_client", _fake_create_remote_ocr_client)
+    monkeypatch.setattr(ocr_check, "create_ai_ocr_probe_image", lambda: probe_image)
+    monkeypatch.setattr(
+        ocr_check, "create_remote_ocr_client", _fake_create_remote_ocr_client
+    )
 
-    response = jobs._run_ai_ocr_capability_check(
+    response = ocr_check.run_ai_ocr_capability_check(
         provider="openai",
         api_key="test-key",
         base_url="https://example.com/v1",
@@ -130,10 +134,12 @@ def test_ai_ocr_capability_check_forwards_experimental_request_controls(
         captured.update(kwargs)
         return _FakeRemoteClient(ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR)
 
-    monkeypatch.setattr(jobs, "_create_ai_ocr_probe_image", lambda: probe_image)
-    monkeypatch.setattr(jobs, "create_remote_ocr_client", _fake_create_remote_ocr_client)
+    monkeypatch.setattr(ocr_check, "create_ai_ocr_probe_image", lambda: probe_image)
+    monkeypatch.setattr(
+        ocr_check, "create_remote_ocr_client", _fake_create_remote_ocr_client
+    )
 
-    response = jobs._run_ai_ocr_capability_check(
+    response = ocr_check.run_ai_ocr_capability_check(
         provider="openai",
         api_key="test-key",
         base_url="https://example.com/v1",
@@ -163,10 +169,12 @@ def test_ai_ocr_capability_check_forwards_prompt_settings(monkeypatch, tmp_path)
         captured.update(kwargs)
         return _FakeRemoteClient(ROUTE_KIND_REMOTE_DOC_PARSER)
 
-    monkeypatch.setattr(jobs, "_create_ai_ocr_probe_image", lambda: probe_image)
-    monkeypatch.setattr(jobs, "create_remote_ocr_client", _fake_create_remote_ocr_client)
+    monkeypatch.setattr(ocr_check, "create_ai_ocr_probe_image", lambda: probe_image)
+    monkeypatch.setattr(
+        ocr_check, "create_remote_ocr_client", _fake_create_remote_ocr_client
+    )
 
-    response = jobs._run_ai_ocr_capability_check(
+    response = ocr_check.run_ai_ocr_capability_check(
         provider="openai",
         api_key="test-key",
         base_url="https://example.com/v1",
@@ -186,7 +194,7 @@ def test_ai_ocr_capability_check_forwards_prompt_settings(monkeypatch, tmp_path)
 
 
 def test_create_ai_ocr_probe_image_renders_large_non_blank_text() -> None:
-    probe_image = jobs._create_ai_ocr_probe_image()
+    probe_image = ocr_check.create_ai_ocr_probe_image()
     try:
         image = Image.open(probe_image).convert("RGB")
         assert image.width >= 1440

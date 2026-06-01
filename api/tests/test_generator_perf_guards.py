@@ -13,7 +13,9 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from app.convert.pptx import generator
-from app.convert.pptx.generator import main as _gen_main
+from app.convert.pptx.generator import _scanned_page as _gen_scanned_page
+from app.convert.pptx.generator import _text_page as _gen_text_page
+from app.convert.pptx.generator import probing as _gen_probing
 
 
 def test_visual_wrap_probe_skips_clear_single_line_label() -> None:
@@ -166,7 +168,7 @@ def test_generate_pptx_skips_final_preview_export_when_disabled(
     preview_calls: list[int] = []
 
     monkeypatch.setattr(
-        generator,
+        _gen_probing,
         "_export_final_preview_page_image",
         lambda **_kwargs: preview_calls.append(1),
     )
@@ -198,7 +200,7 @@ def test_generate_pptx_keeps_final_preview_export_when_enabled(
     preview_calls: list[int] = []
 
     monkeypatch.setattr(
-        generator,
+        _gen_probing,
         "_export_final_preview_page_image",
         lambda **_kwargs: preview_calls.append(1),
     )
@@ -267,9 +269,11 @@ def test_generate_pptx_reports_progress_for_scanned_pages(
         img.save(out_path)
         return img
 
-    monkeypatch.setattr(_gen_main, "_render_pdf_page_png", _fake_render_pdf_page_png)
     monkeypatch.setattr(
-        generator,
+        _gen_scanned_page, "_render_pdf_page_png", _fake_render_pdf_page_png
+    )
+    monkeypatch.setattr(
+        _gen_scanned_page,
         "_build_scanned_image_region_infos",
         lambda **_kwargs: [],
     )
@@ -325,9 +329,11 @@ def test_generate_pptx_scanned_heading_keeps_left_title_uncentered_and_unforced_
         img.save(out_path)
         return img
 
-    monkeypatch.setattr(_gen_main, "_render_pdf_page_png", _fake_render_pdf_page_png)
     monkeypatch.setattr(
-        generator,
+        _gen_scanned_page, "_render_pdf_page_png", _fake_render_pdf_page_png
+    )
+    monkeypatch.setattr(
+        _gen_scanned_page,
         "_build_scanned_image_region_infos",
         lambda **_kwargs: [],
     )
@@ -402,14 +408,16 @@ def test_generate_pptx_fast_mode_skips_image_region_analysis_and_preview_export(
         image_region_calls["count"] += 1
         return []
 
-    monkeypatch.setattr(_gen_main, "_render_pdf_page_png", _fake_render_pdf_page_png)
     monkeypatch.setattr(
-        generator,
+        _gen_scanned_page, "_render_pdf_page_png", _fake_render_pdf_page_png
+    )
+    monkeypatch.setattr(
+        _gen_scanned_page,
         "_build_scanned_image_region_infos",
         _fake_build_scanned_image_region_infos,
     )
     monkeypatch.setattr(
-        generator,
+        _gen_probing,
         "_export_final_preview_page_image",
         lambda **_kwargs: preview_calls.__setitem__("count", preview_calls["count"] + 1),
     )
@@ -470,7 +478,9 @@ def test_generate_pptx_text_page_adds_footer_fill_overlay_when_notebooklm_remove
         img.save(out_path)
         return img
 
-    monkeypatch.setattr(_gen_main, "_render_pdf_page_png", _fake_render_pdf_page_png)
+    monkeypatch.setattr(
+        _gen_text_page, "_render_pdf_page_png", _fake_render_pdf_page_png
+    )
 
     source_pdf = tmp_path / "input-footer.pdf"
     source_pdf.write_bytes(b"%PDF-1.4\n%stub\n")
@@ -581,14 +591,16 @@ def test_generate_pptx_mineru_text_page_fullpage_keeps_images_in_background(
         Image.open(cleaned_render_path).save(out_path)
         return out_path
 
-    monkeypatch.setattr(_gen_main, "_render_pdf_page_png", _fake_render_pdf_page_png)
     monkeypatch.setattr(
-        generator,
+        _gen_text_page, "_render_pdf_page_png", _fake_render_pdf_page_png
+    )
+    monkeypatch.setattr(
+        _gen_text_page,
         "_erase_regions_in_render_image",
         _fake_erase_regions_in_render_image,
     )
     monkeypatch.setattr(
-        generator,
+        _gen_text_page,
         "_clear_regions_for_transparent_crops",
         _fake_clear_regions_for_transparent_crops,
     )
@@ -684,19 +696,21 @@ def test_generate_pptx_scanned_page_uses_footer_ocr_fallback_when_ir_has_no_foot
         Image.new("RGB", (800, 450), color=(255, 255, 255)).save(out_path)
         return out_path
 
-    monkeypatch.setattr(_gen_main, "_render_pdf_page_png", _fake_render_pdf_page_png)
     monkeypatch.setattr(
-        generator,
+        _gen_scanned_page, "_render_pdf_page_png", _fake_render_pdf_page_png
+    )
+    monkeypatch.setattr(
+        _gen_scanned_page,
         "_build_scanned_image_region_infos",
         lambda **_kwargs: [],
     )
     monkeypatch.setattr(
-        generator,
+        _gen_scanned_page,
         "_detect_notebooklm_footer_bbox_from_render",
         lambda **_kwargs: [640.0, 372.0, 700.0, 388.0],
     )
     monkeypatch.setattr(
-        generator,
+        _gen_scanned_page,
         "_erase_regions_in_render_image",
         _fake_erase_regions_in_render_image,
     )

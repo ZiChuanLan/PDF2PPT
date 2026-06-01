@@ -401,10 +401,16 @@ def _footer_elements_match(
     ):
         return False
 
-    existing_text = _normalize_footer_brand_text(_extract_text(existing))
-    candidate_text = _normalize_footer_brand_text(_extract_text(candidate))
+    existing_raw_text = _extract_text(existing)
+    candidate_raw_text = _extract_text(candidate)
+    existing_text = _normalize_footer_brand_text(existing_raw_text)
+    candidate_text = _normalize_footer_brand_text(candidate_raw_text)
     if existing_text and candidate_text and existing_text != candidate_text:
-        return False
+        same_brand_footer = _is_notebooklm_footer_brand_text(
+            existing_raw_text
+        ) and _is_notebooklm_footer_brand_text(candidate_raw_text)
+        if not same_brand_footer:
+            return False
 
     try:
         ex0, ey0, ex1, ey1 = [float(v) for v in existing_bbox]

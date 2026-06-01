@@ -199,9 +199,7 @@ def _build_scanned_page_slide(
     """Build a slide for a scanned PDF page (no text layer)."""
 
     should_split_scanned_image_regions = scanned_page_mode_id != "fullpage"
-    skip_scanned_image_region_analysis = (
-        is_speed_ppt_generation and not should_split_scanned_image_regions
-    )
+    skip_scanned_image_region_analysis = bool(is_speed_ppt_generation)
     overlay_scanned_image_crops = bool(should_split_scanned_image_regions)
 
     render_path = artifacts / "page_renders" / f"page-{page_index:04d}.png"

@@ -5,6 +5,14 @@ have been moved to sub-modules prefixed with ``_`` to keep the public API
 stable while reducing individual file sizes.
 """
 
+# Shared constants retained on this facade for backward-compatible imports.
+from .base import (
+    _DEFAULT_PADDLE_OCR_VL_MODEL,
+    _PADDLE_OCR_VL_MODEL_V1,
+    _PADDLE_OCR_VL_MODEL_V15,
+)
+from .ai_client import AiOcrClient, AiOcrTextRefiner
+
 # Remote OCR client spec and factory functions
 from ._ocr_remote import (
     RemoteOcrClientSpec,
@@ -52,11 +60,16 @@ from .runtime_probe import (
 
 __all__ = [
     "BaiduOcrClient",
+    "AiOcrClient",
+    "AiOcrTextRefiner",
     "LazyPaddleOcrClient",
     "OcrManager",
     "PaddleOcrClient",
     "RemoteOcrClientSpec",
     "TesseractOcrClient",
+    "_DEFAULT_PADDLE_OCR_VL_MODEL",
+    "_PADDLE_OCR_VL_MODEL_V1",
+    "_PADDLE_OCR_VL_MODEL_V15",
     "_bbox_iou",
     "_bbox_overlap_smaller",
     "_build_primary_ocr_quality_notes",

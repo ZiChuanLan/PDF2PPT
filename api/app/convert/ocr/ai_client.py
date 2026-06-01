@@ -242,15 +242,6 @@ class AiOcrClient(_PaddleDocMixin, _LayoutBlockMixin, _AiChatMixin, OcrProvider)
 
         if (
             _is_paddleocr_vl_model(self.model)
-            and self.requested_route_kind == ROUTE_KIND_REMOTE_PROMPT_OCR
-        ):
-            raise ValueError(
-                "PaddleOCR-VL does not support the direct OCR chain. "
-                "Choose `内置文档解析（PaddleOCR-VL）` / `doc_parser` instead."
-            )
-
-        if (
-            _is_paddleocr_vl_model(self.model)
             and self.requested_route_kind != ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR
         ):
             should_use_doc_parser = self._should_use_paddle_doc_parser()

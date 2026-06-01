@@ -9,6 +9,7 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from app.convert.ocr import local_providers
+from app.convert.ocr import _ocr_remote
 from app.convert.ocr.routing import (
     ROUTE_KIND_HYBRID_AUTO,
     ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
@@ -105,6 +106,7 @@ def test_strict_auto_manager_tracks_effective_remote_route(monkeypatch) -> None:
             request_tpm_limit: int | None = None,
             request_max_retries: int | None = None,
             route_kind: str | None = None,
+            **_: object,
         ) -> None:
             _ = api_key
             _ = paddle_doc_max_side_px
@@ -127,7 +129,7 @@ def test_strict_auto_manager_tracks_effective_remote_route(monkeypatch) -> None:
                 }
             )
 
-    monkeypatch.setattr(local_providers, "AiOcrClient", _FakeAiOcrClient)
+    monkeypatch.setattr(_ocr_remote, "AiOcrClient", _FakeAiOcrClient)
 
     manager = local_providers.create_ocr_manager(
         provider="auto",

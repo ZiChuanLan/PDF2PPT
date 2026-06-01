@@ -9,7 +9,7 @@ API_ROOT = Path(__file__).resolve().parents[1]
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from app.convert.ocr import local_providers
+from app.convert.ocr import _ocr_remote, _tesseract_ocr, local_providers
 from app.convert.ocr.base import _DEFAULT_PADDLE_OCR_VL_MODEL
 from app.convert.ocr.routing import (
     ROUTE_KIND_HYBRID_AUTO,
@@ -34,6 +34,7 @@ class DummyAiOcrClient:
         request_tpm_limit: int | None = None,
         request_max_retries: int | None = None,
         route_kind: str | None = None,
+        **_: object,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url
@@ -53,7 +54,7 @@ class DummyAiOcrClient:
 
 
 def test_create_ocr_manager_passes_prompt_route_for_aiocr(monkeypatch) -> None:
-    monkeypatch.setattr(local_providers, "AiOcrClient", DummyAiOcrClient)
+    monkeypatch.setattr(_ocr_remote, "AiOcrClient", DummyAiOcrClient)
 
     manager = local_providers.create_ocr_manager(
         provider="aiocr",
@@ -73,7 +74,7 @@ def test_create_ocr_manager_passes_prompt_route_for_aiocr(monkeypatch) -> None:
 def test_create_ocr_manager_forces_doc_parser_route_for_explicit_paddle(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(local_providers, "AiOcrClient", DummyAiOcrClient)
+    monkeypatch.setattr(_ocr_remote, "AiOcrClient", DummyAiOcrClient)
 
     manager = local_providers.create_ocr_manager(
         provider="paddle",
@@ -92,7 +93,7 @@ def test_create_ocr_manager_forces_doc_parser_route_for_explicit_paddle(
 
 
 def test_strict_auto_mode_can_compose_remote_doc_parser(monkeypatch) -> None:
-    monkeypatch.setattr(local_providers, "AiOcrClient", DummyAiOcrClient)
+    monkeypatch.setattr(_ocr_remote, "AiOcrClient", DummyAiOcrClient)
 
     manager = local_providers.create_ocr_manager(
         provider="auto",
@@ -110,7 +111,7 @@ def test_strict_auto_mode_can_compose_remote_doc_parser(monkeypatch) -> None:
 def test_create_ocr_manager_passes_layout_model_for_layout_block_route(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(local_providers, "AiOcrClient", DummyAiOcrClient)
+    monkeypatch.setattr(_ocr_remote, "AiOcrClient", DummyAiOcrClient)
 
     manager = local_providers.create_ocr_manager(
         provider="aiocr",
@@ -134,7 +135,7 @@ def test_tesseract_client_initializes_with_language_normalization_helpers(
     fake_pytesseract = SimpleNamespace(Output=SimpleNamespace(DICT="DICT"))
     monkeypatch.setitem(sys.modules, "pytesseract", fake_pytesseract)
     monkeypatch.setattr(
-        local_providers,
+        _tesseract_ocr,
         "probe_local_tesseract",
         lambda **_: {
             "binary_available": True,

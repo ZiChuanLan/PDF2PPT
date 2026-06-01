@@ -16,6 +16,7 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from app.convert.ocr import ai_client as ai_client_module
+from app.convert.ocr import layout_models as layout_models_module
 from app.convert.ocr import local_providers
 from app.convert.ocr.result_parsing import (
     _is_image_like_layout_label,
@@ -612,7 +613,7 @@ def test_layout_block_route_bypasses_wide_flat_blocks_to_direct_page_ocr(
     )
 
 
-def test_layout_block_route_keeps_non_deepseek_models_on_block_ocr(
+def test_layout_block_route_uses_block_ocr_when_bypass_gate_allows_non_deepseek(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -627,13 +628,10 @@ def test_layout_block_route_keeps_non_deepseek_models_on_block_ocr(
         route_kind=ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR,
     )
 
-    def _unexpected_bypass_check(**kwargs):
-        raise AssertionError("non-DeepSeek layout_block OCR should not evaluate bypass")
-
     monkeypatch.setattr(
         client,
         "_should_bypass_local_layout_block_ocr",
-        _unexpected_bypass_check,
+        lambda **kwargs: None,
     )
     monkeypatch.setattr(
         client,
@@ -979,16 +977,12 @@ def test_local_layout_analysis_serializes_shared_model_predict(
                     self._active -= 1
 
     fake_model = _FakeLayoutModel()
-    create_model_calls: list[str] = []
+    get_layout_model_calls: list[str] = []
 
-    monkeypatch.setitem(
-        sys.modules,
-        "paddlex",
-        types.SimpleNamespace(
-            create_model=lambda model_name: (
-                create_model_calls.append(model_name) or fake_model
-            )
-        ),
+    monkeypatch.setattr(
+        layout_models_module,
+        "get_layout_model",
+        lambda model_id: get_layout_model_calls.append(model_id) or fake_model,
     )
     monkeypatch.setattr(ai_client_module.AiOcrClient, "_local_layout_model", None)
     monkeypatch.setattr(ai_client_module.AiOcrClient, "_local_layout_model_name", None)
@@ -1043,7 +1037,7 @@ def test_local_layout_analysis_serializes_shared_model_predict(
 
     assert not thread_a.is_alive()
     assert not thread_b.is_alive()
-    assert create_model_calls == ["PP-DocLayoutV3"]
+    assert get_layout_model_calls == ["pp_doclayout_v3"]
     assert fake_model.max_active == 1
     assert results["a"][0][0]["bbox"] == [10.0, 10.0, 110.0, 40.0]
     assert results["b"][0][0]["bbox"] == [200.0, 200.0, 320.0, 260.0]

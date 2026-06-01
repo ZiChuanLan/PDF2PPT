@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 
 from PIL import Image
 
-from .base import _clean_str
+from .base import _clean_str, _env_float
 from ._ocr_constants import _AI_REQUEST_TIMEOUT_S, _AI_IMAGE_REGION_TIMEOUT_S
 from .deepseek_parser import _extract_deepseek_tagged_items, _is_deepseek_ocr_model, _looks_like_ocr_prompt_echo_text
 from .json_extraction import _extract_json_list, _extract_message_text, _extract_partial_json_object_list
@@ -19,7 +19,7 @@ from .prompts import build_ai_ocr_direct_prompt, build_ai_ocr_image_region_promp
 from .result_parsing import _extract_deepseek_image_regions, _extract_image_regions_json, _normalize_bbox_px
 from .routing import ROUTE_KIND_LOCAL_LAYOUT_BLOCK_OCR, ROUTE_KIND_REMOTE_DOC_PARSER, ROUTE_KIND_REMOTE_PROMPT_OCR
 from .utils import _coerce_bbox_xyxy, _is_paddleocr_vl_model, _looks_like_structural_gibberish
-from .vendors import _should_send_image_first_for_ai_ocr, get_vendor_tuning
+from .vendors import _should_send_image_first_for_ai_ocr
 from ._ai_helpers import (
     _clone_image_region_payload,
     _compact_debug_text,
@@ -502,7 +502,10 @@ class _AiChatMixin:
         return (out, debug)
 
     def _resolve_model_request_timeout_s(self, *, model_name: str | None) -> float:
-        default_timeout = max(8.0, _AI_REQUEST_TIMEOUT_S)
+        default_timeout = max(
+            8.0,
+            _env_float("OCR_AI_REQUEST_TIMEOUT_S", _AI_REQUEST_TIMEOUT_S),
+        )
         lowered = str(model_name or "").strip().lower()
         provider_id = str(self.provider_id or "").strip().lower()
         if not lowered:
@@ -512,11 +515,23 @@ class _AiChatMixin:
             return max(8.0, default_timeout)
 
         if "deepseek-ocr" in lowered or "deepseekocr" in lowered:
-            tuning = get_vendor_tuning(self.provider_id)
-            if tuning.predict_timeout_override is not None:
-                vendor_default = max(default_timeout, tuning.predict_timeout_override)
-                return max(8.0, vendor_default)
-            return max(8.0, default_timeout)
+            provider_suffix = "".join(
+                ch if ch.isalnum() else "_" for ch in provider_id.upper()
+            )
+            provider_env = (
+                f"OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR_{provider_suffix}"
+                if provider_suffix
+                else ""
+            )
+            if provider_env and os.getenv(provider_env) is not None:
+                return max(8.0, _env_float(provider_env, default_timeout))
+            if os.getenv("OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR") is not None:
+                return max(
+                    8.0,
+                    _env_float("OCR_AI_REQUEST_TIMEOUT_S_DEEPSEEK_OCR", default_timeout),
+                )
+            provider_default = 90.0 if provider_id == "siliconflow" else default_timeout
+            return max(8.0, default_timeout, provider_default)
 
         if "paddleocr-vl" in lowered:
             return max(8.0, default_timeout)
@@ -1088,5 +1103,4 @@ class _AiChatMixin:
         except Exception:
             pass
         return elements
-
 

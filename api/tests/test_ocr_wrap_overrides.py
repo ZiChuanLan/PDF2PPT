@@ -1,26 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
-
-def _load_font_utils_module():
-    module_path = (
-        Path(__file__).resolve().parents[1]
-        / "app"
-        / "convert"
-        / "pptx"
-        / "font_utils.py"
-    )
-    spec = importlib.util.spec_from_file_location("test_font_utils_module", module_path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-font_utils = _load_font_utils_module()
+from app.convert.pptx import font_utils
 
 
 def test_visual_single_line_veto_kept_for_short_text():
