@@ -163,18 +163,20 @@ export function OcrConfigV3Section({ settings, onSettingsChange }: OcrConfigV3Se
                       updateConfig({
                         parsing: {
                           provider: "mineru",
-                          mineruApiToken: "",
-                          mineruBaseUrl: "https://api.mineru.ai",
-                          mineruModelVersion: "vlm",
-                          enableFormula: true,
-                          enableTable: true,
+                          mineruApiToken: config.parsing.mineruApiToken ?? settings.mineruApiToken,
+                          mineruBaseUrl: config.parsing.mineruBaseUrl || settings.mineruBaseUrl || "https://api.mineru.ai",
+                          mineruModelVersion: config.parsing.mineruModelVersion || settings.mineruModelVersion || "vlm",
+                          enableFormula: config.parsing.enableFormula ?? settings.mineruEnableFormula ?? true,
+                          enableTable: config.parsing.enableTable ?? settings.mineruEnableTable ?? true,
+                          mineruLanguage: config.parsing.mineruLanguage ?? settings.mineruLanguage,
+                          mineruIsOcr: config.parsing.mineruIsOcr ?? settings.mineruIsOcr,
                         },
                       })
                     } else if (provider === "baidu_doc") {
                       updateConfig({
                         parsing: {
                           provider: "baidu_doc",
-                          baiduDocParseType: "paddle_vl",
+                          baiduDocParseType: config.parsing.baiduDocParseType || settings.baiduDocParseType || "paddle_vl",
                         },
                       })
                     }
@@ -322,11 +324,17 @@ export function OcrConfigV3Section({ settings, onSettingsChange }: OcrConfigV3Se
             <Checkbox
               id="layoutEnabled"
               checked={config.layout.enabled}
-              onCheckedChange={(checked) =>
+              onCheckedChange={(checked) => {
+                const isEnabled = handleCheckedChange(checked)
                 updateConfig({
-                  layout: { ...config.layout, enabled: handleCheckedChange(checked) },
+                  layout: {
+                    ...config.layout,
+                    enabled: isEnabled,
+                    // Reset SAM when disabling layout detection
+                    ...(isEnabled ? {} : { enableSam: false }),
+                  },
                 })
-              }
+              }}
             />
           </div>
 
@@ -435,20 +443,32 @@ export function OcrConfigV3Section({ settings, onSettingsChange }: OcrConfigV3Se
                         updateConfig({
                           recognition: {
                             provider: "aiocr",
-                            aiProvider: "siliconflow",
-                            apiKey: "",
-                            baseUrl: "https://api.siliconflow.cn/v1",
-                            pageConcurrency: 1,
-                            maxRetries: 0,
+                            aiProvider: config.recognition.aiProvider || settings.ocrAiProvider || "siliconflow",
+                            apiKey: config.recognition.apiKey ?? settings.ocrAiApiKey,
+                            baseUrl: config.recognition.baseUrl || settings.ocrAiBaseUrl || "https://api.siliconflow.cn/v1",
+                            model: config.recognition.model ?? settings.ocrAiModel,
+                            promptPreset: config.recognition.promptPreset ?? settings.ocrAiPromptPreset,
+                            pageConcurrency:
+                              config.recognition.pageConcurrency ?? (parseInt(settings.ocrAiPageConcurrency) || 1),
+                            blockConcurrency:
+                              config.recognition.blockConcurrency ??
+                              (settings.ocrAiBlockConcurrency ? parseInt(settings.ocrAiBlockConcurrency) : undefined),
+                            requestsPerMinute:
+                              config.recognition.requestsPerMinute ??
+                              (settings.ocrAiRequestsPerMinute ? parseInt(settings.ocrAiRequestsPerMinute) : undefined),
+                            tokensPerMinute:
+                              config.recognition.tokensPerMinute ??
+                              (settings.ocrAiTokensPerMinute ? parseInt(settings.ocrAiTokensPerMinute) : undefined),
+                            maxRetries: config.recognition.maxRetries ?? (parseInt(settings.ocrAiMaxRetries) || 0),
                           },
                         })
                       } else if (provider === "baidu") {
                         updateConfig({
                           recognition: {
                             provider: "baidu",
-                            baiduAppId: "",
-                            baiduApiKey: "",
-                            baiduSecretKey: "",
+                            baiduAppId: config.recognition.baiduAppId ?? settings.ocrBaiduAppId,
+                            baiduApiKey: config.recognition.baiduApiKey ?? settings.ocrBaiduApiKey,
+                            baiduSecretKey: config.recognition.baiduSecretKey ?? settings.ocrBaiduSecretKey,
                           },
                         })
                       }

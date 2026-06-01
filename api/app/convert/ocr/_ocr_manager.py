@@ -165,6 +165,8 @@ class OcrManager:
         tesseract_language: str | None = None,
         strict_no_fallback: bool = False,
         allow_paddle_model_downgrade: bool = False,
+        enable_layout: bool = True,
+        enable_sam: bool | None = None,
     ):
         """Initialize OCR manager with primary and fallback providers."""
         self.providers: list[OcrProvider] = []
@@ -181,6 +183,7 @@ class OcrManager:
         self.route_kind: str = ROUTE_KIND_HYBRID_AUTO
         self.strict_no_fallback: bool = bool(strict_no_fallback)
         self.allow_paddle_model_downgrade: bool = bool(allow_paddle_model_downgrade)
+        self.enable_layout: bool = bool(enable_layout)
         self.ai_provider_disabled: bool = False
         self.ai_provider_disabled_reason: str | None = None
         # Keep typed references so `auto` mode can combine results.
@@ -196,9 +199,6 @@ class OcrManager:
             provider_id = "aiocr"
         if provider_id in {"paddle-local", "local_paddle"}:
             provider_id = "machine"
-        # paddle → aiocr (identical code path as aiocr+doc_parser)
-        if provider_id == "paddle":
-            provider_id = "aiocr"
         # paddle_local → paddleocr (new canonical name)
         if provider_id == "paddle_local":
             provider_id = "paddleocr"
@@ -271,7 +271,10 @@ class OcrManager:
             paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
             try:
                 self.paddle_local_fallback_provider = LazyPaddleOcrClient(
-                    language=paddle_lang, layout_model=ai_layout_model
+                    language=paddle_lang,
+                    layout_model=ai_layout_model,
+                    enable_layout=self.enable_layout,
+                    enable_sam=enable_sam,
                 )
                 self.providers.append(self.paddle_local_fallback_provider)
                 logger.info(
@@ -342,7 +345,12 @@ class OcrManager:
             if provider_id == "machine":
                 paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
                 try:
-                    self.paddle_provider = PaddleOcrClient(language=paddle_lang, layout_model=ai_layout_model)
+                    self.paddle_provider = PaddleOcrClient(
+                        language=paddle_lang,
+                        layout_model=ai_layout_model,
+                        enable_layout=self.enable_layout,
+                        enable_sam=enable_sam,
+                    )
                     self.providers.append(self.paddle_provider)
                     logger.info("Using local PaddleOCR as primary in machine mode (lang=%s)", paddle_lang)
                 except (ImportError, RuntimeError) as e:
@@ -365,13 +373,23 @@ class OcrManager:
                 logger.warning("Tesseract not available in machine mode: %s", e)
         if provider_id == "paddle_local":
             paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
-            self.paddle_provider = PaddleOcrClient(language=paddle_lang, layout_model=ai_layout_model)
+            self.paddle_provider = PaddleOcrClient(
+                language=paddle_lang,
+                layout_model=ai_layout_model,
+                enable_layout=self.enable_layout,
+                enable_sam=enable_sam,
+            )
             self.providers.append(self.paddle_provider)
             logger.info("Using local PaddleOCR (explicit, lang=%s)", paddle_lang)
             _maybe_add_tesseract_fallback(reason="paddle_local")
         if provider_id == "paddleocr":
             paddle_lang = "en" if tesseract_lang.strip().lower() == "eng" else "ch"
-            self.paddle_provider = PaddleOcrClient(language=paddle_lang, layout_model=ai_layout_model)
+            self.paddle_provider = PaddleOcrClient(
+                language=paddle_lang,
+                layout_model=ai_layout_model,
+                enable_layout=self.enable_layout,
+                enable_sam=enable_sam,
+            )
             self.providers.append(self.paddle_provider)
             logger.info("Using local PaddleOCR (explicit, lang=%s)", paddle_lang)
             _maybe_add_tesseract_fallback(reason="paddleocr")
@@ -486,7 +504,7 @@ class OcrManager:
                 # In auto mode, allow local PaddleOCR as fallback.
                 if not self.providers:
                     try:
-                        self.paddle_provider = PaddleOcrClient()
+                        self.paddle_provider = PaddleOcrClient(enable_layout=self.enable_layout, enable_sam=enable_sam)
                         self.providers.append(self.paddle_provider)
                         logger.info("Using PaddleOCR as fallback provider in auto mode")
                     except (ImportError, RuntimeError) as e:
@@ -1063,6 +1081,8 @@ def create_ocr_manager(
     tesseract_language: str | None = None,
     strict_no_fallback: bool = False,
     allow_paddle_model_downgrade: bool = False,
+    enable_layout: bool = True,
+    enable_sam: bool | None = None,
 ) -> OcrManager:
     """
     Factory function to create OCR manager.
@@ -1094,6 +1114,6 @@ def create_ocr_manager(
         tesseract_language=tesseract_language,
         strict_no_fallback=strict_no_fallback,
         allow_paddle_model_downgrade=allow_paddle_model_downgrade,
+        enable_layout=enable_layout,
+        enable_sam=enable_sam,
     )
-
-

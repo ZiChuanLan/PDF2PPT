@@ -91,6 +91,27 @@ def test_local_aiocr_layout_block_chain_is_normalized() -> None:
     assert normalized.ocr_ai_layout_model == "pp_doclayout_v3"
 
 
+def test_local_paddle_provider_stays_paddle_doc_parser_with_default_model() -> None:
+    kwargs = _base_kwargs()
+    kwargs.update(
+        {
+            "ocr_ai_api_key": "ocr-key",
+            "ocr_ai_model": None,
+            "ocr_ai_chain_mode": "direct",
+        }
+    )
+
+    normalized = validate_and_normalize_job_options(
+        parse_provider="local",
+        ocr_provider="paddle",
+        **kwargs,
+    )
+
+    assert normalized.ocr_provider == "paddle"
+    assert normalized.ocr_ai_chain_mode == "doc_parser"
+    assert normalized.ocr_ai_model is None
+
+
 def test_ppt_generation_mode_normalizes_speed_alias() -> None:
     kwargs = _base_kwargs()
     kwargs["ppt_generation_mode"] = "speed"

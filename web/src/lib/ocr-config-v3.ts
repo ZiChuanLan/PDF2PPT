@@ -118,11 +118,9 @@ export function migrateSettingsToOcrConfigV3(settings: Settings): OcrConfigV3 {
   let layoutEnabled = false
   if (parseMode === "remote_ocr" && settings.ocrAiChainMode === "layout_block") {
     layoutEnabled = true
-  } else if (ocrProvider === "paddleocr") {
-    layoutEnabled = true  // PaddleOCR always uses layout detection
-  } else if (ocrProvider === "tesseract" || ocrProvider === "baidu") {
-    // Tesseract and Baidu OCR can optionally use layout detection
-    layoutEnabled = !!settings.ocrAiLayoutModel
+  } else if (ocrProvider === "paddleocr" || ocrProvider === "tesseract" || ocrProvider === "baidu") {
+    // Use explicit toggle state; fall back to checking layout model for migration
+    layoutEnabled = settings.layoutDetectionEnabled ?? !!settings.ocrAiLayoutModel
   }
 
   const layout: LayoutDetectionConfig = {
@@ -151,7 +149,7 @@ export function migrateSettingsToOcrConfigV3(settings: Settings): OcrConfigV3 {
     recognition = {
       provider: "tesseract",
       language: settings.ocrTesseractLanguage,
-      minConfidence: parseInt(settings.ocrTesseractMinConfidence) || 35,
+      minConfidence: parseInt(settings.ocrTesseractMinConfidence) || 50,
     }
   } else if (ocrProvider === "baidu") {
     recognition = {
@@ -208,13 +206,14 @@ export function applyOcrConfigV3ToSettings(config: OcrConfigV3, _currentSettings
     // Local parsing — Layer 2 + Layer 3 are relevant
     // ============================================================================
 
-    // Layer 2: Layout Detection — only write layout model when enabled,
-    // otherwise migrateSettingsToOcrConfigV3 will re-derive enabled=true
+    // Layer 2: Layout Detection — persist toggle state and model separately
+    updates.layoutDetectionEnabled = config.layout.enabled
     if (config.layout.enabled) {
       updates.ocrAiLayoutModel = config.layout.model
       updates.enableSam = config.layout.enableSam
     } else {
-      updates.ocrAiLayoutModel = undefined
+      // Preserve the model choice so it's available when re-enabled
+      updates.ocrAiLayoutModel = config.layout.model
       updates.enableSam = false
     }
 

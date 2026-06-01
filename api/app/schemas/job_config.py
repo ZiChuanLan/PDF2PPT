@@ -248,6 +248,10 @@ class OcrConfig(BaseModel):
         False,
         description="Enable SAM polygon refinement for image regions",
     )
+    enable_layout: bool | None = Field(
+        True,
+        description="Enable layout detection for PaddleOCR",
+    )
 
     @field_validator("enable_sam")
     @classmethod
@@ -257,11 +261,18 @@ class OcrConfig(BaseModel):
             # SAM is disabled, no validation needed
             return v
 
-        # Check if SAM is available
-        try:
-            from app.convert.ocr._sam_provider import is_sam_available
+        # Skip SAM validation if layout detection is disabled — SAM is only
+        # used to refine image regions found by layout detection.
+        enable_layout = info.data.get("enable_layout")
+        if enable_layout is False:
+            return False
 
-            if not is_sam_available():
+        # Job submission only needs the package. The checkpoint is reported by
+        # model status/download APIs and runtime refinement falls back safely.
+        try:
+            from app.convert.ocr._sam_provider import is_sam_package_available
+
+            if not is_sam_package_available():
                 raise ValueError(
                     "SAM (Segment Anything Model) is not available. "
                     "The mobile_sam package is not installed. "
@@ -504,7 +515,8 @@ class JobConfig(BaseModel):
             "ocr_geometry_mode": "auto",  # deprecated
             "ocr_ai_linebreak_assist": ocr_ai.linebreak_assist,
             "ocr_strict_mode": self.ocr.strict_mode,
-            "enable_sam": self.ocr.enable_sam or False,
+            "enable_layout": self.ocr.enable_layout,
+            "enable_sam": self.ocr.enable_sam,
             # PPT config
             "text_erase_mode": self.ppt.text_erase_mode,
             "scanned_page_mode": self.ppt.scanned_page_mode,

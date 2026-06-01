@@ -23,6 +23,52 @@ def test_route_plan_marks_explicit_paddle_as_remote_doc_parser() -> None:
     assert plan.allow_linebreak_refiner is True
 
 
+def test_setup_runtime_keeps_explicit_paddle_doc_parser_with_default_model(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_create_ocr_manager(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(ocr_runtime, "create_ocr_manager", _fake_create_ocr_manager)
+
+    setup = ocr_runtime.setup_ocr_runtime(
+        provider=None,
+        api_key=None,
+        base_url=None,
+        model=None,
+        ocr_provider="paddle",
+        ocr_baidu_app_id=None,
+        ocr_baidu_api_key=None,
+        ocr_baidu_secret_key=None,
+        ocr_tesseract_min_confidence=None,
+        ocr_tesseract_language=None,
+        ocr_ai_api_key="ocr-key",
+        ocr_ai_provider="auto",
+        ocr_ai_base_url=None,
+        ocr_ai_model=None,
+        ocr_ai_chain_mode="direct",
+        ocr_ai_layout_model="pp_doclayout_v3",
+        ocr_ai_linebreak_assist=False,
+        ocr_strict_mode=True,
+    )
+
+    assert setup.requested_ocr_provider == "paddle"
+    assert setup.effective_ocr_provider == "paddle"
+    assert setup.effective_ocr_ai_provider == "siliconflow"
+    assert setup.effective_ocr_ai_model == ocr_runtime._DEFAULT_PADDLE_OCR_VL_MODEL
+    assert setup.effective_ocr_ai_chain_mode == "doc_parser"
+    assert setup.ocr_ai_model_source == "default"
+    assert setup.route_plan is not None
+    assert setup.route_plan.route_kind == "remote_doc_parser"
+    assert captured["provider"] == "paddle"
+    assert captured["route_kind"] == "remote_doc_parser"
+    assert captured["ai_provider"] == "siliconflow"
+    assert captured["ai_model"] == ocr_runtime._DEFAULT_PADDLE_OCR_VL_MODEL
+
+
 def test_route_plan_marks_generic_aiocr_as_remote_prompt_ocr() -> None:
     plan = ocr_runtime._build_ocr_route_plan(
         requested_ocr_provider="aiocr",

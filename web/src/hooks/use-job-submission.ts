@@ -120,14 +120,20 @@ export function useJobSubmission(params: UseJobSubmissionParams): UseJobSubmissi
         return
       }
 
-      // Pre-flight check: warn if selected layout model is not downloaded
-      const selectedLayoutModel = settingsSnapshot.ocrAiLayoutModel || "pp_doclayout_v3"
-      const layoutModelInfo = LAYOUT_MODELS[selectedLayoutModel]
-      if (layoutModelInfo) {
-        const localEntry = status.local[selectedLayoutModel]
-        if (!localEntry || !localEntry.ready) {
-          setPreflightWarning(`版面模型 ${layoutModelInfo.displayName} 未下载，任务可能在运行时失败。是否继续？`)
-          return
+      // Pre-flight check: warn only when the selected route actually uses a local layout model.
+      const localOcrProvider = settingsSnapshot.ocrProvider || "machine"
+      const requiresLayoutModel =
+        (mode === "local_ocr" && localOcrProvider !== "tesseract") ||
+        (mode === "remote_ocr" && settingsSnapshot.ocrAiChainMode === "layout_block")
+      if (requiresLayoutModel) {
+        const selectedLayoutModel = settingsSnapshot.ocrAiLayoutModel || "pp_doclayout_v3"
+        const layoutModelInfo = LAYOUT_MODELS[selectedLayoutModel]
+        if (layoutModelInfo) {
+          const localEntry = status.local[selectedLayoutModel]
+          if (!localEntry || !localEntry.ready) {
+            setPreflightWarning(`版面模型 ${layoutModelInfo.displayName} 未下载，任务可能在运行时失败。是否继续？`)
+            return
+          }
         }
       }
     }

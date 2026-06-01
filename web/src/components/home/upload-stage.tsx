@@ -7,23 +7,21 @@ import { ArrowRightIcon, UploadCloudIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth-provider"
 import {
-  PPT_GENERATION_MODE_LABELS,
   type Settings,
 } from "@/lib/settings"
 import { SegmentedControl } from "@/components/ui/segmented-control"
-import {
-  type OcrConfigV3,
-  type DocumentParsingProvider,
-  migrateSettingsToOcrConfigV3,
-  applyOcrConfigV3ToSettings,
-  getParsingProviderLabel,
-} from "@/lib/ocr-config-v3"
 import {
   getAllPresets,
   getDefaultPreset,
   applyPresetToSettings,
   type JobPreset,
 } from "@/lib/settings"
+import {
+  HOME_PARSE_MODE_OPTIONS,
+  applyHomeParseMode,
+  resolveHomeParseMode,
+  type HomeParseMode,
+} from "@/lib/run-config"
 
 interface UploadStageProps {
   getRootProps: () => React.HTMLAttributes<HTMLElement>
@@ -40,12 +38,6 @@ const PPT_MODE_OPTIONS = [
   { id: "standard", label: "精准" },
 ]
 
-const PARSING_OPTIONS = [
-  { id: "local", label: "本地" },
-  { id: "mineru", label: "MinerU" },
-  { id: "baidu_doc", label: "百度" },
-]
-
 export function UploadStage({
   getRootProps,
   getInputProps,
@@ -56,33 +48,26 @@ export function UploadStage({
 }: UploadStageProps) {
   const { user, isLoading: isAuthLoading } = useAuth()
 
-  const config = React.useMemo(
-    () => migrateSettingsToOcrConfigV3(settingsSnapshot),
+  const activeParseMode = React.useMemo(
+    () => resolveHomeParseMode(settingsSnapshot),
     [settingsSnapshot],
   )
 
   const handleParsingChange = React.useCallback(
-    (provider: DocumentParsingProvider) => {
-      const newConfig: OcrConfigV3 = {
-        ...config,
-        parsing: { ...config.parsing, provider },
-      }
-      const updates = applyOcrConfigV3ToSettings(newConfig, settingsSnapshot)
-      updateSettingsSnapshot((prev) => ({ ...prev, ...updates }))
+    (mode: HomeParseMode) => {
+      updateSettingsSnapshot((prev) => applyHomeParseMode(prev, mode))
     },
-    [config, settingsSnapshot, updateSettingsSnapshot],
+    [updateSettingsSnapshot],
   )
 
   // Preset state
   const [allPresets, setAllPresets] = React.useState<JobPreset[]>([])
-  const [defaultPreset, setDefaultPreset] = React.useState<JobPreset | null>(null)
   const [selectedPresetId, setSelectedPresetId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     const presets = getAllPresets()
     const defaultP = getDefaultPreset()
     setAllPresets(presets)
-    setDefaultPreset(defaultP)
     setSelectedPresetId(defaultP?.id ?? null)
   }, [])
 
@@ -198,14 +183,14 @@ export function UploadStage({
             <div className="grid gap-1.5">
               <span className="home-stat-label">解析模式</span>
               <SegmentedControl
-                options={PARSING_OPTIONS}
-                value={config.parsing.provider}
-                onChange={(v) => handleParsingChange(v as DocumentParsingProvider)}
+                options={HOME_PARSE_MODE_OPTIONS}
+                value={activeParseMode}
+                onChange={handleParsingChange}
               />
             </div>
 
             {/* MinerU token hint */}
-            {config.parsing.provider === "mineru" && !settingsSnapshot.mineruApiToken && (
+            {activeParseMode === "mineru_cloud" && !settingsSnapshot.mineruApiToken && (
               <div className="flex items-center gap-1.5 text-[11px] text-amber-600">
                 <span>云端 MinerU 需要配置 Token</span>
                 <Link href="/settings" className="underline font-medium">去设置</Link>

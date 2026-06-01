@@ -72,6 +72,7 @@ class JobOptions:
     ocr_render_dpi: int | None = None
     ocr_geometry_mode: str | None = None
     ocr_strict_mode: bool | None = True
+    enable_layout: bool | None = True
     enable_sam: bool | None = None
 
     # PPT generation

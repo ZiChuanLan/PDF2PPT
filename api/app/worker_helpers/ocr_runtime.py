@@ -11,6 +11,7 @@ from ..job_options import (
     normalize_requested_ocr_provider,
 )
 from ..convert.ocr import AiOcrTextRefiner, create_ocr_manager
+from ..convert.ocr.base import _DEFAULT_PADDLE_OCR_VL_MODEL
 from ..convert.ocr.prompts import (
     normalize_ai_ocr_prompt_override,
     normalize_ai_ocr_prompt_preset,
@@ -41,10 +42,6 @@ class OcrRuntimeSetup:
     effective_ocr_ai_model: str | None
     effective_ocr_ai_chain_mode: str
     effective_ocr_ai_layout_model: str
-    effective_ocr_ai_prompt_preset: str
-    effective_ocr_ai_direct_prompt_override: str | None
-    effective_ocr_ai_layout_block_prompt_override: str | None
-    effective_ocr_ai_image_region_prompt_override: str | None
     effective_paddle_doc_max_side_px: int | None
     effective_ocr_ai_page_concurrency: int
     effective_ocr_ai_block_concurrency: int | None
@@ -62,6 +59,10 @@ class OcrRuntimeSetup:
     ocr_ai_api_key_source: str
     ocr_ai_base_url_source: str
     ocr_ai_model_source: str
+    effective_ocr_ai_prompt_preset: str = "auto"
+    effective_ocr_ai_direct_prompt_override: str | None = None
+    effective_ocr_ai_layout_block_prompt_override: str | None = None
+    effective_ocr_ai_image_region_prompt_override: str | None = None
     ocr_geometry_provider: str | None = None
     ocr_geometry_strategy: str | None = None
     ocr_geometry_mode_requested: str | None = None
@@ -119,6 +120,8 @@ def setup_ocr_runtime(
     ocr_geometry_mode: str | None = None,
     ocr_ai_linebreak_assist: bool | None = None,
     ocr_strict_mode: bool | None = True,
+    enable_layout: bool = True,
+    enable_sam: bool | None = None,
 ) -> OcrRuntimeSetup:
     requested_ocr_provider = normalize_requested_ocr_provider(ocr_provider)
     allow_main_ai_reuse = _should_allow_main_ai_reuse(requested_ocr_provider)
@@ -292,6 +295,15 @@ def setup_ocr_runtime(
     runtime_ocr_provider = effective_ocr_provider
     geometry_strategy = "direct"
     geometry_mode_effective = "n/a"
+    if requested_ocr_provider == "paddle":
+        effective_ocr_ai_chain_mode = "doc_parser"
+        if not effective_ocr_ai_model:
+            effective_ocr_ai_model = _DEFAULT_PADDLE_OCR_VL_MODEL
+            ocr_ai_model_source = "default"
+            setup_notes.append("ocr_ai_model_defaulted_for_paddle")
+        if effective_ocr_ai_provider == "auto" and not effective_ocr_ai_base_url:
+            effective_ocr_ai_provider = "siliconflow"
+            setup_notes.append("ocr_ai_provider_defaulted_for_paddle=siliconflow")
     route_plan = _build_ocr_route_plan(
         requested_ocr_provider=requested_ocr_provider,
         effective_ai_model=effective_ocr_ai_model,
@@ -311,6 +323,13 @@ def setup_ocr_runtime(
                 message="AI OCR requires model",
                 details={"ocr_provider": requested_ocr_provider},
             )
+
+    if requested_ocr_provider == "paddle" and not effective_ocr_ai_api_key:
+        raise AppException(
+            code=ErrorCode.VALIDATION_ERROR,
+            message="Paddle OCR requires api_key",
+            details={"ocr_provider": requested_ocr_provider},
+        )
 
     # Explicit AI OCR now always stays on the pure AI OCR path. We keep
     # `ocr_geometry_mode` only for backward-compatible request parsing/debug,
@@ -361,6 +380,8 @@ def setup_ocr_runtime(
             tesseract_language=effective_tesseract_language,
             strict_no_fallback=strict_ocr_mode,
             allow_paddle_model_downgrade=not strict_ocr_mode,
+            enable_layout=enable_layout,
+            enable_sam=enable_sam,
         )
 
         # Optional OCR post-process: refine OCR texts or split coarse boxes

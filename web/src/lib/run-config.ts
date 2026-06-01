@@ -15,6 +15,7 @@ import {
   type ParseEngineMode,
   type Settings,
 } from "./settings.ts"
+import { migrateSettingsToOcrConfigV3 } from "./ocr-config-v3.ts"
 
 export type OcrConfigSource = "dedicated" | "none"
 export type { ParseEngineMode } from "./settings.ts"
@@ -102,6 +103,29 @@ export const PARSE_ENGINE_OPTIONS: Array<{ id: ParseEngineMode; label: string }>
   { id: "local_ocr", label: PARSE_ENGINE_MODE_LABELS.local_ocr },
   { id: "mineru_cloud", label: PARSE_ENGINE_MODE_LABELS.mineru_cloud },
 ]
+
+export type HomeParseMode =
+  | "local_chunk"
+  | "ai_chunk"
+  | "ai_direct"
+  | "mineru_cloud"
+  | "baidu_doc"
+
+export const HOME_PARSE_MODE_OPTIONS: Array<{ id: HomeParseMode; label: string }> = [
+  { id: "local_chunk", label: "本地切块" },
+  { id: "ai_chunk", label: "AI 切块" },
+  { id: "ai_direct", label: "AI 直出" },
+  { id: "mineru_cloud", label: "MinerU" },
+  { id: "baidu_doc", label: "百度" },
+]
+
+export const HOME_PARSE_MODE_DESCRIPTIONS: Record<HomeParseMode, string> = {
+  local_chunk: "本地 OCR + 版面检测，适合常规扫描文档。",
+  ai_chunk: "本地版面切块后交给 AI OCR，适合复杂版式。",
+  ai_direct: "整页直接交给 AI OCR，不使用本地版面切块。",
+  mineru_cloud: "使用 MinerU 云端文档解析。",
+  baidu_doc: "使用百度文档解析服务。",
+}
 
 export const LOCAL_PARSE_OCR_PROVIDERS: OcrProvider[] = ["paddleocr", "tesseract"]
 
@@ -252,6 +276,14 @@ function toFinitePositiveIntOrNull(value: string): number | null {
   if (!trimmed) return null
   const n = Number(trimmed)
   if (!Number.isFinite(n) || n <= 0) return null
+  return Math.round(n)
+}
+
+function toFiniteNonNegativeIntOrNull(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n) || n < 0) return null
   return Math.round(n)
 }
 
@@ -554,6 +586,7 @@ export type JobConfig = {
     }
     render_dpi?: number
     strict_mode?: boolean
+    enable_layout?: boolean
     enable_sam?: boolean
   }
   parse?: {
@@ -655,11 +688,13 @@ export function buildJobConfig(
   }
 
   // OCR config
+  const ocrConfigV3 = migrateSettingsToOcrConfigV3(settings)
   config.ocr = {
     provider: run.effectiveOcrProvider,
     render_dpi: toFinitePositiveIntOrNull(settings.ocrRenderDpi) ?? undefined,
     strict_mode: Boolean(settings.ocrStrictMode),
-    enable_sam: Boolean(settings.enableSam),
+    enable_layout: Boolean(ocrConfigV3.layout.enabled),
+    enable_sam: Boolean(ocrConfigV3.layout.enabled && settings.enableSam),
     // Always send layout_model so local PaddleOCR can use the user's choice
     ai: { layout_model: run.ocrAiLayoutModel },
   }
@@ -686,7 +721,7 @@ export function buildJobConfig(
     if (settings.ocrAiImageRegionPromptOverride.trim()) {
       ai.image_region_prompt_override = settings.ocrAiImageRegionPromptOverride.trim()
     }
-    const paddleDocMaxSidePx = toFinitePositiveIntOrNull(settings.ocrPaddleVlDocparserMaxSidePx)
+    const paddleDocMaxSidePx = toFiniteNonNegativeIntOrNull(settings.ocrPaddleVlDocparserMaxSidePx)
     if (paddleDocMaxSidePx !== null) {
       ai.paddle_vl_docparser_max_side_px = paddleDocMaxSidePx
     }
@@ -710,7 +745,11 @@ export function buildJobConfig(
   }
 
   // Tesseract / Machine (local OCR)
-  if (run.effectiveOcrProvider === "machine" || run.effectiveOcrProvider === "auto") {
+  if (
+    run.effectiveOcrProvider === "machine" ||
+    run.effectiveOcrProvider === "auto" ||
+    run.effectiveOcrProvider === "tesseract"
+  ) {
     const lang = settings.ocrTesseractLanguage.trim()
     const minConf = toFinitePositiveIntOrNull(settings.ocrTesseractMinConfidence)
     if (lang || minConf !== null) {
@@ -838,5 +877,58 @@ export function resolveParseEngineOcrProvider(mode: ParseEngineMode): OcrProvide
     case "local_ocr":
     default:
       return "machine"
+  }
+}
+
+export function resolveHomeParseMode(settings: Settings): HomeParseMode {
+  const parseEngineMode = resolveParseEngineMode(settings)
+
+  if (parseEngineMode === "mineru_cloud") {
+    return "mineru_cloud"
+  }
+  if (parseEngineMode === "baidu_doc") {
+    return "baidu_doc"
+  }
+  if (parseEngineMode === "remote_ocr") {
+    return settings.ocrAiChainMode === "direct" ? "ai_direct" : "ai_chunk"
+  }
+  return "local_chunk"
+}
+
+export function applyHomeParseMode(
+  settings: Settings,
+  nextMode: HomeParseMode
+): Settings {
+  if (nextMode === "ai_direct") {
+    return {
+      ...applyParseEngineMode(settings, "remote_ocr"),
+      ocrProvider: "aiocr",
+      ocrAiChainMode: "direct",
+      layoutDetectionEnabled: false,
+      enableSam: false,
+    }
+  }
+
+  if (nextMode === "ai_chunk") {
+    return {
+      ...applyParseEngineMode(settings, "remote_ocr"),
+      ocrProvider: "aiocr",
+      ocrAiChainMode: "layout_block",
+      layoutDetectionEnabled: true,
+    }
+  }
+
+  if (nextMode === "mineru_cloud") {
+    return applyParseEngineMode(settings, "mineru_cloud")
+  }
+
+  if (nextMode === "baidu_doc") {
+    return applyParseEngineMode(settings, "baidu_doc")
+  }
+
+  return {
+    ...applyParseEngineMode(settings, "local_ocr"),
+    enableOcr: true,
+    layoutDetectionEnabled: true,
   }
 }

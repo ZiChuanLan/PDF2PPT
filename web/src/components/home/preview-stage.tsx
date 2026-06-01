@@ -54,7 +54,6 @@ interface PreviewStageProps {
   actionError: string | null
   preflightWarning: string | null
   setPreflightAcknowledged: (value: boolean) => void
-  downloadedLayoutModels: Set<string>
   removeFile: (index: number) => void
   filePreviewUrl: string
   previewPage: number
@@ -92,7 +91,6 @@ export function PreviewStage({
   actionError,
   preflightWarning,
   setPreflightAcknowledged,
-  downloadedLayoutModels,
   removeFile,
   filePreviewUrl,
   previewPage,
@@ -112,76 +110,74 @@ export function PreviewStage({
         </Button>
       </div>
 
-      {/* Dual-column layout — stacks on mobile */}
-      <div className="grid gap-5 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px]">
-        {/* Left: File list + PDF preview */}
-        <div>
-          {/* File list */}
-          {fileCount > 1 && (
-            <div className="mb-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  已选择 {fileCount} 个文件
-                </span>
-              </div>
-              <div className="grid gap-2">
-                {uploadFiles.map((entry, index) => (
-                  <div
-                    key={entry.file.name}
-                    className={cn(
-                      "flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors",
-                      index === previewFileIndex
-                        ? "border-destructive/40 bg-destructive/5"
-                        : "hover:bg-muted/30"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                      onClick={() => {
-                        setPreviewFileIndex(index)
-                        setPreviewPageInput("1")
-                        handlePreviewPageCountChange(0)
-                      }}
-                    >
-                      <FileIcon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate text-sm">{entry.file.name}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatBytes(entry.file.size)}
-                      </span>
-                    </button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => {
-                        removeFile(index)
-                      }}
-                      aria-label="删除文件"
-                    >
-                      <XIcon className="size-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Single file info (when only 1 file) */}
-          {fileCount === 1 && currentPreviewFile && (
-            <div className="mb-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{currentPreviewFile.name}</div>
-                <div className="text-xs text-muted-foreground">{formatBytes(currentPreviewFile.size)}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={handleResetAll}>
-                  清空
+      {fileCount > 1 && (
+        <div className="mb-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              已选择 {fileCount} 个文件
+            </span>
+          </div>
+          <div className="grid gap-2">
+            {uploadFiles.map((entry, index) => (
+              <div
+                key={entry.file.name}
+                className={cn(
+                  "flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors",
+                  index === previewFileIndex
+                    ? "border-destructive/40 bg-destructive/5"
+                    : "hover:bg-muted/30",
+                )}
+              >
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  onClick={() => {
+                    setPreviewFileIndex(index)
+                    setPreviewPageInput("1")
+                    handlePreviewPageCountChange(0)
+                  }}
+                >
+                  <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-sm">{entry.file.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {formatBytes(entry.file.size)}
+                  </span>
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => {
+                    removeFile(index)
+                  }}
+                  aria-label="删除文件"
+                >
+                  <XIcon className="size-3" />
                 </Button>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
 
+      {fileCount === 1 && currentPreviewFile && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium">{currentPreviewFile.name}</div>
+            <div className="text-xs text-muted-foreground">
+              {formatBytes(currentPreviewFile.size)}
+            </div>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={handleResetAll}>
+            清空
+          </Button>
+        </div>
+      )}
+
+      {/* Dual-column layout — stacks on mobile */}
+      <div className="grid gap-5 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+        {/* Left: PDF preview */}
+        <div>
           {/* PDF preview */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-muted-foreground">
@@ -254,34 +250,33 @@ export function PreviewStage({
           )}
         </div>
 
-        {/* Right: Config + actions */}
-        <div className="flex flex-col justify-between gap-4">
+        {/* Right: Config + actions — sticky on xl so it stays within viewport */}
+        <div className="flex flex-col justify-between gap-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
           <div className="space-y-4">
             {/* Page range */}
             <PageRangeSection
-            isImageInput={isImageInput}
-            usePageRange={usePageRange}
-            setUsePageRange={setUsePageRange}
-            pageStartInput={pageStartInput}
-            setPageStartInput={setPageStartInput}
-            pageEndInput={pageEndInput}
-            setPageEndInput={setPageEndInput}
-            currentPreviewFile={currentPreviewFile}
-            previewPage={previewPage}
-          />
+              isImageInput={isImageInput}
+              usePageRange={usePageRange}
+              setUsePageRange={setUsePageRange}
+              pageStartInput={pageStartInput}
+              setPageStartInput={setPageStartInput}
+              pageEndInput={pageEndInput}
+              setPageEndInput={setPageEndInput}
+              currentPreviewFile={currentPreviewFile}
+              previewPage={previewPage}
+            />
 
-          {/* Quick config */}
-          <QuickConfigPanel
-            settingsSnapshot={settingsSnapshot}
-            updateSettingsSnapshot={updateSettingsSnapshot}
-            modelStatus={modelStatus}
-            modelStatusError={modelStatusError}
-            isModelStatusLoading={isModelStatusLoading}
-            refetchModelStatus={refetchModelStatus}
-            retainProcessArtifacts={retainProcessArtifacts}
-            setRetainProcessArtifacts={setRetainProcessArtifacts}
-            downloadedLayoutModels={downloadedLayoutModels}
-          />
+            {/* Quick config */}
+            <QuickConfigPanel
+              settingsSnapshot={settingsSnapshot}
+              updateSettingsSnapshot={updateSettingsSnapshot}
+              modelStatus={modelStatus}
+              modelStatusError={modelStatusError}
+              isModelStatusLoading={isModelStatusLoading}
+              refetchModelStatus={refetchModelStatus}
+              retainProcessArtifacts={retainProcessArtifacts}
+              setRetainProcessArtifacts={setRetainProcessArtifacts}
+            />
           </div>
 
           {/* Action buttons — pinned to bottom, aligned with document preview */}

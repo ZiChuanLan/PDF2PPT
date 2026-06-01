@@ -83,6 +83,7 @@ export type Settings = {
   ocrAiTokensPerMinute: string
   ocrAiMaxRetries: string
   enableSam: boolean
+  layoutDetectionEnabled: boolean
 }
 
 export const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
@@ -182,6 +183,7 @@ export const defaultSettings: Settings = {
   ocrAiTokensPerMinute: "",
   ocrAiMaxRetries: "0",
   enableSam: false,
+  layoutDetectionEnabled: true,
 }
 
 export function safeParseSettings(value: string | null): Partial<Settings> | null {

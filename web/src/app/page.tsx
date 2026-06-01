@@ -9,7 +9,6 @@ import { useDropzone } from "react-dropzone"
 import { apiFetch, normalizeFetchError, readResponseErrorMessage } from "@/lib/api"
 import { useAuth } from "@/components/auth-provider"
 import { HOME_JOB_LIMIT, JOB_LIST_POLL_INTERVAL_MS } from "@/lib/constants"
-import { LAYOUT_MODELS } from "@/lib/layout-models"
 import {
   defaultSettings,
   loadStoredSettings,
@@ -181,15 +180,6 @@ export default function Home() {
   const { data: backendModelStatus, isLoading: isModelStatusLoading, error: modelStatusError, refetch: refetchModelStatus } = useModelStatus()
   const modelStatus = useEffectiveModelStatus(backendModelStatus, settingsSnapshot)
   const [preflightAcknowledged, setPreflightAcknowledged] = React.useState(false)
-
-  const downloadedLayoutModels = React.useMemo(() => {
-    if (!modelStatus) return new Set<string>()
-    return new Set(
-      Object.entries(modelStatus.local)
-        .filter(([key, p]) => p.ready && Object.keys(LAYOUT_MODELS).includes(key))
-        .map(([key]) => key)
-    )
-  }, [modelStatus])
 
   // Job submission hook (extracted from inline handleConvertAll + related callbacks)
   const {
@@ -414,7 +404,6 @@ export default function Home() {
               actionError={actionError}
               preflightWarning={preflightWarning}
               setPreflightAcknowledged={setPreflightAcknowledged}
-              downloadedLayoutModels={downloadedLayoutModels}
               removeFile={removeFile}
               filePreviewUrl={filePreviewUrl}
               previewPage={previewPage}

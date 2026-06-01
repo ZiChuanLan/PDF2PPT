@@ -13,6 +13,7 @@ import { LAYOUT_MODELS } from "@/lib/layout-models"
 import { useModelDownload, type DownloadStatusItem } from "@/hooks/use-model-download"
 import { DownloadProgressButton } from "@/components/download-progress-button"
 import { apiFetch, normalizeFetchError } from "@/lib/api"
+import type { OcrAiChainMode, OcrAiLayoutModel, OcrProvider } from "@/lib/settings"
 import { toast } from "sonner"
 
 // ---------------------------------------------------------------------------
@@ -53,9 +54,30 @@ const ENGINE_PROVIDER_MAP: Record<ParseEngineMode, string[]> = {
   mineru_cloud: ["mineru"],
 }
 
-function getProvidersForEngine(mode?: ParseEngineMode): ProviderDisplay[] {
+function normalizeLayoutModelKey(model?: OcrAiLayoutModel): string {
+  return model && LAYOUT_MODELS[model] ? model : "pp_doclayout_v3"
+}
+
+function getProvidersForEngine(
+  mode?: ParseEngineMode,
+  ocrAiChainMode?: OcrAiChainMode,
+  ocrAiLayoutModel?: OcrAiLayoutModel,
+  ocrProvider?: OcrProvider,
+): ProviderDisplay[] {
   if (!mode) return PROVIDER_DISPLAY
-  const keys = ENGINE_PROVIDER_MAP[mode]
+  let keys = ENGINE_PROVIDER_MAP[mode]
+  const selectedLayoutModel = normalizeLayoutModelKey(ocrAiLayoutModel)
+  if (mode === "local_ocr") {
+    keys =
+      ocrProvider === "tesseract"
+        ? ["tesseract"]
+        : ["paddleocr", selectedLayoutModel]
+  } else if (mode === "remote_ocr") {
+    keys =
+      ocrAiChainMode === "direct"
+        ? ["aiocr"]
+        : [selectedLayoutModel, "aiocr"]
+  }
   if (!keys) return PROVIDER_DISPLAY
   return PROVIDER_DISPLAY.filter((p) => keys.includes(p.key))
 }
@@ -441,6 +463,12 @@ export interface ModelStatusBadgeProps {
   error?: string | null
   /** Current parse engine mode — filters displayed providers. */
   parseEngineMode?: ParseEngineMode
+  /** Current AI OCR chain mode — controls whether remote OCR needs layout models. */
+  ocrAiChainMode?: OcrAiChainMode
+  /** Current selected layout model — only this local layout dependency is required. */
+  ocrAiLayoutModel?: OcrAiLayoutModel
+  /** Current OCR provider — controls which local OCR dependency is required. */
+  ocrProvider?: OcrProvider
   /** Called after a successful download to refresh status. */
   onStatusChange?: () => void
   /** Additional CSS class. */
@@ -461,12 +489,20 @@ export function ModelStatusBadge({
   isLoading = false,
   error,
   parseEngineMode,
+  ocrAiChainMode,
+  ocrAiLayoutModel,
+  ocrProvider,
   onStatusChange,
   className,
 }: ModelStatusBadgeProps) {
   const providers = React.useMemo(
-    () => getProvidersForEngine(parseEngineMode),
-    [parseEngineMode]
+    () => getProvidersForEngine(
+      parseEngineMode,
+      ocrAiChainMode,
+      ocrAiLayoutModel,
+      ocrProvider,
+    ),
+    [parseEngineMode, ocrAiChainMode, ocrAiLayoutModel, ocrProvider]
   )
   const [expanded, setExpanded] = React.useState(false)
   const [triggerRect, setTriggerRect] = React.useState<DOMRect | null>(null)

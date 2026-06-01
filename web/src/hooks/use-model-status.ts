@@ -120,17 +120,17 @@ export function useEffectiveModelStatus(
 
     const remote = { ...backend.remote }
 
-    // AIOCR — needs api_key + base_url
+    // AIOCR — needs api_key. Base URL is optional for providers with a
+    // built-in/default endpoint such as OpenAI, and SiliconFlow gets its
+    // default URL from settings normalization.
     if (remote["aiocr"]) {
       const hasKey = settings.ocrAiApiKey.trim().length > 0
-      const hasUrl = settings.ocrAiBaseUrl.trim().length > 0
       remote["aiocr"] = {
         ...remote["aiocr"],
-        ready: hasKey && hasUrl,
-        configured: hasKey && hasUrl,
-        issues: hasKey && hasUrl ? [] : [
+        ready: hasKey,
+        configured: hasKey,
+        issues: hasKey ? [] : [
           ...(!hasKey ? ["api_key_missing"] : []),
-          ...(!hasUrl ? ["base_url_missing"] : []),
         ],
       }
     }
@@ -162,5 +162,5 @@ export function useEffectiveModelStatus(
     }
 
     return { local: backend.local, remote }
-  }, [backend, settings.ocrAiApiKey, settings.ocrAiBaseUrl, settings.ocrBaiduApiKey, settings.ocrBaiduSecretKey, settings.mineruApiToken])
+  }, [backend, settings.ocrAiApiKey, settings.ocrBaiduApiKey, settings.ocrBaiduSecretKey, settings.mineruApiToken])
 }

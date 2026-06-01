@@ -108,6 +108,7 @@ class NormalizedJobOptions:
     baidu_doc_parse_type: str
     ocr_provider: str
     ocr_ai_provider: str
+    ocr_ai_model: str | None
     ocr_ai_chain_mode: str
     ocr_ai_layout_model: str
     ocr_geometry_mode: str
@@ -135,9 +136,6 @@ def normalize_requested_ocr_provider(value: str | None) -> str:
     # Backward compat: paddle_local → paddleocr
     if provider_id == "paddle_local":
         return "paddleocr"
-    # Backward compat: paddle → aiocr (same code path as aiocr+doc_parser)
-    if provider_id == "paddle":
-        return "aiocr"
     return provider_id
 
 
@@ -359,6 +357,8 @@ def validate_and_normalize_job_options(
             details={"ocr_ai_chain_mode": ocr_ai_chain_mode},
             status_code=400,
         )
+    if normalized_ocr_provider == "paddle":
+        normalized_ocr_ai_chain_mode = "doc_parser"
 
     normalized_ocr_ai_layout_model = normalize_ai_ocr_layout_model(ocr_ai_layout_model)
     raw_ocr_ai_layout_model = (clean_str(ocr_ai_layout_model) or "").lower()
@@ -483,7 +483,7 @@ def validate_and_normalize_job_options(
                 },
                 status_code=400,
             )
-        if not (ocr_ai_model or "").strip():
+        if normalized_ocr_provider == "aiocr" and not (ocr_ai_model or "").strip():
             raise AppException(
                 code=ErrorCode.VALIDATION_ERROR,
                 message="ocr_ai_model is required for explicit AI OCR providers",
@@ -522,6 +522,7 @@ def validate_and_normalize_job_options(
         baidu_doc_parse_type=normalized_baidu_doc_parse_type,
         ocr_provider=normalized_ocr_provider,
         ocr_ai_provider=normalized_ocr_ai_provider,
+        ocr_ai_model=clean_str(ocr_ai_model),
         ocr_ai_chain_mode=normalized_ocr_ai_chain_mode,
         ocr_ai_layout_model=normalized_ocr_ai_layout_model,
         ocr_geometry_mode=normalized_geometry_mode,

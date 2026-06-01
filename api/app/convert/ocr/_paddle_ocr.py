@@ -31,7 +31,14 @@ logger = logging.getLogger(__name__)
 class PaddleOcrClient(OcrProvider):
     """PaddleOCR local client implementation."""
 
-    def __init__(self, language: str = "ch", *, layout_model: str | None = None):
+    def __init__(
+        self,
+        language: str = "ch",
+        *,
+        layout_model: str | None = None,
+        enable_layout: bool = True,
+        enable_sam: bool | None = None,
+    ):
         self.language = _normalize_paddle_language(language)
         self._engine: Any | None = None
         # PaddleOCR 3.x (PaddleX pipeline) can be memory-hungry on large page
@@ -39,6 +46,12 @@ class PaddleOcrClient(OcrProvider):
         self._max_side_px: int = int(get_settings().ocr_paddle_vl_docparser_max_side_px)
         # Layout detection model ID (configurable, defaults to PP-DocLayoutV3)
         self._layout_model_id: str = layout_model or DEFAULT_LAYOUT_MODEL_ID
+        self._enable_layout: bool = bool(enable_layout)
+        self._enable_sam: bool = (
+            bool(enable_sam)
+            if enable_sam is not None
+            else os.environ.get("ENABLE_SAM", "").strip().lower() in ("1", "true", "yes")
+        )
         # Layout detection state (populated after ocr_image())
         self.last_image_regions_px: list[Any] = []
         self.last_layout_blocks: list[dict[str, Any]] = []
@@ -146,7 +159,7 @@ class PaddleOcrClient(OcrProvider):
         )
 
         # Optional: refine image regions with SAM polygon masks
-        if image_regions and os.environ.get("ENABLE_SAM", "").strip().lower() in ("1", "true", "yes"):
+        if image_regions and self._enable_sam:
             try:
                 from ._sam_provider import refine_image_regions
 
@@ -170,15 +183,16 @@ class PaddleOcrClient(OcrProvider):
         return layout_blocks, image_regions
 
     def ocr_image(self, image_path: str) -> List[Dict]:
-        # Run layout detection first to identify text vs image regions
+        # Run layout detection if enabled to identify text vs image regions
         self.last_layout_blocks = []
         self.last_image_regions_px = []
-        try:
-            layout_blocks, image_regions = self._run_layout_detection(image_path)
-            self.last_layout_blocks = layout_blocks
-            self.last_image_regions_px = image_regions
-        except Exception as e:
-            logger.debug("Layout detection skipped: %s", e)
+        if self._enable_layout:
+            try:
+                layout_blocks, image_regions = self._run_layout_detection(image_path)
+                self.last_layout_blocks = layout_blocks
+                self.last_image_regions_px = image_regions
+            except Exception as e:
+                logger.debug("Layout detection skipped: %s", e)
 
         engine = self._ensure_engine()
 
@@ -512,17 +526,30 @@ class LazyPaddleOcrClient(OcrProvider):
     pay that startup cost unless fallback is actually needed.
     """
 
-    def __init__(self, *, language: str = "ch", layout_model: str | None = None):
+    def __init__(
+        self,
+        *,
+        language: str = "ch",
+        layout_model: str | None = None,
+        enable_layout: bool = True,
+        enable_sam: bool | None = None,
+    ):
         self.language = _normalize_paddle_language(language)
         self._layout_model = layout_model
+        self._enable_layout = enable_layout
+        self._enable_sam = enable_sam
         self._provider: PaddleOcrClient | None = None
 
     def _ensure_provider(self) -> PaddleOcrClient:
         if self._provider is None:
-            self._provider = PaddleOcrClient(language=self.language, layout_model=self._layout_model)
+            self._provider = PaddleOcrClient(
+                language=self.language,
+                layout_model=self._layout_model,
+                enable_layout=self._enable_layout,
+                enable_sam=self._enable_sam,
+            )
         return self._provider
 
     def ocr_image(self, image_path: str) -> List[Dict]:
         return self._ensure_provider().ocr_image(image_path)
-
 
