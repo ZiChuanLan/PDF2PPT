@@ -100,7 +100,7 @@ export function OcrConfigV3Section({ settings, onSettingsChange }: OcrConfigV3Se
         provider: config.recognition.aiProvider || "auto",
         apiKey: config.recognition.apiKey || "",
         baseUrl: config.recognition.baseUrl || undefined,
-        capability: "vision",
+        capability: "all",
       })
       setAvailableModels(models)
       if (models.length === 0) {
